@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Q-ONE Workflow Diagram</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            margin-top: 30px;
+        }
+    </style>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true });
+    </script>
+</head>
+
+<body>
+    <h1>Q-ONE 사용자 워크플로우 (User Workflow)</h1>
+    <!-- Note: Mermaid content must be treated as text, not HTML. -->
+    <pre class="mermaid">
+      graph LR
+        subgraph "1. 자산 관리 (Design Center)"
+            Obj["오브젝트 등록<br>Object Repository"]
+            Act["액션 정의<br>Action Library"]
+            Dat["데이터 구성<br>Test Data"]
+        end
+    
+        subgraph "2. 테스트 설계 (Test Design)"
+            Scn["시나리오 생성"]
+            Asm["블록 조립<br>Step Runner"]
+        end
+    
+        subgraph "3. 테스트 실행 (Execution)"
+            Loc["로컬 디버깅<br>Headful"]
+            CIE["CI/CD 실행<br>Headless"]
+        end
+    
+        subgraph "4. 결과 분석 (Reporting)"
+            Rep["결과 리포트"]
+            Ji["Jira 이슈 생성"]
+        end
+    
+        Obj --> Asm
+        Act --> Asm
+        Dat --> Asm
+        
+        Scn --> Asm
+        Asm --> Loc
+        Asm --> CIE
+        
+        Loc --> Rep
+        CIE --> Rep
+        Rep -.-> Ji
+        Rep -.-> Obj
+    </pre>
+</body>
+
+</html>
