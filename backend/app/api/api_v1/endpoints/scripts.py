@@ -57,6 +57,37 @@ def update_script(
     script = crud.script.update(db, db_obj=script, obj_in=script_in)
     return script
 
+@router.get("/{script_id}", response_model=schemas.TestScript)
+def read_script(
+    *,
+    db: Session = Depends(deps.get_db),
+    script_id: str,
+    current_user: models.User = Depends(deps.get_current_active_user),
+) -> Any:
+    """
+    Get script by ID.
+    """
+    script = crud.script.get(db, id=script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Script not found")
+    return script
+
+@router.delete("/{script_id}", response_model=schemas.TestScript)
+def delete_script(
+    *,
+    db: Session = Depends(deps.get_db),
+    script_id: str,
+    current_user: models.User = Depends(deps.get_current_active_user),
+) -> Any:
+    """
+    Delete a script.
+    """
+    script = crud.script.get(db, id=script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Script not found")
+    script = crud.script.remove(db, id=script_id)
+    return script
+
 from pydantic import BaseModel
 class GenerateScriptRequest(BaseModel):
     scenarios: List[Any] # Flexible validation

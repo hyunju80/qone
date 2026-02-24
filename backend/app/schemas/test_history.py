@@ -7,11 +7,13 @@ class LogEntry(BaseModel):
     type: str # info, success, error, cmd
 
 class TestHistoryBase(BaseModel):
+    project_id: Optional[str] = None
     status: Optional[str] = None
     duration: Optional[str] = None
     failure_reason: Optional[str] = None
     ai_summary: Optional[str] = None
     logs: Optional[List[LogEntry]] = []
+    step_results: Optional[List[Dict[str, Any]]] = []
 
 class TestHistoryCreate(TestHistoryBase):
     script_id: str
@@ -33,6 +35,7 @@ class TestHistoryInDBBase(TestHistoryBase):
     commit_hash: Optional[str] = None
     schedule_id: Optional[str] = None
     schedule_name: Optional[str] = None
+    script_origin: Optional[str] = None
     
     class Config:
         from_attributes = True

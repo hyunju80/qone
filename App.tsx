@@ -12,6 +12,7 @@ import { schedulesApi } from './api/schedules'; // We might still use it for ini
 // Actually, App.tsx DOES need it to fetch the list on load (useEffect). 
 // But NOT for handleCreate/Update/Delete. 
 // So keep the import. // Added import
+import { deviceFarmApi } from './api/deviceFarm';
 import Sidebar from './components/Sidebar';
 import MainConsole from './components/MainConsole';
 import AssetLibrary from './components/AssetLibrary';
@@ -69,13 +70,12 @@ const AppContent: React.FC = () => {
 
   // App Data
   const [scripts, setScripts] = useState<TestScript[]>([]);
-  const [steps, setSteps] = useState<any[]>([]); // Step Assets
   const [history, setHistory] = useState<TestHistory[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [schedules, setSchedules] = useState<TestSchedule[]>([]);
-  const [devices, setDevices] = useState<Device[]>(MOCK_DEVICES);
+  const [devices, setDevices] = useState<Device[]>([]);
   const [approvalTasks, setApprovalTasks] = useState<ApprovalTask[]>(MOCK_TASKS);
   const [approvedScenarios, setApprovedScenarios] = useState<Scenario[]>([]);
 
@@ -169,7 +169,7 @@ const AppContent: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const filteredScripts = useMemo(() => scripts.filter(s => s.projectId === activeProject?.id), [scripts, activeProject]);
-  const filteredHistory = useMemo(() => history.filter(h => scripts.find(s => s.id === h.scriptId)?.projectId === activeProject?.id), [history, scripts, activeProject]);
+  const filteredHistory = useMemo(() => history.filter(h => h.projectId === activeProject?.id), [history, activeProject]);
   const filteredSchedules = useMemo(() => schedules.filter(s => s.projectId === activeProject?.id), [schedules, activeProject]);
   const filteredApprovedScenarios = useMemo(() => approvedScenarios.filter(s => s.projectId === activeProject?.id), [approvedScenarios, activeProject]);
 
@@ -208,6 +208,19 @@ const AppContent: React.FC = () => {
       }
     };
     initAuth();
+
+    // Fetch Device Farm occasionally
+    const fetchDevices = async () => {
+      try {
+        const dvs = await deviceFarmApi.getDevices();
+        setDevices(dvs);
+      } catch (err) {
+        console.error("Failed to load device farm:", err);
+      }
+    };
+    fetchDevices();
+    const deviceInterval = setInterval(fetchDevices, 3000); // refresh every 3s
+    return () => clearInterval(deviceInterval);
   }, []);
 
   const handleLogin = async () => {
@@ -268,27 +281,19 @@ const AppContent: React.FC = () => {
       const fetchResources = async () => {
         const results = await Promise.allSettled([
           testApi.getScripts(activeProject.id),
-          testApi.getSteps(activeProject.id), // Fetch Steps
           testApi.getScenarios(activeProject.id),
           testApi.getHistory(activeProject.id),
           schedulesApi.list(activeProject.id),
           personaApi.getPersonas(activeProject.id)
         ]);
 
-        const [scriptsRes, stepsRes, scenariosRes, historyRes, schedulesRes, personasRes] = results;
+        const [scriptsRes, scenariosRes, historyRes, schedulesRes, personasRes] = results;
 
         // Scripts
         if (scriptsRes.status === 'fulfilled') {
           setScripts(scriptsRes.value || []);
         } else {
           console.error("[App] Failed to load scripts:", scriptsRes.reason);
-        }
-
-        // Steps
-        if (stepsRes.status === 'fulfilled') {
-          setSteps(stepsRes.value || []);
-        } else {
-          console.error("[App] Failed to load steps:", stepsRes.reason);
         }
 
         // Scenarios
@@ -572,14 +577,17 @@ const AppContent: React.FC = () => {
       case ViewMode.LIBRARY:
         return <AssetLibrary
           scripts={filteredScripts}
-          steps={steps} // Pass steps
           activeProjectId={activeProject.id}
           personas={personas.filter(p => p.projectId === activeProject.id || p.projectId === 'global' || !p.projectId)}
           onRecordHistory={(h) => setHistory(prev => [h, ...prev])}
           onRefresh={() => {
             if (activeProject) {
               testApi.getScripts(activeProject.id).then(setScripts);
-              testApi.getSteps(activeProject.id).then(setSteps); // Refresh steps too
+              testApi.getHistory(activeProject.id).then(setHistory).catch(err => {
+                if (err.response?.status === 401) {
+                  showAlert("Session Expired", "Please log in again to view execution results.", "error");
+                }
+              });
             }
           }}
           onAlert={showAlert}
@@ -590,7 +598,16 @@ const AppContent: React.FC = () => {
           history={filteredHistory}
           activeProject={activeProject}
           onRefresh={() => {
-            if (activeProject) testApi.getHistory(activeProject.id).then(setHistory);
+            if (activeProject) {
+              testApi.getHistory(activeProject.id)
+                .then(setHistory)
+                .catch(err => {
+                  console.error("Failed to fetch history:", err);
+                  if (err.response?.status === 401) {
+                    showAlert("Authentication Required", "Your session has expired. Please refresh or re-login.", "error");
+                  }
+                });
+            }
           }}
           onNavigateToLibrary={(scriptId) => {
             setLibrarySearchTerm(scriptId);
@@ -631,7 +648,7 @@ const AppContent: React.FC = () => {
           onAlert={showAlert}
         />;
       case ViewMode.REPORTS:
-        return <ReportDashboard history={filteredHistory} scripts={filteredScripts} steps={steps} activeProject={activeProject} />;
+        return <ReportDashboard history={filteredHistory} scripts={filteredScripts} activeProject={activeProject} />;
       case ViewMode.DESIGN_CENTER:
         return (
           <DesignCenter
@@ -746,6 +763,14 @@ const AppContent: React.FC = () => {
             if (view === ViewMode.LIBRARY) {
               setLibrarySearchTerm('');
             }
+
+            // Auto-refresh data when entering views that display stats/history
+            if (activeProject && [ViewMode.LIBRARY, ViewMode.HISTORY, ViewMode.REPORTS].includes(view as ViewMode)) {
+              console.log(`[App] Auto-refreshing data for view: ${view}`);
+              testApi.getScripts(activeProject.id).then(setScripts).catch(console.error);
+              testApi.getHistory(activeProject.id).then(setHistory).catch(console.error);
+            }
+
             setCurrentView(view);
           }}
           onSwitchProject={() => { setActiveProject(null); setIsBypassingToWorkspaces(false); }}

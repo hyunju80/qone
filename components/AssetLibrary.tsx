@@ -10,11 +10,11 @@ import {
 import { ScriptStatus, TestScript, ScriptOrigin, DataType, TestHistory, Persona, TestDataRow, TestEngine, Scenario, StepAsset } from '../types';
 import { testApi } from '../api/test';
 import { scenariosApi } from '../api/scenarios';
+import api from '../api/client';
 import LiveExecutionModal from './LiveExecutionModal';
 
 interface AssetLibraryProps {
   scripts: TestScript[];
-  steps?: StepAsset[]; // Added steps prop
   activeProjectId: string;
   personas: Persona[];
   onRecordHistory?: (history: TestHistory) => void;
@@ -23,7 +23,7 @@ interface AssetLibraryProps {
   initialSearchTerm?: string;
 }
 
-const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, steps = [], activeProjectId, personas, onRecordHistory, onRefresh, onAlert, initialSearchTerm = '' }) => {
+const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, personas, onRecordHistory, onRefresh, onAlert, initialSearchTerm = '' }) => {
   const [filter, setFilter] = useState<'ALL' | 'AI' | 'AI_EXPLORATION' | 'MANUAL' | 'FAVORITES' | 'STEP'>('ALL'); // Added STEP
   const [searchQuery, setSearchQuery] = useState(initialSearchTerm);
 
@@ -34,7 +34,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, steps = [], active
     }
   }, [initialSearchTerm]);
   const [viewingScript, setViewingScript] = useState<TestScript | null>(null);
-  const [viewingStep, setViewingStep] = useState<StepAsset | null>(null); // Added viewingStep state
+  const [viewingStep, setViewingStep] = useState<TestScript | null>(null); // Added viewingStep state
   const [executingScript, setExecutingScript] = useState<TestScript | null>(null);
   const [copied, setCopied] = useState(false);
   const [activeViewerTab, setActiveViewerTab] = useState<'code' | 'context'>('code');
@@ -87,12 +87,37 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, steps = [], active
   /* New State for Real Execution Modal */
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
+  const handleRunStepAsset = async (asset: TestScript) => {
+    if (asset.isActive === false) return;
+    try {
+      const { run_id } = await testApi.runActiveSteps({
+        steps: asset.steps || [],
+        project_id: activeProjectId,
+        platform: asset.platform || 'WEB',
+        script_id: asset.id,
+        script_name: asset.name,
+        trigger: "manual",
+        persona_name: asset.persona?.name || "Default"
+      });
+      setActiveRunId(run_id);
+    } catch (e: any) {
+      console.error("Failed to run step asset", e);
+      if (onAlert) onAlert("Error", "Failed to start execution.", 'error');
+    }
+  };
+
   const handleRunTest = async (script: TestScript) => {
     if (!script.isActive) return;
     setExecutingScript(script);
 
     try {
-      const { run_id } = await testApi.dryRun(script.code);
+      const { run_id } = await testApi.dryRun({
+        code: script.code,
+        project_id: script.projectId, // Assuming TestScript extends Project resource
+        script_id: script.id,
+        script_name: script.name,
+        persona_name: script.persona?.name || 'Default'
+      });
       setActiveRunId(run_id);
     } catch (e: any) {
       console.error("Failed to start run", e);
@@ -113,25 +138,44 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, steps = [], active
     (script.id?.toLowerCase() || '').includes(searchQuery.toLowerCase())
   );
 
-  const filteredSteps = steps.filter(step => {
-    if (filter !== 'STEP' && filter !== 'ALL') return false; // Show steps only in ALL or STEP? Ideally just STEP to avoid clutter, or ALL if desired. User asked for 'STEP' filter. Let's show in STEP only for clarity, or ALL if user expects everything.
-    // Let's stick to showing steps primarily when filter is STEP or ALL.
-    // Actually, usually 'ALL' mixes everything. Let's include in ALL but usually steps are distinct.
-    // Given the UI structure, let's include them in ALL or just STEP.
-    // Re-reading user request: "Asset library filter 'STEP' add". providing a dedicated view.
-    // Let's include in ALL if it makes sense, but the rendering might differ.
-    // For now, let's filter them.
+  const filteredSteps = scripts.filter(script => script.origin === ScriptOrigin.STEP).filter(step => {
+    if (filter !== 'STEP' && filter !== 'ALL') return false;
     return (step.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
       (step.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
       (step.id?.toLowerCase() || '').includes(searchQuery.toLowerCase());
   });
 
   const handleExecutionComplete = async (status: 'success' | 'error', capturedLogs?: string) => {
+    // 1. Cleanup & Refresh (Always)
+    // Modified: Don't set activeRunId to null here; let the user close it manually like in Step Flow.
+    // setActiveRunId(null); 
+    if (onRefresh) onRefresh();
+
+    // 2. Alert (If enabled)
+    // Redundant alert removed per user request
+    /*
+    if (onAlert) {
+      if (status === 'success') {
+        onAlert("Success", "Execution completed. Check results in History.", 'success');
+      } else {
+        onAlert("Error", "Execution failed. Check logs in History.", 'error');
+      }
+    }
+    */
+
+    // 3. Frontend History Save (Only for regular scripts that don't save on backend yet)
+    // Modified: Skip for StepAsset or Appium runs as backend (run.py) handles history saving.
     if (!executingScript) return;
+    const isStepAsset = 'steps' in executingScript;
+    const isAppium = 'engine' in executingScript && executingScript.engine === 'Appium';
 
-    const durationStr = "N/A"; // Modal doesn't track duration yet, could infer or just leave as N/A
+    if (isStepAsset || isAppium) {
+      console.log("Skipping frontend history save for backend-managed run.");
+      setExecutingScript(null);
+      return;
+    }
 
-    // Parse logs into array of strings
+    const durationStr = "N/A";
     const logEntries = capturedLogs
       ? capturedLogs.split('\n').filter(line => line.trim() !== '').map(line => ({ msg: line, type: 'info' as const }))
       : [];
@@ -153,14 +197,11 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, steps = [], active
       if (onRecordHistory && savedHistory) {
         onRecordHistory(savedHistory);
       }
-      if (onRefresh) onRefresh();
     } catch (e) {
-      console.error("Failed to save history", e);
+      console.error("Failed to save history on frontend", e);
+    } finally {
+      setExecutingScript(null);
     }
-
-    // Reset - Removed to allow user to view results. Modal must be closed manually.
-    // setActiveRunId(null);
-    // setExecutingScript(null);
   };
 
   const handleCopyCode = (code: string) => {
@@ -229,26 +270,14 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, steps = [], active
     handleUpdateScript({ ...script, isActive: !script.isActive }, true);
   };
 
-  const handleToggleStepFavorite = async (e: React.MouseEvent, step: StepAsset) => {
+  const handleToggleStepFavorite = async (e: React.MouseEvent, step: TestScript) => {
     e.stopPropagation();
-    try {
-      await testApi.updateScript(step.id, { is_favorite: !step.isFavorite });
-      if (onRefresh) onRefresh();
-    } catch (e) {
-      console.error("Failed to toggle step favorite", e);
-      if (onAlert) onAlert("Error", "Failed to update step.", 'error');
-    }
+    handleUpdateScript({ ...step, isFavorite: !step.isFavorite }, true);
   };
 
-  const handleToggleStepActive = async (e: React.MouseEvent, step: StepAsset) => {
+  const handleToggleStepActive = async (e: React.MouseEvent, step: TestScript) => {
     e.stopPropagation();
-    try {
-      await testApi.updateScript(step.id, { is_active: !step.isActive });
-      if (onRefresh) onRefresh();
-    } catch (e) {
-      console.error("Failed to toggle step active", e);
-      if (onAlert) onAlert("Error", "Failed to update step.", 'error');
-    }
+    handleUpdateScript({ ...step, isActive: !step.isActive }, true);
   };
 
   const handleModifyScript = (script: TestScript) => {
@@ -407,8 +436,6 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, steps = [], active
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-20">
         {filteredScripts.map(script => (
           <div key={script.id} className={`bg-white dark:bg-[#16191f] border rounded-2xl p-5 hover:border-gray-300 dark:hover:border-gray-700 transition-all group flex flex-col relative overflow-hidden ${script.isActive ? 'border-gray-200 dark:border-gray-800' : 'border-red-500/30 dark:border-red-900/30 opacity-60 grayscale'}`}>
-            <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-600/5 blur-2xl rounded-full" />
-
             <div className="flex justify-between items-start mb-4 relative z-10">
               <div className="flex gap-2">
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${script.isActive ? 'bg-indigo-600/10 text-indigo-600 dark:text-indigo-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600'}`}>
@@ -564,14 +591,12 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, steps = [], active
               </div>
               <div className="flex items-center justify-between text-[9px] text-gray-500">
                 <div className="flex items-center gap-1.5">
-                  <Clock className="w-3 h-3" /> {step.updatedAt ? new Date(step.updatedAt).toLocaleDateString() : 'N/A'}
+                  <Clock className="w-3 h-3" /> {step.lastRun}
                 </div>
               </div>
             </div>
             <button
-              onClick={() => {
-                if (onAlert) onAlert("Info", "Coming soon!", 'info');
-              }}
+              onClick={() => handleRunStepAsset(step)}
               className="w-full text-[10px] font-black py-2.5 rounded-xl transition-all uppercase tracking-widest flex items-center justify-center gap-2 relative z-10 bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20"
             >
               <Play className="w-3.5 h-3.5" /> Run Test

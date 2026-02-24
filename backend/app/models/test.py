@@ -29,7 +29,7 @@ class TestScript(Base):
     run_count = Column(Integer, default=0)
     success_rate = Column(Float, default=0.0)
     code = Column(Text) # The actual script
-    origin = Column(String) # MANUAL, AI
+    origin = Column(String) # MANUAL, AI, STEP
     tags = Column(JSON, default=[])
     is_favorite = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
@@ -37,12 +37,15 @@ class TestScript(Base):
     dataset = Column(JSON, default=[])
     engine = Column(String) # Playwright, Appium
     platform = Column(String) # WEB, APP (New for Step Runner)
+    steps = Column(JSON, default=[]) # Native Step representation for Step scripts
 
     project = relationship("Project", back_populates="scripts")
     persona = relationship("Persona", back_populates="scripts")
-    history = relationship("TestHistory", back_populates="script")
+    history = relationship("TestHistory", 
+                           primaryjoin="TestScript.id == foreign(TestHistory.script_id)",
+                           back_populates="script",
+                           viewonly=True)
     match_schedules = relationship("ScheduleScript", back_populates="script")
-    steps = relationship("TestStep", back_populates="script", cascade="all, delete-orphan")
 
 class Scenario(Base):
     id = Column(String, primary_key=True, index=True)
@@ -61,7 +64,8 @@ class Scenario(Base):
 
 class TestHistory(Base):
     id = Column(String, primary_key=True, index=True)
-    script_id = Column(String, ForeignKey("testscript.id"))
+    project_id = Column(String, index=True, nullable=True) # Direct project link
+    script_id = Column(String, index=True) # TestScript
     script_name = Column(String) # Denormalized for ease
     run_date = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String) # passed, failed
@@ -75,16 +79,23 @@ class TestHistory(Base):
     commit_hash = Column(String)
     schedule_id = Column(String, ForeignKey("testschedule.id"), nullable=True)
     schedule_name = Column(String)
+    step_results = Column(JSON, default=[]) # Universal step-by-step results
     
-    script = relationship("TestScript", back_populates="history")
+    script = relationship("TestScript", 
+                          primaryjoin="foreign(TestHistory.script_id) == TestScript.id",
+                          back_populates="history",
+                          viewonly=True)
     schedule = relationship("TestSchedule", back_populates="history_entries")
     ai_session = relationship("AiExplorationSession", uselist=False, back_populates="history")
+
+    @property
+    def script_origin(self):
+        return self.script.origin if self.script else None
 
 class TestSchedule(Base):
     id = Column(String, primary_key=True, index=True)
     project_id = Column(String, ForeignKey("project.id"))
     name = Column(String)
-    # script_ids kept as relation or JSON. Let's do M2M for integrity
     cron_expression = Column(String)
     frequency_label = Column(String)
     last_run = Column(DateTime(timezone=True))
@@ -111,27 +122,6 @@ class ScheduleScript(Base):
     schedule = relationship("TestSchedule", back_populates="scripts")
     script = relationship("TestScript", back_populates="match_schedules")
 
-class TestStep(Base):
-    __tablename__ = "teststep"
-    
-    id = Column(String, primary_key=True, index=True)
-    script_id = Column(String, ForeignKey("testscript.id"))
-    step_number = Column(Integer)
-    action = Column(String)
-    selector_type = Column(String)
-    selector_value = Column(String)
-    option = Column(String)
-    
-    # App specific fields
-    step_name = Column(String)
-    description = Column(String)
-    mandatory = Column(Boolean, default=False)
-    skip_on_error = Column(Boolean, default=False)
-    screenshot = Column(Boolean, default=False)
-    sleep = Column(Float, default=0.0)
-    
-    script = relationship("TestScript", back_populates="steps")
-
 class TestObject(Base):
     """
     Independent Selector/Locator Asset
@@ -144,6 +134,7 @@ class TestObject(Base):
     description = Column(String, nullable=True)
     selector_type = Column(String) # css, xpath, id, etc.
     value = Column(String)
+    platform = Column(String, default="WEB") # WEB, APP
     is_active = Column(Boolean, default=True)
     usage_count = Column(Integer, default=0)
     last_verified_at = Column(DateTime(timezone=True), nullable=True)
@@ -162,6 +153,7 @@ class TestAction(Base):
     category = Column(String) # Common, Custom, etc
     code_content = Column(Text) # The actual python/playwright function body
     parameters = Column(JSON, default=[]) # [{name, type, required, description}]
+    platform = Column(String, default="WEB") # WEB, APP
     is_active = Column(Boolean, default=True)
     
     project = relationship("Project")
@@ -177,6 +169,7 @@ class TestDataset(Base):
     description = Column(String, nullable=True)
     data = Column(JSON, default=[]) # [{key, value, type, description}]
     classification = Column(String) # VALID, INVALID, SECURITY, EDGE_CASE
+    platform = Column(String, default="WEB") # WEB, APP
     is_active = Column(Boolean, default=True)
     generation_source = Column(String) # MANUAL, LLM
     

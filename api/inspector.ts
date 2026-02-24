@@ -37,5 +37,9 @@ export const inspectorApi = {
     switchContext: async (contextName: string) => {
         const response = await client.post('/inspector/switch-context', { context_name: contextName });
         return response.data;
+    },
+    disconnect: async () => {
+        const response = await client.post('/inspector/disconnect');
+        return response.data;
     }
 };

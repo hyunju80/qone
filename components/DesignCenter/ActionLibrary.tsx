@@ -12,17 +12,18 @@ const ActionLibrary: React.FC<ActionLibraryProps> = ({ activeProject, onAlert })
     const [actions, setActions] = useState<TestAction[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [activePlatform, setActivePlatform] = useState<'WEB' | 'APP' | 'COMMON'>('WEB');
     const [isEditing, setIsEditing] = useState(false);
     const [currentAction, setCurrentAction] = useState<Partial<TestAction>>({});
 
     useEffect(() => {
         loadActions();
-    }, [activeProject.id]);
+    }, [activeProject.id, activePlatform]);
 
     const loadActions = async () => {
         setLoading(true);
         try {
-            const data = await assetsApi.getActions(activeProject.id);
+            const data = await assetsApi.getActions(activeProject.id, activePlatform);
             setActions(data);
         } catch (e) {
             console.error(e);
@@ -37,15 +38,16 @@ const ActionLibrary: React.FC<ActionLibraryProps> = ({ activeProject, onAlert })
             // Prepare data
             const actionData = {
                 ...currentAction,
-                project_id: currentAction.project_id || activeProject.id, // Default to current project if not global
+                projectId: activeProject.id, // Default to current project
+                platform: activePlatform,
                 is_active: true
             };
 
             if (currentAction.id) {
-                await assetsApi.updateAction(currentAction.id, actionData);
+                await assetsApi.updateAction(currentAction.id, actionData as any);
                 onAlert("Success", "Action updated", "success");
             } else {
-                await assetsApi.createAction(actionData);
+                await assetsApi.createAction(actionData as any);
                 onAlert("Success", "Action created", "success");
             }
             setIsEditing(false);
@@ -63,22 +65,39 @@ const ActionLibrary: React.FC<ActionLibraryProps> = ({ activeProject, onAlert })
     return (
         <div className="h-full flex flex-col">
             <div className="flex justify-between items-center mb-6">
-                <div className="relative w-64">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                    <input
-                        type="text"
-                        placeholder="Search actions..."
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        className="w-full bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-lg pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
+                <div className="flex items-center gap-4">
+                    <div className="relative w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                        <input
+                            type="text"
+                            placeholder="Search actions..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-lg pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                    </div>
+                    <div className="bg-gray-100 dark:bg-gray-900 p-1 rounded-xl flex gap-1">
+                        {(['WEB', 'APP', 'COMMON'] as const).map(p => (
+                            <button
+                                key={p}
+                                onClick={() => setActivePlatform(p)}
+                                className={`px-4 py-1.5 rounded-lg text-[10px] font-black tracking-widest uppercase transition-all ${activePlatform === p
+                                    ? 'bg-white dark:bg-[#16191f] text-indigo-600 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                {p}
+                            </button>
+                        ))}
+                    </div>
                 </div>
                 <button
                     onClick={() => {
                         setCurrentAction({
                             category: 'Custom',
-                            code_content: 'def my_action(page):\n    # TODO: Implement action\n    pass',
-                            parameters: []
+                            code_content: activePlatform === 'WEB' ? 'def my_action(page):\n    # TODO: Implement action\n    pass' : 'def my_action(driver):\n    # TODO: Implement action\n    pass',
+                            parameters: [],
+                            platform: activePlatform
                         });
                         setIsEditing(true);
                     }}
@@ -154,6 +173,23 @@ const ActionLibrary: React.FC<ActionLibraryProps> = ({ activeProject, onAlert })
                                     onChange={e => setCurrentAction({ ...currentAction, description: e.target.value })}
                                     className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-sm h-16 resize-none"
                                 />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 uppercase block mb-2">Platform</label>
+                                <div className="flex gap-2">
+                                    {['WEB', 'APP', 'COMMON'].map(p => (
+                                        <button
+                                            key={p}
+                                            onClick={() => setCurrentAction({ ...currentAction, platform: p as any })}
+                                            className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border ${currentAction.platform === p
+                                                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                                                    : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-400 hover:border-gray-300'
+                                                }`}
+                                        >
+                                            {p}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                             <div className="flex-1 flex flex-col">
                                 <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Implementation (Python/Playwright)</label>

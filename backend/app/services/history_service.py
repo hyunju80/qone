@@ -53,7 +53,7 @@ class HistoryService:
             status=final_status, # passed / failed
             duration=duration,
             persona_name=session_data.get("persona_name", "AI Agent"),
-            trigger="ai_exploration",
+            trigger="manual",
             ai_summary=session_data.get("goal", "Ad-hoc Exploration"),
             logs=[], # We store detailed steps in separate table
             run_date=datetime.now(timezone(timedelta(hours=9)))

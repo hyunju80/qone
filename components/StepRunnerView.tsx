@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Plus, Trash2, Command, Save, PlayCircle, Upload, FileSpreadsheet, FolderPlus, X, AlertTriangle, PanelLeftClose, PanelLeftOpen, Search as SearchIcon, MousePointer2, Video, VideoOff, Target, RefreshCw, FileText, Zap, CheckCircle2, Info } from 'lucide-react';
-import { Project, TestObject } from '../types';
+import { Project, TestObject, TestAction } from '../types';
 import * as XLSX from 'xlsx';
 import api from '../api/client';
 import { assetsApi } from '../api/assets';
@@ -8,6 +8,7 @@ import { testApi } from '../api/test';
 import { inspectorApi } from '../api/inspector';
 import StepAssetList from './StepAssetList';
 import ObjectRegistrationModal from '@/components/ObjectRegistrationModal';
+import LiveExecutionModal from './LiveExecutionModal';
 
 interface StepRunnerViewProps {
     activeProject: Project;
@@ -26,6 +27,11 @@ interface TestStep {
     skipOnError?: boolean;
     screenshot?: boolean;
     sleep?: number;
+    // Legacy Import Support
+    visible_if_type?: string;
+    visible_if?: string;
+    true_jump_no?: number;
+    false_jump_no?: number;
 }
 
 const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
@@ -36,10 +42,12 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
     const [refreshTrigger, setRefreshTrigger] = useState(0); // To reload list after save
     const [viewingAsset, setViewingAsset] = useState<any>(null); // For detail view
     const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
+    const [activeRunId, setActiveRunId] = useState<string | null>(null);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     // Object Registration State
     const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
-    const [pendingObjectData, setPendingObjectData] = useState({ name: '', selectorType: 'XPATH', selectorValue: '' });
+    const [pendingObjectData, setPendingObjectData] = useState({ name: '', selectorType: 'XPATH', selectorValue: '', platform: 'WEB' as 'WEB' | 'APP' });
 
     const handleInspectorClick = async (e: React.MouseEvent<HTMLDivElement>) => {
         if (!isInspectorOpen || !screenshot) return;
@@ -64,36 +72,30 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
 
                 if (inspectionTarget !== null) {
                     // Update specific step (Selective Re-Inspection)
-                    updateStep(inspectionTarget, 'selectorType', res.selector_type.toLowerCase());
-                    updateStep(inspectionTarget, 'selectorValue', res.selector_value);
+                    updateStep(inspectionTarget, {
+                        selectorType: activeTab === 'WEB' ? res.selector_type.toLowerCase() : res.selector_type.toUpperCase(),
+                        selectorValue: res.selector_value
+                    });
                     setInspectionTarget(null);
                     setNotification({ type: 'success', message: 'Step updated successfully' });
-                } else if (isRecording) {
+                } else if (appInspectorMode === 'RECORD' || appInspectorMode === 'NAVIGATE') {
+                    // Create step data for action
+                    let newStep: TestStep | null = null;
+
                     if (recordMode === 'CLICK') {
-                        const newStep: TestStep = {
+                        newStep = {
                             id: String(steps.length + stagedSteps.length + 1),
                             stepName: `Click: ${res.name}`,
                             description: `Recorded click on ${res.name}`,
                             action: 'click',
-                            selectorType: res.selector_type.toLowerCase(),
+                            selectorType: activeTab === 'WEB' ? res.selector_type.toLowerCase() : res.selector_type.toUpperCase(),
                             selectorValue: res.selector_value,
                             mandatory: true,
                             screenshot: true,
                             sleep: 1
                         };
-
-                        if (isRecording) {
-                            setPendingStep(newStep);
-                        } else {
-                            // In non-recording mode, just show highlight
-                            const resAct = await inspectorApi.performAction(newStep);
-                            if (!resAct.success) {
-                                setNotification({ type: 'error', message: `Action failed: ${resAct.error}` });
-                            }
-                            setTimeout(refreshScreenshot, 1000);
-                        }
                     } else if (recordMode === 'TAP') {
-                        const newStep: TestStep = {
+                        newStep = {
                             id: String(steps.length + stagedSteps.length + 1),
                             stepName: `Tap: (${x}, ${y})`,
                             description: `Recorded coordinate tap at (${x}, ${y})`,
@@ -105,22 +107,13 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                             screenshot: true,
                             sleep: 1
                         };
-
-                        if (isRecording) {
-                            setPendingStep(newStep);
-                        } else {
-                            const resAct = await inspectorApi.performAction(newStep);
-                            if (!resAct.success) {
-                                setNotification({ type: 'error', message: `Action failed: ${resAct.error}` });
-                            }
-                            setTimeout(refreshScreenshot, 1000);
-                        }
                     } else if (recordMode === 'SWIPE') {
                         if (!swipeStart) {
                             setSwipeStart({ x, y });
                             setNotification({ type: 'info', message: 'Swipe Start recorded. Click Swipe End point.' });
+                            return; // Wait for second click
                         } else {
-                            const newStep: TestStep = {
+                            newStep = {
                                 id: String(steps.length + stagedSteps.length + 1),
                                 stepName: `Swipe Action`,
                                 description: `Recorded swipe from (${swipeStart.x}, ${swipeStart.y}) to (${x}, ${y})`,
@@ -132,55 +125,40 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                 screenshot: true,
                                 sleep: 1
                             };
-
-                            if (isRecording) {
-                                setPendingStep(newStep);
-                            } else {
-                                setSwipeStart(null);
-                                const resAct = await inspectorApi.performAction(newStep);
-                                if (!resAct.success) {
-                                    setNotification({ type: 'error', message: `Action failed: ${resAct.error}` });
-                                }
-                                setTimeout(refreshScreenshot, 1200);
-                            }
+                            setSwipeStart(null);
                         }
                     } else if (recordMode === 'INPUT') {
-                        const val = prompt("Enter text to input:");
-                        if (val !== null) {
-                            const newStep: TestStep = {
-                                id: String(steps.length + stagedSteps.length + 1),
-                                stepName: `Input: ${val}`,
-                                description: `Recorded input on ${res.name}`,
-                                action: 'send_keys',
-                                option: val,
-                                selectorType: res.selector_type.toLowerCase(),
-                                selectorValue: res.selector_value,
-                                mandatory: true,
-                                screenshot: true,
-                                sleep: 1
-                            };
+                        setInspectorInputPendingRes(res);
+                        setInspectorInputText('');
+                        setShowInspectorInputModal(true);
+                        return; // Handle in modal
+                    }
 
-                            if (isRecording) {
-                                setPendingStep(newStep);
-                            } else {
-                                const resAct = await inspectorApi.performAction(newStep);
-                                if (!resAct.success) {
-                                    setNotification({ type: 'error', message: `Action failed: ${resAct.error}` });
-                                }
-                                setTimeout(refreshScreenshot, 1500);
+                    if (newStep) {
+                        if (appInspectorMode === 'RECORD') {
+                            setPendingStep(newStep);
+                        } else if (appInspectorMode === 'NAVIGATE') {
+                            // In non-recording mode, just perform action to navigate
+                            const resAct = await inspectorApi.performAction(newStep);
+                            if (!resAct.success) {
+                                setNotification({ type: 'error', message: `Action failed: ${resAct.error}` });
                             }
+                            setTimeout(refreshScreenshot, 1000);
                         }
                     }
-                } else {
+                } else if (appInspectorMode === 'INSPECT') {
                     // Suggest Registration if not in library
                     const exists = availableObjects.some(obj => obj.value === res.selector_value);
                     if (!exists) {
                         setPendingObjectData({
                             name: res.name.toLowerCase().replace(/\s+/g, '_'),
-                            selectorType: res.selector_type,
-                            selectorValue: res.selector_value
+                            selectorType: activeTab === 'WEB' ? res.selector_type.toLowerCase() : res.selector_type.toUpperCase(),
+                            selectorValue: res.selector_value,
+                            platform: activeTab
                         });
                         setIsRegisterModalOpen(true);
+                    } else {
+                        setNotification({ type: 'info', message: 'Element already exists in Object Repository.' });
                     }
                 }
             }
@@ -189,16 +167,21 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
         }
     };
 
-    // Test Objects Integration
+    // Test Objects & Actions Integration
     const [availableObjects, setAvailableObjects] = useState<TestObject[]>([]);
+    const [availableActions, setAvailableActions] = useState<TestAction[]>([]);
 
     useEffect(() => {
         if (activeProject?.id) {
-            assetsApi.getObjects(activeProject.id)
+            assetsApi.getObjects(activeProject.id, activeTab)
                 .then(setAvailableObjects)
                 .catch(err => console.error("Failed to load test objects", err));
+
+            assetsApi.getActions(activeProject.id, activeTab)
+                .then(setAvailableActions)
+                .catch(err => console.error("Failed to load test actions", err));
         }
-    }, [activeProject?.id]);
+    }, [activeProject?.id, activeTab]);
 
     // Notification & Confirmation States
     const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
@@ -214,6 +197,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
 
     // Inspector & Recording State
     const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+    const [appInspectorMode, setAppInspectorMode] = useState<'NAVIGATE' | 'RECORD' | 'INSPECT'>('NAVIGATE');
     const [isRecording, setIsRecording] = useState(false);
     const [screenshot, setScreenshot] = useState<string | null>(null);
     const [inspectionTarget, setInspectionTarget] = useState<number | null>(null); // Index of step being re-inspected
@@ -239,6 +223,45 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
     const [imageDimensions, setImageDimensions] = useState<{ width: number, height: number } | null>(null);
     const [currentLine, setCurrentLine] = useState<number | null>(null);
 
+    // Custom Input Modal State for Inspector
+    const [showInspectorInputModal, setShowInspectorInputModal] = useState(false);
+    const [inspectorInputText, setInspectorInputText] = useState('');
+    const [inspectorInputPendingRes, setInspectorInputPendingRes] = useState<any>(null);
+
+    const handleInspectorInputConfirm = async () => {
+        if (!inspectorInputPendingRes) return;
+
+        const val = inspectorInputText;
+        const res = inspectorInputPendingRes;
+
+        const newStep: TestStep = {
+            id: String(steps.length + stagedSteps.length + 1),
+            stepName: `Input: ${val}`,
+            description: `Recorded input on ${res.name}`,
+            action: 'send_keys',
+            option: val,
+            selectorType: activeTab === 'WEB' ? res.selector_type.toLowerCase() : res.selector_type.toUpperCase(),
+            selectorValue: res.selector_value,
+            mandatory: true,
+            screenshot: true,
+            sleep: 1
+        };
+
+        if (isRecording) {
+            setPendingStep(newStep);
+        } else {
+            const resAct = await inspectorApi.performAction(newStep);
+            if (!resAct.success) {
+                setNotification({ type: 'error', message: `Action failed: ${resAct.error}` });
+            }
+            setTimeout(refreshScreenshot, 1500);
+        }
+
+        setShowInspectorInputModal(false);
+        setInspectorInputPendingRes(null);
+        setInspectorInputText('');
+    };
+
     useEffect(() => {
         let interval: any;
         if (isInspectorOpen && activeTab === 'APP') {
@@ -251,6 +274,21 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
         }
         return () => clearInterval(interval);
     }, [isInspectorOpen, activeTab, isConnected]);
+
+    // Safety cleanup: disconnect session on page refresh/close
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (isConnected) {
+                // Synchronous beacon or just fire and forget
+                // client-side we can't await here easily, but we can try navigator.sendBeacon
+                // Or just trust that the backend will timeout eventually, 
+                // but for better UX we try to call it.
+                inspectorApi.disconnect();
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [isConnected]);
 
     const fetchDevices = async () => {
         try {
@@ -286,6 +324,27 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
             setNotification({ type: 'error', message: "Failed to connect to device station." });
         } finally {
             setIsConnecting(false);
+        }
+    };
+
+    const handleDisconnect = async () => {
+        try {
+            await inspectorApi.disconnect();
+        } catch (err) {
+            console.error("Failed to disconnect", err);
+        } finally {
+            setIsConnected(false);
+            setScreenshot(null);
+            setXmlSource('');
+        }
+    };
+
+    const toggleInspector = () => {
+        if (isInspectorOpen) {
+            handleDisconnect();
+            setIsInspectorOpen(false);
+        } else {
+            setIsInspectorOpen(true);
         }
     };
 
@@ -377,14 +436,36 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
         setSteps(newSteps);
     };
 
-    const updateStep = (index: number, field: keyof TestStep, value: any) => {
+    const updateStep = (index: number, updates: Partial<TestStep>) => {
         const newSteps = [...steps];
-        newSteps[index] = { ...newSteps[index], [field]: value };
+        newSteps[index] = { ...newSteps[index], ...updates };
         setSteps(newSteps);
     };
 
-    const handleRun = () => {
-        setNotification({ type: 'info', message: `Running ${activeTab} steps feature is coming soon!\nIt will execute ${steps.length} steps.` });
+    const handleRun = async () => {
+        if (steps.length === 0) {
+            setNotification({ type: 'info', message: 'No steps to run.' });
+            return;
+        }
+
+        try {
+            // Filter out empty rows (though staging usually ensures valid steps)
+            const validSteps = steps.filter(s => s.action);
+
+            if (activeTab === 'APP') {
+                const response = await api.post<{ run_id: string }>('/run/active-steps', {
+                    steps: validSteps,
+                    project_id: activeProject.id,
+                    platform: 'APP'
+                });
+                setActiveRunId(response.data.run_id);
+            } else {
+                setNotification({ type: 'info', message: `Running WEB steps feature is coming soon!` });
+            }
+        } catch (err: any) {
+            console.error("Failed to start run", err);
+            setNotification({ type: 'error', message: `Failed to start execution: ${err.message || 'Unknown error'}` });
+        }
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -457,7 +538,11 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                     mandatory: getValue(row, 'mandatory', 'Mandatory') === 'Y',
                     skipOnError: getValue(row, 'skip_on_error', 'SkipOnError', 'skip_error') === 'Y',
                     screenshot: getValue(row, 'screenshot', 'Screenshot') === 'Y',
-                    sleep: typeof getValue(row, 'sleep', 'Sleep') === 'number' ? getValue(row, 'sleep', 'Sleep') : 0
+                    sleep: typeof getValue(row, 'sleep', 'Sleep') === 'number' ? getValue(row, 'sleep', 'Sleep') : 0,
+                    visible_if_type: getValue(row, 'visible_if_type', 'visibleIfType', 'Visible If Type') || '',
+                    visible_if: getValue(row, 'visible_if', 'visibleIf', 'Visible If') || '',
+                    true_jump_no: !isNaN(parseInt(getValue(row, 'true_jump_no', 'trueJumpNo', 'T-Jump', 'true_jump'))) ? parseInt(getValue(row, 'true_jump_no', 'trueJumpNo', 'T-Jump', 'true_jump')) : undefined,
+                    false_jump_no: !isNaN(parseInt(getValue(row, 'false_jump_no', 'falseJumpNo', 'F-Jump', 'false_jump'))) ? parseInt(getValue(row, 'false_jump_no', 'falseJumpNo', 'F-Jump', 'false_jump')) : undefined,
                 }));
 
                 if (activeTab === 'APP') {
@@ -478,6 +563,11 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
         name: assetName,
         description: assetDescription,
         platform: activeTab,
+        origin: 'STEP',
+        project_id: activeProject.id,
+        code: '',
+        engine: activeTab === 'APP' ? 'Appium' : 'Playwright',
+        status: 'CERTIFIED',
         steps: steps.map((s, idx) => ({
             step_number: idx + 1,
             action: s.action || '',
@@ -489,7 +579,11 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
             mandatory: s.mandatory || false,
             skip_on_error: s.skipOnError || false,
             screenshot: s.screenshot || false,
-            sleep: s.sleep || 0
+            sleep: s.sleep || 0,
+            visible_if_type: s.visible_if_type,
+            visible_if: s.visible_if,
+            true_jump_no: s.true_jump_no,
+            false_jump_no: s.false_jump_no
         }))
     });
 
@@ -515,7 +609,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
             // But payload must have name. If we loaded data, we should have populated assetName.
             // If assetName is empty (edge case), we might want to ask user, but let's assume it's set on load.
 
-            await api.put(`/steps/${activeAssetId}`, payload);
+            await api.put(`/scripts/${activeAssetId}`, payload);
 
             resetAfterSave();
             setNotification({ type: 'success', message: "Asset updated successfully!" });
@@ -534,7 +628,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
 
         try {
             const payload = getPayload();
-            await api.post(`/steps/?project_id=${activeProject.id}`, payload);
+            await api.post(`/scripts/?project_id=${activeProject.id}`, payload);
 
             setShowSaveModal(false);
             resetAfterSave();
@@ -558,7 +652,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
 
     const handleLoadAsset = async (assetId: string) => {
         try {
-            const response = await api.get(`/steps/${assetId}`);
+            const response = await api.get(`/scripts/${assetId}`);
             const asset = response.data;
 
             // Map DB steps back to UI steps
@@ -573,7 +667,11 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                 mandatory: s.mandatory,
                 skipOnError: s.skip_on_error,
                 screenshot: s.screenshot,
-                sleep: s.sleep
+                sleep: s.sleep,
+                visible_if_type: s.visible_if_type,
+                visible_if: s.visible_if,
+                true_jump_no: s.true_jump_no,
+                false_jump_no: s.false_jump_no
             }));
 
             if (asset.platform === 'APP') {
@@ -611,10 +709,9 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
         });
     };
 
-    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-
     return (
         <div className="flex h-full bg-gray-50 dark:bg-[#0f1115] text-gray-900 dark:text-gray-200 transition-colors duration-300">
+
             {/* Sidebar: Step Asset List */}
             {isSidebarOpen && (
                 <StepAssetList
@@ -622,6 +719,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                     activeTab={activeTab}
                     onSelectAsset={handleLoadAsset}
                     refreshTrigger={refreshTrigger}
+                    setConfirmation={setConfirmation}
                 />
             )}
 
@@ -679,7 +777,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                     </button>
                                 </div>
                                 <button
-                                    onClick={() => setIsInspectorOpen(!isInspectorOpen)}
+                                    onClick={toggleInspector}
                                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${isInspectorOpen ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400'}`}
                                     title="Toggle Inspector"
                                 >
@@ -710,26 +808,25 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                             {/* Table Header */}
                             {activeTab === 'WEB' ? (
                                 // Web Mode Header (Matched to App Mode)
-                                <div className="grid grid-cols-[50px_1fr_100px_150px_2fr_100px_200px_50px] gap-4 px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800 text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest items-center transition-colors">
+                                <div className="grid grid-cols-[50px_1fr_100px_2.5fr_100px_200px_50px] gap-4 px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800 text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest items-center transition-colors">
                                     <div className="text-center">No.</div>
                                     <div>Step Name / Desc</div>
                                     <div>Action</div>
-                                    <div>Locator Type</div>
-                                    <div>Locator Value</div>
+                                    <div>Locator (Type/Value)</div>
                                     <div>Input/Opt</div>
                                     <div>Controls (Sleep/Skip/Scr/Mnd)</div>
                                     <div className="text-center">Del</div>
                                 </div>
                             ) : (
                                 // App Mode Extended Header
-                                <div className="grid grid-cols-[50px_1fr_100px_150px_2fr_100px_200px_50px] gap-4 px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800 text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest items-center transition-colors">
+                                <div className="grid grid-cols-[50px_1fr_100px_2.5fr_100px_180px_180px_50px] gap-4 px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800 text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest items-center transition-colors">
                                     <div className="text-center">No.</div>
                                     <div>Step Name / Desc</div>
                                     <div>Action</div>
-                                    <div>Locator Type</div>
-                                    <div>Locator Value</div>
+                                    <div>Locator (Type/Value)</div>
                                     <div>Input/Opt</div>
                                     <div>Controls (Sleep/Skip/Scr/Mnd)</div>
+                                    <div>Branch/Logic</div>
                                     <div className="text-center">Del</div>
                                 </div>
                             )}
@@ -740,31 +837,33 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                     activeTab === 'WEB' ? (
                                         // WEB ROW
                                         // WEB ROW (Unified Layout)
-                                        <div key={index} className="grid grid-cols-[50px_1fr_100px_150px_2fr_100px_200px_50px] gap-4 px-6 py-4 items-start hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
+                                        <div key={index} className="grid grid-cols-[50px_1fr_100px_2.5fr_100px_200px_50px] gap-4 px-6 py-4 items-start hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
                                             <div className="text-center font-mono text-gray-500 dark:text-gray-400 text-xs pt-2">{index + 1}</div>
                                             <div className="flex flex-col gap-1">
-                                                <input type="text" value={step.stepName || ''} onChange={(e) => updateStep(index, 'stepName', e.target.value)} className="w-full bg-transparent border-b border-gray-200 dark:border-gray-800 focus:border-indigo-500 text-xs font-bold text-gray-900 dark:text-white outline-none pb-1 transition-colors" placeholder="Step Name" />
-                                                <textarea value={step.description || ''} onChange={(e) => updateStep(index, 'description', e.target.value)} className="w-full bg-white dark:bg-[#0c0e12]/50 text-[10px] text-gray-600 dark:text-gray-500 focus:text-gray-900 dark:focus:text-gray-300 outline-none resize-none h-8 rounded p-1 transition-colors border border-transparent focus:border-gray-200 dark:focus:border-gray-800" placeholder="Description" />
+                                                <input type="text" value={step.stepName || ''} onChange={(e) => updateStep(index, { stepName: e.target.value })} className="w-full bg-transparent border-b border-gray-200 dark:border-gray-800 focus:border-indigo-500 text-xs font-bold text-gray-900 dark:text-white outline-none pb-1 transition-colors" placeholder="Step Name" />
+                                                <textarea value={step.description || ''} onChange={(e) => updateStep(index, { description: e.target.value })} className="w-full bg-white dark:bg-[#0c0e12]/50 text-[10px] text-gray-600 dark:text-gray-500 focus:text-gray-900 dark:focus:text-gray-300 outline-none resize-none h-8 rounded p-1 transition-colors border border-transparent focus:border-gray-200 dark:focus:border-gray-800" placeholder="Description" />
                                             </div>
                                             <div>
                                                 <select
-                                                    value={activeTab === 'WEB' ? step.action : step.action}
-                                                    onChange={(e) => updateStep(index, 'action', e.target.value)}
+                                                    value={step.action}
+                                                    onChange={(e) => updateStep(index, { action: e.target.value })}
                                                     className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-bold uppercase text-center focus:border-indigo-500 outline-none transition-colors"
                                                 >
                                                     <option value="">Select</option>
-                                                    <option value="click">Click</option>
-                                                    <option value="find">Find</option>
-                                                    <option value="send">Send Keys</option>
-                                                    <option value="submit">Submit</option>
-                                                    <option value="wait">Wait</option>
+                                                    {availableActions.map(act => (
+                                                        <option key={act.id} value={act.name}>{act.name}</option>
+                                                    ))}
+                                                    {/* Legacy Support */}
+                                                    {step.action && !availableActions.some(a => a.name === step.action) && (
+                                                        <option value={step.action}>{step.action} (Legacy)</option>
+                                                    )}
                                                 </select>
                                             </div>
-                                            <div>
+                                            <div className="flex flex-col gap-2">
                                                 <select
                                                     value={step.selectorType}
-                                                    onChange={(e) => updateStep(index, 'selectorType', e.target.value)}
-                                                    className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1.5 text-[10px] text-gray-900 dark:text-gray-300 text-center focus:border-indigo-500 outline-none transition-colors"
+                                                    onChange={(e) => updateStep(index, { selectorType: e.target.value })}
+                                                    className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1 text-[10px] text-gray-900 dark:text-gray-300 text-center focus:border-indigo-500 outline-none transition-colors"
                                                 >
                                                     <option value="id">ID</option>
                                                     <option value="xpath">XPath</option>
@@ -773,39 +872,43 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                                     <option value="name">Name</option>
                                                     <option value="class">Class</option>
                                                 </select>
-                                            </div>
-                                            <div>
-                                                <input
-                                                    list={`objects-${index}`}
-                                                    type="text"
-                                                    value={step.selectorValue}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        updateStep(index, 'selectorValue', val);
+                                                <div className="relative">
+                                                    <input
+                                                        list={`objects-${index}`}
+                                                        type="text"
+                                                        value={step.selectorValue}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            const updates: Partial<TestStep> = { selectorValue: val };
 
-                                                        // Auto-fill logic
-                                                        const matched = availableObjects.find(o => o.value === val);
-                                                        if (matched) {
-                                                            updateStep(index, 'selectorType', matched.selector_type);
-                                                            if (!step.description) {
-                                                                updateStep(index, 'description', matched.name);
+                                                            // Auto-fill logic
+                                                            const matched = availableObjects.find(o => o.value === val);
+                                                            if (matched) {
+                                                                updates.selectorType = matched.selector_type.toLowerCase();
+                                                                if (!step.description) {
+                                                                    updates.description = matched.name;
+                                                                }
+                                                                if (!step.stepName) {
+                                                                    updates.stepName = matched.name;
+                                                                }
                                                             }
-                                                        }
-                                                    }}
-                                                    className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1.5 text-xs text-gray-900 dark:text-gray-200 font-mono h-16 focus:border-indigo-500 outline-none transition-colors"
-                                                    placeholder={step.selectorType === 'xpath' ? '//div[@id="..."]' : '#example'}
-                                                />
-                                                <datalist id={`objects-${index}`}>
-                                                    {availableObjects.map(obj => (
-                                                        <option key={obj.id} value={obj.value}>{obj.name} ({obj.selector_type})</option>
-                                                    ))}
-                                                </datalist>
+                                                            updateStep(index, updates);
+                                                        }}
+                                                        className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1.5 text-xs text-gray-900 dark:text-gray-200 font-mono h-12 focus:border-indigo-500 outline-none resize-none transition-colors"
+                                                        placeholder={step.selectorType === 'xpath' ? '//div[@id="..."]' : '#example'}
+                                                    />
+                                                    <datalist id={`objects-${index}`}>
+                                                        {availableObjects.map(obj => (
+                                                            <option key={obj.id} value={obj.value}>{obj.name} ({obj.selector_type})</option>
+                                                        ))}
+                                                    </datalist>
+                                                </div>
                                             </div>
                                             <div>
                                                 <input
                                                     type="text"
                                                     value={step.option || ''}
-                                                    onChange={(e) => updateStep(index, 'option', e.target.value)}
+                                                    onChange={(e) => updateStep(index, { option: e.target.value })}
                                                     className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1.5 text-xs text-blue-600 dark:text-blue-300 text-center focus:border-indigo-500 outline-none transition-colors"
                                                     placeholder="Val/Opt"
                                                 />
@@ -813,10 +916,10 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
 
                                             {/* Controls Grid */}
                                             <div className="grid grid-cols-2 gap-2 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase">
-                                                <label className="flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"><input type="checkbox" checked={step.mandatory} onChange={(e) => updateStep(index, 'mandatory', e.target.checked)} className="accent-red-500" /> Mandatory</label>
-                                                <label className="flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"><input type="checkbox" checked={step.skipOnError} onChange={(e) => updateStep(index, 'skipOnError', e.target.checked)} className="accent-yellow-500" /> SkipErr</label>
-                                                <label className="flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"><input type="checkbox" checked={step.screenshot} onChange={(e) => updateStep(index, 'screenshot', e.target.checked)} className="accent-blue-500" /> Screen</label>
-                                                <div className="flex items-center gap-1"><span className="text-gray-600">Sleep:</span><input type="number" value={step.sleep} onChange={(e) => updateStep(index, 'sleep', parseFloat(e.target.value))} className="w-8 bg-transparent border-b border-gray-200 dark:border-gray-700 text-center text-gray-900 dark:text-white focus:border-indigo-500 outline-none transition-colors" />s</div>
+                                                <label className="flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"><input type="checkbox" checked={step.mandatory} onChange={(e) => updateStep(index, { mandatory: e.target.checked })} className="accent-red-500" /> Mandatory</label>
+                                                <label className="flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"><input type="checkbox" checked={step.skipOnError} onChange={(e) => updateStep(index, { skipOnError: e.target.checked })} className="accent-yellow-500" /> SkipErr</label>
+                                                <label className="flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"><input type="checkbox" checked={step.screenshot} onChange={(e) => updateStep(index, { screenshot: e.target.checked })} className="accent-blue-500" /> Screen</label>
+                                                <div className="flex items-center gap-1"><span className="text-gray-600">Sleep:</span><input type="number" value={step.sleep} onChange={(e) => updateStep(index, { sleep: parseFloat(e.target.value) })} className="w-8 bg-transparent border-b border-gray-200 dark:border-gray-700 text-center text-gray-900 dark:text-white focus:border-indigo-500 outline-none transition-colors" />s</div>
                                             </div>
 
                                             <div className="col-span-1 flex justify-center pt-2">
@@ -825,31 +928,33 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                         </div>
                                     ) : (
                                         // APP ROW (Extended)
-                                        <div key={index} className="grid grid-cols-[50px_1fr_100px_150px_2fr_100px_200px_50px] gap-4 px-6 py-4 items-start hover:bg-white/5 transition-colors group">
+                                        <div key={index} className="grid grid-cols-[50px_1fr_100px_2.5fr_100px_180px_180px_50px] gap-4 px-6 py-4 items-start hover:bg-white/5 transition-colors group">
                                             <div className="text-center font-mono text-gray-500 dark:text-gray-400 text-xs pt-2">{index + 1}</div>
                                             <div className="flex flex-col gap-1">
-                                                <input type="text" value={step.stepName || ''} onChange={(e) => updateStep(index, 'stepName', e.target.value)} className="w-full bg-transparent border-b border-gray-200 dark:border-gray-800 focus:border-indigo-500 text-xs font-bold text-gray-900 dark:text-white outline-none pb-1 transition-colors" placeholder="Step Name" />
-                                                <textarea value={step.description || ''} onChange={(e) => updateStep(index, 'description', e.target.value)} className="w-full bg-gray-50 dark:bg-[#0c0e12]/50 text-[10px] text-gray-600 dark:text-gray-500 focus:text-gray-900 dark:focus:text-gray-300 outline-none resize-none h-8 rounded p-1 transition-colors" placeholder="Description" />
+                                                <input type="text" value={step.stepName || ''} onChange={(e) => updateStep(index, { stepName: e.target.value })} className="w-full bg-transparent border-b border-gray-200 dark:border-gray-800 focus:border-indigo-500 text-xs font-bold text-gray-900 dark:text-white outline-none pb-1 transition-colors" placeholder="Step Name" />
+                                                <textarea value={step.description || ''} onChange={(e) => updateStep(index, { description: e.target.value })} className="w-full bg-gray-50 dark:bg-[#0c0e12]/50 text-[10px] text-gray-600 dark:text-gray-500 focus:text-gray-900 dark:focus:text-gray-300 outline-none resize-none h-8 rounded p-1 transition-colors" placeholder="Description" />
                                             </div>
                                             <div>
                                                 <select
                                                     value={step.action}
-                                                    onChange={(e) => updateStep(index, 'action', e.target.value)}
+                                                    onChange={(e) => updateStep(index, { action: e.target.value })}
                                                     className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-bold uppercase text-center focus:border-indigo-500 outline-none transition-colors"
                                                 >
-                                                    <option value="">-</option>
-                                                    <option value="click">click</option>
-                                                    <option value="image">image</option>
-                                                    <option value="swipe">swipe</option>
-                                                    <option value="app_close">app_close</option>
-                                                    <option value="app_start">app_start</option>
+                                                    <option value="">Select</option>
+                                                    {availableActions.map(act => (
+                                                        <option key={act.id} value={act.name}>{act.name}</option>
+                                                    ))}
+                                                    {/* Legacy Support */}
+                                                    {step.action && !availableActions.some(a => a.name === step.action) && (
+                                                        <option value={step.action}>{step.action} (Legacy)</option>
+                                                    )}
                                                 </select>
                                             </div>
-                                            <div>
+                                            <div className="flex flex-col gap-2">
                                                 <select
                                                     value={step.selectorType}
-                                                    onChange={(e) => updateStep(index, 'selectorType', e.target.value)}
-                                                    className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1.5 text-[10px] text-gray-900 dark:text-gray-300 text-center focus:border-indigo-500 outline-none transition-colors"
+                                                    onChange={(e) => updateStep(index, { selectorType: e.target.value })}
+                                                    className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1 text-[10px] text-gray-900 dark:text-gray-300 text-center focus:border-indigo-500 outline-none transition-colors"
                                                 >
                                                     <option value="">-</option>
                                                     <option value="XPATH">XPATH</option>
@@ -857,44 +962,68 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                                     <option value="ID">ID</option>
                                                     <option value="ANDROID_UIAUTOMATOR">ANDROID_UIAUTOMATOR</option>
                                                 </select>
-                                            </div>
-                                            <div>
-                                                <input
-                                                    list={`objects-${index}`}
-                                                    type="text"
-                                                    value={step.selectorValue}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        updateStep(index, 'selectorValue', val);
+                                                <div className="relative">
+                                                    <input
+                                                        list={`objects-${index}`}
+                                                        type="text"
+                                                        value={step.selectorValue}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            const updates: Partial<TestStep> = { selectorValue: val };
 
-                                                        // Auto-fill logic
-                                                        const matched = availableObjects.find(o => o.value === val);
-                                                        if (matched) {
-                                                            updateStep(index, 'selectorType', matched.selector_type);
-                                                            if (!step.description) {
-                                                                updateStep(index, 'description', matched.name);
+                                                            // Auto-fill logic
+                                                            const matched = availableObjects.find(o => o.value === val);
+                                                            if (matched) {
+                                                                updates.selectorType = matched.selector_type.toUpperCase();
+                                                                if (!step.description) {
+                                                                    updates.description = matched.name;
+                                                                }
+                                                                if (!step.stepName) {
+                                                                    updates.stepName = matched.name;
+                                                                }
                                                             }
-                                                        }
-                                                    }}
-                                                    className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1.5 text-xs text-gray-900 dark:text-gray-200 font-mono h-16 focus:border-indigo-500 outline-none resize-none transition-colors"
-                                                    placeholder="Locator Value"
-                                                />
-                                                <datalist id={`objects-${index}`}>
-                                                    {availableObjects.map(obj => (
-                                                        <option key={obj.id} value={obj.value}>{obj.name} ({obj.selector_type})</option>
-                                                    ))}
-                                                </datalist>
+                                                            updateStep(index, updates);
+                                                        }}
+                                                        className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1.5 text-xs text-gray-900 dark:text-gray-200 font-mono h-12 focus:border-indigo-500 outline-none resize-none transition-colors"
+                                                        placeholder="Locator Value"
+                                                    />
+                                                    <datalist id={`objects-${index}`}>
+                                                        {availableObjects.map(obj => (
+                                                            <option key={obj.id} value={obj.value}>{obj.name} ({obj.selector_type})</option>
+                                                        ))}
+                                                    </datalist>
+                                                </div>
                                             </div>
                                             <div>
-                                                <input type="text" value={step.option || ''} onChange={(e) => updateStep(index, 'option', e.target.value)} className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1.5 text-xs text-blue-600 dark:text-blue-300 text-center focus:border-indigo-500 outline-none transition-colors" placeholder="Input/Option" />
+                                                <input type="text" value={step.option || ''} onChange={(e) => updateStep(index, { option: e.target.value })} className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1.5 text-xs text-blue-600 dark:text-blue-300 text-center focus:border-indigo-500 outline-none transition-colors" placeholder="Input/Option" />
                                             </div>
 
                                             {/* Controls Grid */}
                                             <div className="grid grid-cols-2 gap-2 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase">
-                                                <label className="flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"><input type="checkbox" checked={step.mandatory} onChange={(e) => updateStep(index, 'mandatory', e.target.checked)} className="accent-red-500" /> Mandatory</label>
-                                                <label className="flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"><input type="checkbox" checked={step.skipOnError} onChange={(e) => updateStep(index, 'skipOnError', e.target.checked)} className="accent-yellow-500" /> SkipErr</label>
-                                                <label className="flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"><input type="checkbox" checked={step.screenshot} onChange={(e) => updateStep(index, 'screenshot', e.target.checked)} className="accent-blue-500" /> Screen</label>
-                                                <div className="flex items-center gap-1"><span className="text-gray-600">Sleep:</span><input type="number" value={step.sleep} onChange={(e) => updateStep(index, 'sleep', parseFloat(e.target.value))} className="w-8 bg-transparent border-b border-gray-200 dark:border-gray-700 text-center text-gray-900 dark:text-white focus:border-indigo-500 outline-none transition-colors" />s</div>
+                                                <label className="flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"><input type="checkbox" checked={step.mandatory} onChange={(e) => updateStep(index, { mandatory: e.target.checked })} className="accent-red-500" /> Mandatory</label>
+                                                <label className="flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"><input type="checkbox" checked={step.skipOnError} onChange={(e) => updateStep(index, { skipOnError: e.target.checked })} className="accent-yellow-500" /> SkipErr</label>
+                                                <label className="flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"><input type="checkbox" checked={step.screenshot} onChange={(e) => updateStep(index, { screenshot: e.target.checked })} className="accent-blue-500" /> Screen</label>
+                                                <div className="flex items-center gap-1"><span className="text-gray-600">Sleep:</span><input type="number" value={step.sleep} onChange={(e) => updateStep(index, { sleep: parseFloat(e.target.value) })} className="w-8 bg-transparent border-b border-gray-200 dark:border-gray-700 text-center text-gray-900 dark:text-white focus:border-indigo-500 outline-none transition-colors" />s</div>
+                                            </div>
+
+                                            {/* Legacy Logic Fields */}
+                                            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 ">
+                                                <div className="flex flex-col gap-0.5 text-left">
+                                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ">Visible If Type</label>
+                                                    <input type="text" value={step.visible_if_type || ''} onChange={(e) => updateStep(index, { visible_if_type: e.target.value })} className="bg-transparent border-b border-gray-100 dark:border-gray-800 text-[9px] focus:border-indigo-500 outline-none pb-0.5" placeholder="e.g. text" />
+                                                </div>
+                                                <div className="flex flex-col gap-0.5 text-left">
+                                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ">Visible If</label>
+                                                    <input type="text" value={step.visible_if || ''} onChange={(e) => updateStep(index, { visible_if: e.target.value })} className="bg-transparent border-b border-gray-100 dark:border-gray-800 text-[9px] focus:border-indigo-500 outline-none pb-0.5" placeholder="Condition" />
+                                                </div>
+                                                <div className="flex flex-col gap-0.5 text-left">
+                                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ">T-Jump</label>
+                                                    <input type="number" value={step.true_jump_no || ''} onChange={(e) => updateStep(index, { true_jump_no: parseInt(e.target.value) || undefined })} className="bg-transparent border-b border-gray-100 dark:border-gray-800 text-[9px] focus:border-indigo-500 outline-none pb-0.5" placeholder="Step #" />
+                                                </div>
+                                                <div className="flex flex-col gap-0.5 text-left">
+                                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ">F-Jump</label>
+                                                    <input type="number" value={step.false_jump_no || ''} onChange={(e) => updateStep(index, { false_jump_no: parseInt(e.target.value) || undefined })} className="bg-transparent border-b border-gray-100 dark:border-gray-800 text-[9px] focus:border-indigo-500 outline-none pb-0.5" placeholder="Step #" />
+                                                </div>
                                             </div>
 
                                             <div className="text-center pt-2">
@@ -935,32 +1064,52 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                             </div>
                             <div className="flex items-center gap-2">
                                 {isConnected && (
-                                    <div className="bg-gray-100 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center gap-2 px-3 py-1">
-                                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-tighter">Context</span>
-                                        <select
-                                            value={currentContext}
-                                            onChange={(e) => handleSwitchContext(e.target.value)}
-                                            className="bg-transparent text-[10px] font-bold text-gray-600 dark:text-gray-400 outline-none min-w-[100px]"
-                                        >
-                                            {availableContexts.length > 0 ? (
-                                                availableContexts.map(ctx => (
-                                                    <option key={ctx} value={ctx}>{ctx.replace('NATIVE_APP', 'NATIVE')}</option>
-                                                ))
-                                            ) : (
-                                                <option value="NATIVE_APP">NATIVE</option>
-                                            )}
-                                        </select>
-                                    </div>
+                                    <>
+                                        {/* App Inspector Modes */}
+                                        <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl mr-2">
+                                            <button
+                                                onClick={() => setAppInspectorMode('NAVIGATE')}
+                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${appInspectorMode === 'NAVIGATE' ? 'bg-white dark:bg-[#16191f] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                            >
+                                                <MousePointer2 className="w-3.5 h-3.5" /> Navigate
+                                            </button>
+                                            <button
+                                                onClick={() => setAppInspectorMode('RECORD')}
+                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${appInspectorMode === 'RECORD' ? 'bg-white dark:bg-[#16191f] text-red-600 dark:text-red-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                            >
+                                                <Video className="w-3.5 h-3.5" /> Record
+                                            </button>
+                                            <button
+                                                onClick={() => setAppInspectorMode('INSPECT')}
+                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${appInspectorMode === 'INSPECT' ? 'bg-white dark:bg-[#16191f] text-amber-600 dark:text-amber-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                            >
+                                                <Target className="w-3.5 h-3.5" /> Inspect (Repo)
+                                            </button>
+                                        </div>
+
+                                        <div className="bg-gray-100 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center gap-2 px-3 py-1">
+                                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-tighter">Context</span>
+                                            <select
+                                                value={currentContext}
+                                                onChange={(e) => handleSwitchContext(e.target.value)}
+                                                className="bg-transparent text-[10px] font-bold text-gray-600 dark:text-gray-400 outline-none min-w-[100px]"
+                                            >
+                                                {availableContexts.length > 0 ? (
+                                                    availableContexts.map(ctx => (
+                                                        <option key={ctx} value={ctx}>{ctx.replace('NATIVE_APP', 'NATIVE')}</option>
+                                                    ))
+                                                ) : (
+                                                    <option value="NATIVE_APP">NATIVE</option>
+                                                )}
+                                            </select>
+                                        </div>
+                                    </>
                                 )}
                                 <button
-                                    onClick={handleRecordToggle}
-                                    className={`p-2 rounded-xl transition-all ${isRecording ? 'bg-red-500 text-white shadow-lg animate-pulse' : 'hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-400'}`}
-                                    title={isRecording ? "Stop Recording" : "Start Recording"}
-                                >
-                                    {isRecording ? <VideoOff className="w-4 h-4" /> : <Video className="w-4 h-4" />}
-                                </button>
-                                <button
-                                    onClick={() => setIsInspectorOpen(false)}
+                                    onClick={() => {
+                                        handleDisconnect();
+                                        setIsInspectorOpen(false);
+                                    }}
                                     className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-xl transition-colors text-gray-400"
                                 >
                                     <X className="w-4 h-4" />
@@ -1036,7 +1185,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                                     {/* Highlight Overlay */}
                                                     {highlightBounds && (
                                                         <div
-                                                            className="absolute border-2 border-indigo-500 bg-indigo-500/20 rounded shadow-[0_0_15px_rgba(99,102,241,0.5)] z-10 transition-all duration-200"
+                                                            className="absolute border-2 border-indigo-500 bg-indigo-500/20 rounded shadow-[0_0_15px_rgba(99,102,241,0.5)] pointer-events-none z-10 transition-all duration-200"
                                                             style={{
                                                                 left: `${(highlightBounds.x1 / (lastIdentifiedElement?.window_size?.width || hardwareResolution.width)) * 100}%`,
                                                                 top: `${(highlightBounds.y1 / (lastIdentifiedElement?.window_size?.height || hardwareResolution.height)) * 100}%`,
@@ -1053,6 +1202,28 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                                     {isRefreshingScreenshot && (
                                                         <div className="absolute top-4 right-4 animate-spin text-white"><RefreshCw className="w-4 h-4 opacity-50" /></div>
                                                     )}
+
+                                                    {/* Mode Indicator Overlay */}
+                                                    <div className="absolute top-4 left-4 flex gap-2 pointer-events-none">
+                                                        {appInspectorMode === 'RECORD' && (
+                                                            <div className="bg-red-600/90 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-lg backdrop-blur-sm animate-pulse">
+                                                                <span className="w-2 h-2 rounded-full bg-white opacity-80" />
+                                                                Recording Steps
+                                                            </div>
+                                                        )}
+                                                        {appInspectorMode === 'NAVIGATE' && (
+                                                            <div className="bg-blue-600/90 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-lg backdrop-blur-sm">
+                                                                <MousePointer2 className="w-3 h-3" />
+                                                                Navigating App
+                                                            </div>
+                                                        )}
+                                                        {appInspectorMode === 'INSPECT' && (
+                                                            <div className="bg-amber-500/90 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-lg backdrop-blur-sm">
+                                                                <Target className="w-3 h-3" />
+                                                                Object Inspection
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             ) : (
                                                 <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-gray-500 italic text-[10px]">
@@ -1062,10 +1233,10 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                             )}
                                         </div>
 
-                                        {isRecording && (
-                                            <div className="p-4 bg-red-500/5 dark:bg-red-500/10 rounded-2xl border border-red-500/10 space-y-3">
+                                        {appInspectorMode === 'RECORD' && (
+                                            <div className="p-4 bg-red-500/5 dark:bg-red-500/10 rounded-2xl border border-red-500/10 space-y-3 shrink-0">
                                                 <div className="flex items-center justify-between">
-                                                    <h4 className="text-[9px] font-black uppercase tracking-widest text-red-500">Record Mode</h4>
+                                                    <h4 className="text-[9px] font-black uppercase tracking-widest text-red-500">Record Action Mode</h4>
                                                     <span className="flex h-1.5 w-1.5 rounded-full bg-red-500 animate-ping" />
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-2">
@@ -1180,7 +1351,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                                                     if (resAct.success) {
                                                                         setStagedSteps([...stagedSteps, pendingStep]);
                                                                         setPendingStep(null);
-                                                                        refreshScreenshot();
+                                                                        setTimeout(refreshScreenshot, 1500);
                                                                     } else {
                                                                         setNotification({ type: 'error', message: `Execution failed: ${resAct.error}` });
                                                                     }
@@ -1212,6 +1383,12 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                                         <div className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Selector</div>
                                                         <div className="text-[10px] text-gray-700 dark:text-gray-300 font-mono break-all line-clamp-2 bg-gray-50 dark:bg-white/5 p-2 rounded-lg">{s.selectorValue}</div>
                                                     </div>
+                                                    {s.option && (
+                                                        <div className="space-y-1">
+                                                            <div className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Value / Option</div>
+                                                            <div className="text-[10px] text-indigo-500 font-bold bg-indigo-50 dark:bg-indigo-500/10 p-2 rounded-lg">{s.option}</div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )) : (
                                                 <div className="h-full flex flex-col items-center justify-center text-gray-400 italic text-[10px] gap-4 py-20 px-6 text-center">
@@ -1226,7 +1403,19 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                         {stagedSteps.length > 0 && (
                                             <button
                                                 onClick={() => {
-                                                    setSteps([...steps, ...stagedSteps]);
+                                                    // Filter out the initial empty step if no action/selector is set
+                                                    const currentSteps = steps;
+                                                    const hasRealSteps = currentSteps.length > 1 || (currentSteps[0]?.action !== '' && currentSteps[0]?.selectorValue !== '');
+
+                                                    const finalSteps = hasRealSteps ? [...currentSteps, ...stagedSteps] : [...stagedSteps];
+
+                                                    // Re-index IDs to ensure continuity
+                                                    const reindexedSteps = finalSteps.map((s, idx) => ({
+                                                        ...s,
+                                                        id: (idx + 1).toString()
+                                                    }));
+
+                                                    setSteps(reindexedSteps);
                                                     setStagedSteps([]);
                                                     setNotification({ type: 'success', message: `${stagedSteps.length} steps applied to scenario!` });
                                                 }}
@@ -1252,6 +1441,18 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                     </div>
                 )}
             </div>
+
+            {/* EXECUTION MONITOR OVERLAY */}
+            {activeRunId && (
+                <LiveExecutionModal
+                    runId={activeRunId}
+                    onClose={() => setActiveRunId(null)}
+                    onComplete={(status) => {
+                        console.log(`Execution complete: ${status}`);
+                        // Redundant alert removed per user request
+                    }}
+                />
+            )}
 
             {/* Object Registration Modal */}
             <ObjectRegistrationModal
@@ -1380,6 +1581,51 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                     </div>
                 )
             }
+            {/* Inspector Input Modal */}
+            {showInspectorInputModal && (
+                <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center transition-colors">
+                    <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl transition-colors">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white transition-colors">Input Text</h3>
+                            <button onClick={() => setShowInspectorInputModal(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Text to find/input</label>
+                                <input
+                                    type="text"
+                                    value={inspectorInputText}
+                                    onChange={(e) => setInspectorInputText(e.target.value)}
+                                    className="w-full bg-gray-50 dark:bg-[#0f1115] border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 outline-none focus:border-indigo-500 transition-all font-bold"
+                                    placeholder="Enter search text or values..."
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleInspectorInputConfirm();
+                                        if (e.key === 'Escape') setShowInspectorInputModal(false);
+                                    }}
+                                />
+                                <p className="mt-2 text-[10px] text-gray-500 font-medium">Recorded on: <span className="text-indigo-500 font-bold">{inspectorInputPendingRes?.name}</span></p>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 mt-8">
+                            <button
+                                onClick={() => setShowInspectorInputModal(false)}
+                                className="flex-1 py-3 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleInspectorInputConfirm}
+                                className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20"
+                            >
+                                Confirm
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 };

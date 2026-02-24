@@ -10,6 +10,7 @@ interface ObjectRegistrationModalProps {
         name: string;
         selectorType: string;
         selectorValue: string;
+        platform: string;
     };
     onRegistered: (obj: any) => void;
 }
@@ -19,7 +20,19 @@ const ObjectRegistrationModal: React.FC<ObjectRegistrationModalProps> = ({ isOpe
     const [description, setDescription] = useState('');
     const [selectorType, setSelectorType] = useState(initialData.selectorType);
     const [selectorValue, setSelectorValue] = useState(initialData.selectorValue);
+    const [platform, setPlatform] = useState(initialData.selectorType === 'ACCESSIBILITY_ID' ? 'APP' : 'WEB');
     const [isSaving, setIsSaving] = useState(false);
+
+    // Sync state when initialData changes or modal opens
+    React.useEffect(() => {
+        if (isOpen) {
+            setName(initialData.name);
+            setSelectorType(initialData.selectorType);
+            setSelectorValue(initialData.selectorValue);
+            setPlatform(initialData.platform || (initialData.selectorType === 'ACCESSIBILITY_ID' ? 'APP' : 'WEB'));
+            setDescription('');
+        }
+    }, [isOpen, initialData]);
 
     if (!isOpen) return null;
 
@@ -28,11 +41,12 @@ const ObjectRegistrationModal: React.FC<ObjectRegistrationModalProps> = ({ isOpe
         setIsSaving(true);
         try {
             const payload = {
-                project_id: projectId,
+                projectId: projectId,
                 name,
                 description,
                 selector_type: selectorType,
                 value: selectorValue,
+                platform: platform as 'WEB' | 'APP',
                 is_active: true
             };
             const result = await assetsApi.createObject(payload);
@@ -103,6 +117,23 @@ const ObjectRegistrationModal: React.FC<ObjectRegistrationModalProps> = ({ isOpe
                                     className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-2xl py-3 pl-8 pr-4 text-[10px] font-mono outline-none"
                                 />
                             </div>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-500 uppercase mb-2 tracking-widest">Platform</label>
+                        <div className="flex gap-2">
+                            {['WEB', 'APP', 'COMMON'].map(p => (
+                                <button
+                                    key={p}
+                                    onClick={() => setPlatform(p)}
+                                    className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${platform === p
+                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                                        : 'bg-gray-50 dark:bg-[#0c0e12] border-gray-200 dark:border-gray-800 text-gray-400 hover:border-gray-300'
+                                        }`}
+                                >
+                                    {p}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>

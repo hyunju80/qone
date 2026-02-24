@@ -44,6 +44,7 @@ export interface TestObject {
   description?: string;
   selector_type: string;
   value: string;
+  platform: 'WEB' | 'APP' | 'COMMON';
   is_active: boolean;
   usage_count: number;
   last_verified_at?: string;
@@ -51,21 +52,23 @@ export interface TestObject {
 
 export interface TestAction {
   id: string;
-  project_id?: string | null; // Global if null
+  projectId?: string | null; // Global if null
   name: string;
   description?: string;
   category: string;
   code_content: string;
   parameters: { name: string; type: string; required: boolean; description: string }[];
+  platform: 'WEB' | 'APP' | 'COMMON';
   is_active: boolean;
 }
 
 export interface TestDataset {
   id: string;
-  project_id: string;
+  projectId: string;
   name: string;
   description?: string;
   data: { key: string; value: string; type: string; description?: string }[];
+  platform: 'WEB' | 'APP' | 'COMMON';
   classification: 'VALID' | 'INVALID' | 'SECURITY' | 'EDGE_CASE';
   is_active: boolean;
   generation_source: 'MANUAL' | 'LLM';
@@ -244,6 +247,8 @@ export interface TestScript {
   persona?: Persona;
   dataset?: TestDataRow[];
   engine?: TestEngine;
+  steps?: TestStep[];
+  platform?: 'WEB' | 'APP';
 }
 
 export interface LogEntry {
@@ -255,6 +260,7 @@ export type ExecutionTrigger = 'manual' | 'pipeline' | 'scheduled' | 'ai_explora
 
 export interface TestHistory {
   id: string;
+  projectId?: string;
   scriptId: string;
   scriptName: string;
   runDate: string;
@@ -265,10 +271,12 @@ export interface TestHistory {
   failureReason?: string;
   aiSummary?: string;
   logs: LogEntry[];
+  step_results?: any[]; // Universal step results
   deploymentVersion?: string;
   commitHash?: string;
   scheduleId?: string;
   scheduleName?: string;
+  scriptOrigin?: ScriptOrigin | string;
 }
 
 export interface Message {
@@ -365,6 +373,11 @@ export interface TestStep {
   skipOnError?: boolean;
   screenshot?: boolean;
   sleep?: number;
+  // Legacy Import Support
+  visible_if_type?: string;
+  visible_if?: string;
+  true_jump_no?: number;
+  false_jump_no?: number;
 }
 
 export interface StepAsset {

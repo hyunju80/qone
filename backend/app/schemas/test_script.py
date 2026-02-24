@@ -15,12 +15,14 @@ class TestScriptBase(BaseModel):
     dataset: Optional[List[Dict[str, Any]]] = []
     engine: Optional[str] = "Playwright"
     origin: Optional[str] = "MANUAL"
+    steps: Optional[List[Dict[str, Any]]] = []
+    platform: Optional[str] = None
 
 # Creation
 class TestScriptCreate(TestScriptBase):
     name: str
     project_id: str
-    code: str
+    code: Optional[str] = ""
 
 # Update
 class TestScriptUpdate(TestScriptBase):

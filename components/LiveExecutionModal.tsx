@@ -14,7 +14,7 @@ const LiveExecutionModal: React.FC<LiveExecutionModalProps> = ({ runId, onClose,
     const [resultStatus, setResultStatus] = useState<'success' | 'error' | null>(null);
 
     const wsRef = useRef<WebSocket | null>(null);
-    const logRef = useRef<HTMLPreElement>(null);
+    const logRef = useRef<HTMLDivElement>(null);
     const logsContentRef = useRef<string>(''); // Ref to track latest logs for callback
 
     useEffect(() => {
@@ -123,12 +123,21 @@ const LiveExecutionModal: React.FC<LiveExecutionModalProps> = ({ runId, onClose,
                             <Terminal className="w-4 h-4 text-gray-400 dark:text-gray-500 transition-colors" />
                             <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest transition-colors">Execution Terminal</span>
                         </div>
-                        <pre
+                        <div
                             ref={logRef}
-                            className="flex-1 p-6 overflow-y-auto font-mono text-xs text-gray-700 dark:text-green-400/90 leading-relaxed whitespace-pre-wrap srollbar-thin scrollbar-thumb-gray-200 dark:scrollbar-thumb-gray-800 scrollbar-track-transparent transition-colors"
+                            className="flex-1 p-6 overflow-y-auto font-mono text-[11px] leading-relaxed srollbar-thin scrollbar-thumb-gray-200 dark:scrollbar-thumb-gray-800 scrollbar-track-transparent transition-colors"
                         >
-                            {logs || "Initializing Environment...\nWaiting for Pytest output..."}
-                        </pre>
+                            {logs ? logs.split('\n').map((line, i) => {
+                                const isError = line.includes('[ERROR]') || line.toLowerCase().includes('failed');
+                                return (
+                                    <div key={i} className={isError ? 'text-red-500 font-bold' : 'text-gray-700 dark:text-green-400/90'}>
+                                        {line}
+                                    </div>
+                                );
+                            }) : (
+                                <div className="text-gray-400 italic">Initializing Environment...<br />Waiting for execution output...</div>
+                            )}
+                        </div>
 
                         {/* Footer Actions (Success/Error) */}
                         {resultStatus && (

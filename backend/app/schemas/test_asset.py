@@ -7,6 +7,7 @@ class TestObjectBase(BaseModel):
     description: Optional[str] = None
     selector_type: str
     value: str
+    platform: str = "WEB"
     is_active: bool = True
 
 class TestObjectCreate(TestObjectBase):
@@ -22,7 +23,7 @@ class TestObjectResponse(TestObjectBase):
     last_verified_at: Optional[datetime]
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class TestActionBase(BaseModel):
     name: str
@@ -30,6 +31,7 @@ class TestActionBase(BaseModel):
     category: str
     code_content: str
     parameters: List[Dict[str, Any]] = []
+    platform: str = "WEB"
     is_active: bool = True
 
 class TestActionCreate(TestActionBase):
@@ -43,13 +45,14 @@ class TestActionResponse(TestActionBase):
     project_id: Optional[str]
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class TestDatasetBase(BaseModel):
     name: str
     description: Optional[str] = None
     data: List[Dict[str, Any]] = []
     classification: str
+    platform: str = "WEB"
     is_active: bool = True
     generation_source: str = 'MANUAL'
 
@@ -64,4 +67,4 @@ class TestDatasetResponse(TestDatasetBase):
     project_id: str
     
     class Config:
-        orm_mode = True
+        from_attributes = True

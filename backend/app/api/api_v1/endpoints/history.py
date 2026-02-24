@@ -38,28 +38,26 @@ def create_history_entry(
     """
     history = crud.history.create(db, obj_in=history_in)
     
-    # Update Script Statistics
+    # Update Script/Asset Statistics
     if history_in.script_id:
-        script = crud.script.get(db, id=history_in.script_id)
+        from app.models.test import TestScript
+        
+        script = db.query(TestScript).filter(TestScript.id == history_in.script_id).first()
         if script:
             # 1. Get all history for stats
             all_history = crud.history.get_by_script(db, script_id=history_in.script_id, limit=1000)
             total_runs = len(all_history)
             passed = sum(1 for h in all_history if h.status == 'passed')
-            success_rate = int((passed / total_runs) * 100) if total_runs > 0 else 0
+            success_rate = round((passed / total_runs) * 100, 1) if total_runs > 0 else 0
             
-            # 2. Update Script
-            from app.schemas.test_script import TestScriptUpdate
-            update_data = TestScriptUpdate(
-                run_count=total_runs,
-                success_rate=success_rate,
-                last_run=history.run_date,
-                # maintain other fields
-                name=script.name,
-                description=script.description,
-                code=script.code
-            )
-            crud.script.update(db, db_obj=script, obj_in=update_data)
+            # 2. Update Target
+            script.run_count = total_runs
+            script.success_rate = success_rate
+            script.last_run = history.run_date
+            
+            db.add(script)
+            db.commit()
+            print(f"DEBUG: Updated stats for {history_in.script_id}: runs={total_runs}, rate={success_rate}%")
 
     return history
 

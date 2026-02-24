@@ -30,8 +30,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
    const [searchTerm, setSearchTerm] = useState('');
    const [statusFilter, setStatusFilter] = useState<'all' | 'passed' | 'failed'>('all');
    const [triggerFilter, setTriggerFilter] = useState<'all' | ExecutionTrigger>('all');
+   const [originFilter, setOriginFilter] = useState<'all' | 'AI' | 'AI_EXPLORATION' | 'MANUAL' | 'STEP'>('all');
    const [selectedContext, setSelectedContext] = useState<string>('All Contexts');
    const [selectedReport, setSelectedReport] = useState<TestHistory | null>(null);
+   const [expandedScreenshot, setExpandedScreenshot] = useState<string | null>(null);
 
    // Pagination State
    const [currentPage, setCurrentPage] = useState(1);
@@ -41,9 +43,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
       const total = history.length;
       const passed = history.filter(h => h.status === 'passed').length;
       const pipelineRuns = history.filter(h => h.trigger === 'pipeline').length;
-      const aiExplorationRuns = history.filter(h => h.trigger === 'ai_exploration' || (h.trigger as any) === 'manual_ai').length;
       const rate = total > 0 ? Math.round((passed / total) * 100) : 0;
-      return { total, passed, rate, pipelineRuns, aiExplorationRuns };
+      return { total, passed, rate, pipelineRuns };
    }, [history]);
 
    // Extract unique versions and schedules for the filter dropdown
@@ -64,9 +65,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
             matchesContext = h.deploymentVersion === selectedContext || h.scheduleName === selectedContext;
          }
 
-         return matchesSearch && matchesStatus && matchesTrigger && matchesContext;
+         const matchesOrigin = originFilter === 'all' || h.scriptOrigin === originFilter;
+
+         return matchesSearch && matchesStatus && matchesTrigger && matchesContext && matchesOrigin;
       });
-   }, [history, searchTerm, statusFilter, triggerFilter, selectedContext]);
+   }, [history, searchTerm, statusFilter, triggerFilter, originFilter, selectedContext]);
 
    const totalPages = Math.ceil(filteredHistory.length / itemsPerPage);
    const paginatedHistory = useMemo(() => {
@@ -77,7 +80,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
    // Reset to page 1 when filters change
    React.useEffect(() => {
       setCurrentPage(1);
-   }, [searchTerm, statusFilter, triggerFilter, selectedContext, itemsPerPage]);
+   }, [searchTerm, statusFilter, triggerFilter, originFilter, selectedContext, itemsPerPage]);
 
    const getTriggerIcon = (trigger: ExecutionTrigger) => {
       switch (trigger) {
@@ -95,7 +98,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
          case 'pipeline': return 'Pipeline';
          case 'manual': return 'Manual';
          case 'scheduled': return 'Scheduled';
-         case 'ai_exploration': return 'AI_Exploration';
+         case 'ai_exploration': return 'Manual'; // Map legacy triggers to Manual
          default: return 'Other';
       }
    };
@@ -138,7 +141,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                <p className="text-gray-500 dark:text-gray-400 text-sm transition-colors">Review asset performance and AI failure analysis for {activeProject.name}.</p>
             </div>
 
-            <div className="grid grid-cols-4 gap-4">
+            <div className="flex gap-4">
                <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl p-4 min-w-[120px] transition-colors shadow-sm dark:shadow-none">
                   <div className="text-[10px] font-black text-gray-500 dark:text-gray-600 uppercase mb-1 transition-colors">Total Runs</div>
                   <div className="text-2xl font-black text-gray-900 dark:text-white transition-colors">{stats.total}</div>
@@ -150,10 +153,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                <div className="bg-purple-600/5 border border-purple-500/20 rounded-2xl p-4 min-w-[120px]">
                   <div className="text-[10px] font-black text-purple-600 dark:text-purple-400 uppercase mb-1 transition-colors">Pipeline Auto</div>
                   <div className="text-2xl font-black text-gray-900 dark:text-white transition-colors">{stats.pipelineRuns}</div>
-               </div>
-               <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-2xl p-4 min-w-[120px]">
-                  <div className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase mb-1 transition-colors">AI Exploration</div>
-                  <div className="text-2xl font-black text-gray-900 dark:text-white transition-colors">{stats.aiExplorationRuns}</div>
                </div>
             </div>
          </div>
@@ -209,7 +208,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                </div>
 
                <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
-                  {(['all', 'pipeline', 'manual', 'scheduled', 'ai_exploration'] as const).map((t) => (
+                  <div className="px-3 py-1.5 flex items-center text-[9px] font-black text-white bg-indigo-500/80 dark:bg-indigo-600/50 rounded-md shadow-sm uppercase tracking-widest mr-1">Trigger</div>
+                  {(['all', 'pipeline', 'manual', 'scheduled'] as const).map((t) => (
                      <button
                         key={t}
                         onClick={() => setTriggerFilter(t as any)}
@@ -219,6 +219,22 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                            }`}
                      >
                         {t}
+                     </button>
+                  ))}
+               </div>
+
+               <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
+                  <div className="px-3 py-1.5 flex items-center text-[9px] font-black text-white bg-emerald-500/80 dark:bg-emerald-600/50 rounded-md shadow-sm uppercase tracking-widest mr-1">Origin</div>
+                  {(['all', 'AI', 'AI_EXPLORATION', 'MANUAL', 'STEP'] as const).map((o) => (
+                     <button
+                        key={o}
+                        onClick={() => setOriginFilter(o)}
+                        className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${originFilter === o
+                           ? o === 'STEP' ? 'bg-emerald-100 dark:bg-emerald-600 text-emerald-600 dark:text-white shadow-sm' : (o === 'AI' || o === 'AI_EXPLORATION') ? 'bg-indigo-100 dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 shadow-sm'
+                           : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-400'
+                           }`}
+                     >
+                        {o.replace('_', ' ')}
                      </button>
                   ))}
                </div>
@@ -278,6 +294,15 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                                  {getTriggerIcon(item.trigger)}
                                  {getTriggerLabel(item.trigger)}
                               </div>
+
+                              {item.scriptOrigin && (
+                                 <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-black uppercase text-[9px] tracking-widest w-fit ${item.scriptOrigin === 'STEP' ? 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20' :
+                                    (item.scriptOrigin === 'AI' || item.scriptOrigin === 'AI_EXPLORATION') ? 'bg-indigo-50 dark:bg-indigo-900/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20' :
+                                       'bg-gray-50 dark:bg-gray-800/50 text-gray-500 border-gray-200 dark:border-gray-700'
+                                    }`}>
+                                    {item.scriptOrigin.replace('_', ' ')}
+                                 </div>
+                              )}
 
                               {/* Context Details (Version or Schedule Name) */}
                               {item.deploymentVersion && (
@@ -451,7 +476,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                            </div>
                            <div>
                               <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Execution Date</div>
-                              <div className="text-sm font-bold text-gray-900 dark:text-white transition-colors">{selectedReport.runDate}</div>
+                              <div className="text-sm font-bold text-gray-900 dark:text-white transition-colors">{new Date(selectedReport.runDate).toLocaleString()}</div>
                               <div className="text-[10px] text-gray-500 font-medium">Completed on Node_01</div>
                            </div>
                         </div>
@@ -650,6 +675,90 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                            </div>
 
                            {/* Console Trace Section */}
+                           {(selectedReport.step_results && selectedReport.step_results.length > 0) && (
+                              <div className="space-y-6 mb-8">
+                                 <div className="flex items-center gap-2">
+                                    <Activity className="w-4 h-4 text-gray-600" />
+                                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Execution Timeline</span>
+                                 </div>
+                                 <div className="space-y-6 pl-2">
+                                    {selectedReport.step_results.map((step: any, idx: number) => (
+                                       <div key={idx} className="relative pl-8 border-l-2 border-gray-200 dark:border-gray-800 last:border-transparent">
+                                          <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 ${step.status === 'passed' ? 'bg-green-500 border-green-100 dark:border-green-900' : 'bg-red-500 border-red-100 dark:border-red-900'}`} />
+
+                                          <div className="bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl p-5 hover:border-indigo-500/30 transition-colors shadow-sm dark:shadow-none">
+                                             <div className="flex items-start justify-between gap-4">
+                                                <div className="flex-1 min-w-0">
+                                                   <div className="flex items-center gap-2 mb-2">
+                                                      <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Step {step.step_number}</span>
+                                                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${step.status === 'passed' ? 'border-green-500/30 text-green-600 dark:text-green-400' : 'border-red-500/30 text-red-600 dark:text-red-400'}`}>
+                                                         {step.status?.toUpperCase()}
+                                                      </span>
+                                                      <span className="text-[10px] text-gray-400 font-mono ml-2">{step.duration}</span>
+                                                   </div>
+
+                                                   <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3 leading-relaxed">{step.name}</h3>
+
+                                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                                      <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
+                                                         <div className="text-[9px] font-black text-gray-400 uppercase mb-1">Action</div>
+                                                         <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">{step.metadata?.action || 'action'}</div>
+                                                      </div>
+                                                      {step.metadata?.value && (
+                                                         <div className="p-3 bg-indigo-50/50 dark:bg-indigo-500/5 rounded-lg border border-indigo-100/50 dark:border-indigo-500/10">
+                                                            <div className="text-[9px] font-black text-indigo-400 uppercase mb-1">Input / Value</div>
+                                                            <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-300">{step.metadata.value}</div>
+                                                         </div>
+                                                      )}
+                                                   </div>
+
+                                                   {step.metadata?.target && (
+                                                      <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg mb-3">
+                                                         <div className="text-[9px] font-black text-gray-400 uppercase mb-1">Target Element</div>
+                                                         <div className="text-[10px] font-mono text-gray-600 dark:text-gray-400 break-all">{step.metadata.target}</div>
+                                                      </div>
+                                                   )}
+
+                                                   {step.error_message && (
+                                                      <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-500/20 rounded-lg">
+                                                         <div className="flex items-center gap-2 mb-1 text-red-600 dark:text-red-400">
+                                                            <AlertTriangle className="w-3.5 h-3.5" />
+                                                            <span className="text-[10px] font-black uppercase tracking-widest">Error Detail</span>
+                                                         </div>
+                                                         <p className="text-[10px] text-red-500 font-mono break-all font-medium">
+                                                            {step.error_message}
+                                                         </p>
+                                                      </div>
+                                                   )}
+                                                </div>
+
+                                                {step.screenshot_data && (
+                                                   <div
+                                                      className="w-32 h-48 flex-shrink-0 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-sm transition-all hover:ring-4 hover:ring-indigo-500/20 cursor-zoom-in bg-gray-100 dark:bg-gray-900 relative group/img"
+                                                      onClick={() => setExpandedScreenshot(step.screenshot_data)}
+                                                   >
+                                                      <img
+                                                         src={`data:image/jpeg;base64,${step.screenshot_data}`}
+                                                         alt={`Step ${step.step_number}`}
+                                                         className="w-full h-full object-cover"
+                                                      />
+                                                      <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 flex items-center justify-center transition-all">
+                                                         <Search className="w-6 h-6 text-white opacity-0 group-hover/img:opacity-100 drop-shadow-lg" />
+                                                      </div>
+                                                      {step.status === 'failed' && (
+                                                         <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-red-600 text-white text-[8px] font-black rounded uppercase shadow-lg">ERROR STATE</div>
+                                                      )}
+                                                   </div>
+                                                )}
+                                             </div>
+                                          </div>
+                                       </div>
+                                    ))}
+                                 </div>
+                              </div>
+                           )}
+
+                           {/* Console Trace Section */}
                            <div className="space-y-4">
                               <div className="flex items-center justify-between">
                                  <div className="flex items-center gap-2">
@@ -661,14 +770,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                                  </button>
                               </div>
                               <div className="bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 mono text-[11px] space-y-3 shadow-inner custom-scrollbar overflow-y-auto max-h-[400px] transition-colors">
-                                 {selectedReport.logs.map((log, i) => (
+                                 {selectedReport.logs?.map((log, i) => (
                                     <div key={i} className="flex gap-4">
                                        <span className="text-gray-400 dark:text-gray-700 select-none">[{i + 1}]</span>
-                                       <span className={`
-                                       ${log.type === 'success' ? 'text-green-600 dark:text-green-500' : ''}
-                                       ${log.type === 'error' ? 'text-red-600 dark:text-red-500 font-bold' : ''}
-                                       ${log.type === 'cmd' ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-600 dark:text-gray-400'}
-                                    `}>
+                                       <span className={`${log.type === 'success' ? 'text-green-600 dark:text-green-500' : ''} ${log.type === 'error' ? 'text-red-600 dark:text-red-500 font-bold' : ''} ${log.type === 'cmd' ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-600 dark:text-gray-400'}`}>
                                           {log.type === 'cmd' && <span className="text-gray-400 dark:text-gray-700 mr-2">$</span>}
                                           {log.msg}
                                        </span>
@@ -690,6 +795,29 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                      >
                         Close Report
                      </button>
+                  </div>
+               </div>
+            </div>
+         )}
+
+         {/* Expanded Screenshot View */}
+         {expandedScreenshot && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-12 animate-in fade-in zoom-in duration-200">
+               <div className="absolute inset-0 bg-black/95 backdrop-blur-sm" onClick={() => setExpandedScreenshot(null)} />
+               <div className="relative max-w-full max-h-full flex flex-col items-center">
+                  <button
+                     onClick={() => setExpandedScreenshot(null)}
+                     className="absolute -top-12 right-0 p-2 text-white/50 hover:text-white transition-colors"
+                  >
+                     <X className="w-8 h-8" />
+                  </button>
+                  <img
+                     src={`data:image/jpeg;base64,${expandedScreenshot}`}
+                     alt="Step Execution Evidence"
+                     className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl ring-1 ring-white/10"
+                  />
+                  <div className="mt-4 px-6 py-2 bg-white/10 backdrop-blur-md rounded-full border border-white/10 text-white/80 text-[10px] font-black uppercase tracking-widest">
+                     Full Resolution Evidence Capture
                   </div>
                </div>
             </div>

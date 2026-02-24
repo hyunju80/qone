@@ -11,17 +11,16 @@ import {
    Info, Target, FileDown
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { TestHistory, TestScript, Project, ScriptStatus, ScriptOrigin, StepAsset } from '../types';
+import { TestHistory, TestScript, Project, ScriptStatus, ScriptOrigin } from '../types';
 import api from '../api/client';
 
 interface ReportDashboardProps {
    history: TestHistory[];
    scripts: TestScript[];
-   steps: StepAsset[];
    activeProject: Project;
 }
 
-const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, steps, activeProject }) => {
+const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, activeProject }) => {
    const [isExporting, setIsExporting] = useState(false);
    const [exportStep, setExportStep] = useState('');
    const [showFilter, setShowFilter] = useState(false);
@@ -57,7 +56,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, ste
          [ScriptOrigin.AI_EXPLORATION]: scripts.filter(s => s.status === ScriptStatus.CERTIFIED && s.origin === ScriptOrigin.AI_EXPLORATION),
          [ScriptOrigin.AI]: scripts.filter(s => s.status === ScriptStatus.CERTIFIED && (s.origin === ScriptOrigin.AI)), // Handle flexible origin string if needed
          [ScriptOrigin.MANUAL]: scripts.filter(s => s.status === ScriptStatus.CERTIFIED && (!s.origin || s.origin === ScriptOrigin.MANUAL)),
-         [ScriptOrigin.STEP]: steps // Use steps directly for STEP origin
+         [ScriptOrigin.STEP]: scripts.filter(s => s.status === ScriptStatus.CERTIFIED && s.origin === ScriptOrigin.STEP)
       };
 
       // Calculate Utilization & Stability per Script based on FILTERED history
@@ -109,7 +108,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, ste
       };
 
       // AI Stats
-      const aiExplorations = filteredHistory.filter(h => h.trigger === 'ai_exploration').length;
+      const aiExplorations = filteredHistory.filter(h => h.scriptOrigin === 'AI_EXPLORATION' || (h as any).ai_session).length;
       const scheduledRuns = filteredHistory.filter(h => h.trigger === 'scheduled').length;
 
       return { totalRuns, passRate, goldenSummary, categoryStats, aiExplorations, scheduledRuns, diagnosis };
@@ -480,7 +479,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, ste
                      return (
                         <>
                            {paginatedFailures.map(h => {
-                              const isAI = h.trigger === 'ai_exploration';
+                              const isAI = h.scriptOrigin === 'AI_EXPLORATION' || (h as any).ai_session;
                               const reason = (h.failureReason || 'Unknown Error').toLowerCase();
                               let category = 'Logic Error';
                               if (reason.includes('timeout')) category = 'Timeout / Performance';

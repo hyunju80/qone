@@ -213,8 +213,8 @@ def identify_element(payload: Dict[str, Any]) -> Dict[str, Any]:
                             is_shell = any(c in class_name for c in ["scrollview", "framelayout", "linearlayout", "viewgroup", "decorview", "webview", "android.view.view"])
                             is_clickable = el.get("clickable") == "true" or el.get("focusable") == "true"
                             
-                            # Preferred elements (buttons, images, etc.)
-                            is_likely_leaf = any(c in class_name for c in ["button", "image", "text", "check", "radio"])
+                            # Preferred elements (buttons, images, inputs, etc.)
+                            is_likely_leaf = any(c in class_name for c in ["button", "image", "text", "check", "radio", "edit"])
                             
                             # Metadata preference: Prefer things that have actual info
                             has_metadata = any(el.get(a) for a in ["resource-id", "content-desc", "text"])
@@ -228,6 +228,9 @@ def identify_element(payload: Dict[str, Any]) -> Dict[str, Any]:
                                 weight *= 0.1
                             if is_likely_leaf:
                                 weight *= 0.5
+                                # Extra boost for actual input fields on Android/iOS
+                                if "edittext" in class_name or "textfield" in class_name:
+                                    weight *= 0.1
                             if has_metadata:
                                 weight *= 0.01 # STRONG preference for anything with a name/ID
                                 
@@ -400,3 +403,10 @@ def perform_action(step: Dict[str, Any]) -> Dict[str, Any]:
     """
     result = app_step_runner.execute_step(step)
     return result
+@router.post("/disconnect")
+def disconnect_device() -> Dict[str, Any]:
+    """
+    Terminate the current Appium session.
+    """
+    app_step_runner.stop_session()
+    return {"success": True, "message": "Disconnected and session terminated"}

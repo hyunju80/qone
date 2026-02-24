@@ -18,6 +18,7 @@ router = APIRouter()
 @router.get("/objects", response_model=List[TestObjectResponse])
 def read_test_objects(
     project_id: str,
+    platform: Optional[str] = Query(None),
     db: Session = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
@@ -25,7 +26,13 @@ def read_test_objects(
     """
     Retrieve test objects (selectors) by project.
     """
-    return db.query(TestObject).filter(TestObject.project_id == project_id).offset(skip).limit(limit).all()
+    query = db.query(TestObject).filter(TestObject.project_id == project_id)
+    if platform:
+        if platform in ["WEB", "APP"]:
+            query = query.filter(TestObject.platform.in_([platform, "COMMON"]))
+        else:
+            query = query.filter(TestObject.platform == platform)
+    return query.offset(skip).limit(limit).all()
 
 @router.post("/objects", response_model=TestObjectResponse)
 def create_test_object(
@@ -43,6 +50,7 @@ def create_test_object(
         description=obj_in.description,
         selector_type=obj_in.selector_type,
         value=obj_in.value,
+        platform=obj_in.platform,
         is_active=obj_in.is_active,
         usage_count=0
     )
@@ -79,6 +87,7 @@ def update_test_object(
 @router.get("/actions", response_model=List[TestActionResponse])
 def read_test_actions(
     project_id: Optional[str] = None,
+    platform: Optional[str] = Query(None),
     db: Session = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
@@ -94,7 +103,13 @@ def read_test_actions(
         query = query.filter((TestAction.project_id == None) | (TestAction.project_id == project_id))
     else:
         query = query.filter(TestAction.project_id == None)
-        
+    
+    if platform:
+        if platform in ["WEB", "APP"]:
+            query = query.filter(TestAction.platform.in_([platform, "COMMON"]))
+        else:
+            query = query.filter(TestAction.platform == platform)
+       
     return query.offset(skip).limit(limit).all()
 
 @router.post("/actions", response_model=TestActionResponse)
@@ -114,6 +129,7 @@ def create_test_action(
         category=action_in.category,
         code_content=action_in.code_content,
         parameters=action_in.parameters,
+        platform=action_in.platform,
         is_active=action_in.is_active
     )
     db.add(db_obj)
@@ -149,6 +165,7 @@ def update_test_action(
 @router.get("/data", response_model=List[TestDatasetResponse])
 def read_test_datasets(
     project_id: str,
+    platform: Optional[str] = Query(None),
     db: Session = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
@@ -156,7 +173,13 @@ def read_test_datasets(
     """
     Retrieve test datasets by project.
     """
-    return db.query(TestDataset).filter(TestDataset.project_id == project_id).offset(skip).limit(limit).all()
+    query = db.query(TestDataset).filter(TestDataset.project_id == project_id)
+    if platform:
+        if platform in ["WEB", "APP"]:
+            query = query.filter(TestDataset.platform.in_([platform, "COMMON"]))
+        else:
+            query = query.filter(TestDataset.platform == platform)
+    return query.offset(skip).limit(limit).all()
 
 @router.post("/data", response_model=TestDatasetResponse)
 def create_test_dataset(
@@ -174,6 +197,7 @@ def create_test_dataset(
         description=data_in.description,
         data=data_in.data,
         classification=data_in.classification,
+        platform=data_in.platform,
         is_active=data_in.is_active,
         generation_source=data_in.generation_source
     )

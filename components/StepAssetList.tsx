@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { List, Search, Folder, FileCode, CheckCircle2, ChevronRight, RefreshCw, Trash2, Edit2 } from 'lucide-react';
 import api from '../api/client';
-import { Project } from '../types';
+import { testApi } from '../api/test';
+import { Project, ScriptOrigin } from '../types';
 
-interface StepAsset {
+// Using TestScript for parity but mapped locally for backwards compatibility in list
+interface StepAssetListItem {
     id: string;
     name: string;
     description?: string;
-    platform: 'WEB' | 'APP';
-    origin: string;
-    // steps details might not be needed in list, but we'll fetch details on select
+    platform?: string;
+    origin?: string;
 }
 
 interface StepAssetListProps {
@@ -17,10 +18,11 @@ interface StepAssetListProps {
     activeTab: 'WEB' | 'APP';
     onSelectAsset: (assetId: string) => void;
     refreshTrigger: number;
+    setConfirmation: (config: any) => void;
 }
 
-const StepAssetList: React.FC<StepAssetListProps> = ({ project, activeTab, onSelectAsset, refreshTrigger }) => {
-    const [assets, setAssets] = useState<StepAsset[]>([]);
+const StepAssetList: React.FC<StepAssetListProps> = ({ project, activeTab, onSelectAsset, refreshTrigger, setConfirmation }) => {
+    const [assets, setAssets] = useState<StepAssetListItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -29,10 +31,15 @@ const StepAssetList: React.FC<StepAssetListProps> = ({ project, activeTab, onSel
         if (!project) return;
         setLoading(true);
         try {
-            // Fetch assets with origin='STEP' and matching platform
-            // We assume the API endpoint supports platform filter
-            const response = await api.get(`/steps/?project_id=${project.id}&platform=${activeTab}`);
-            setAssets(response.data);
+            const allScripts = await testApi.getScripts(project.id);
+            const stepAssets = allScripts.filter(s => s.origin === ScriptOrigin.STEP && s.platform === activeTab);
+            setAssets(stepAssets.map(s => ({
+                id: s.id,
+                name: s.name,
+                description: s.description,
+                platform: s.platform,
+                origin: s.origin
+            })));
         } catch (error) {
             console.error("Failed to fetch step assets:", error);
         } finally {
@@ -56,16 +63,28 @@ const StepAssetList: React.FC<StepAssetListProps> = ({ project, activeTab, onSel
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
-        if (!confirm("Are you sure you want to delete this saved step?")) return;
 
-        try {
-            await api.delete(`/steps/${id}`);
-            fetchAssets();
-            if (selectedId === id) setSelectedId(null);
-        } catch (err) {
-            console.error("Delete failed", err);
-            alert("Failed to delete asset");
-        }
+        setConfirmation({
+            message: "Delete saved step?",
+            detail: "This action cannot be undone.",
+            confirmText: "Delete",
+            onConfirm: async () => {
+                try {
+                    await api.delete(`/scripts/${id}`);
+                    fetchAssets();
+                    if (selectedId === id) setSelectedId(null);
+                    setConfirmation(null);
+                } catch (err) {
+                    console.error("Delete failed", err);
+                    setConfirmation({
+                        message: "Error",
+                        detail: "Failed to delete asset.",
+                        confirmText: "OK",
+                        onConfirm: () => setConfirmation(null)
+                    });
+                }
+            }
+        });
     };
 
     return (
