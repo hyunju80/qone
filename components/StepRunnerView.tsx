@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Plus, Trash2, Command, Save, PlayCircle, Upload, FileSpreadsheet, FolderPlus, X, AlertTriangle, PanelLeftClose, PanelLeftOpen, Search as SearchIcon, MousePointer2, Video, VideoOff, Target, RefreshCw, FileText, Zap, CheckCircle2, Info } from 'lucide-react';
+import { Play, Plus, Trash2, Command, Save, PlayCircle, Upload, FileSpreadsheet, FolderPlus, X, AlertTriangle, PanelLeftClose, PanelLeftOpen, Search as SearchIcon, MousePointer2, Video, VideoOff, Target, RefreshCw, FileText, Zap, CheckCircle2, Info, Activity, Globe, Code2, ChevronRight } from 'lucide-react';
 import { Project, TestObject, TestAction } from '../types';
 import * as XLSX from 'xlsx';
 import api from '../api/client';
@@ -32,6 +32,7 @@ interface TestStep {
     visible_if?: string;
     true_jump_no?: number;
     false_jump_no?: number;
+    platform?: string;
 }
 
 const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
@@ -61,10 +62,14 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
         const y = Math.round((y_rel / rect.height) * hardwareResolution.height);
 
         try {
-            const res = await inspectorApi.identify(x_rel, y_rel, rect.width, rect.height);
+            // NOTE: Backend identify API expects raw display-relative coordinates (x_rel, y_rel) 
+            // and the current display size (rect.width, rect.height).
+            // It maps them to the appropriate XML/DOM space internally.
+            const res = await inspectorApi.identify(x_rel, y_rel, rect.width, rect.height, activeTab);
             if (res.success) {
                 setHighlightBounds(res.bounds);
                 setLastIdentifiedElement(res);
+
                 if (res.line_number) {
                     setCurrentLine(res.line_number);
                     setTimeout(() => scrollToLine(res.line_number), 100);
@@ -92,7 +97,8 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                             selectorValue: res.selector_value,
                             mandatory: true,
                             screenshot: true,
-                            sleep: 1
+                            sleep: 1,
+                            platform: activeTab
                         };
                     } else if (recordMode === 'TAP') {
                         newStep = {
@@ -105,7 +111,8 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                             selectorValue: '//body',
                             mandatory: true,
                             screenshot: true,
-                            sleep: 1
+                            sleep: 1,
+                            platform: activeTab
                         };
                     } else if (recordMode === 'SWIPE') {
                         if (!swipeStart) {
@@ -123,7 +130,8 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                 selectorValue: '//body',
                                 mandatory: true,
                                 screenshot: true,
-                                sleep: 1
+                                sleep: 1,
+                                platform: activeTab
                             };
                             setSwipeStart(null);
                         }
@@ -140,7 +148,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                         } else if (appInspectorMode === 'NAVIGATE') {
                             // In non-recording mode, just perform action to navigate
                             const resAct = await inspectorApi.performAction(newStep);
-                            if (!resAct.success) {
+                            if (!resAct.success && isInspectorOpen) {
                                 setNotification({ type: 'error', message: `Action failed: ${resAct.error}` });
                             }
                             setTimeout(refreshScreenshot, 1000);
@@ -207,6 +215,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
     const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
     const [isConnected, setIsConnected] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
+    const [targetUrl, setTargetUrl] = useState<string>('');
     const [xmlSource, setXmlSource] = useState<string>('');
     const [stagedSteps, setStagedSteps] = useState<any[]>([]);
     const [inspectorTab, setInspectorTab] = useState<'VIEW' | 'SOURCE'>('VIEW');
@@ -244,14 +253,15 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
             selectorValue: res.selector_value,
             mandatory: true,
             screenshot: true,
-            sleep: 1
+            sleep: 1,
+            platform: activeTab
         };
 
         if (isRecording) {
             setPendingStep(newStep);
         } else {
             const resAct = await inspectorApi.performAction(newStep);
-            if (!resAct.success) {
+            if (!resAct.success && isInspectorOpen) {
                 setNotification({ type: 'error', message: `Action failed: ${resAct.error}` });
             }
             setTimeout(refreshScreenshot, 1500);
@@ -327,15 +337,43 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
         }
     };
 
+    const handleWebConnect = async () => {
+        if (!targetUrl) return;
+        setIsConnecting(true);
+        try {
+            const res = await inspectorApi.connectWeb(targetUrl);
+            if (res.success) {
+                setIsConnected(true);
+                if (res.window_size) {
+                    setHardwareResolution({ width: res.window_size.width, height: res.window_size.height });
+                }
+                setNotification({ type: 'success', message: "Browser connected successfully!" });
+                refreshScreenshot();
+            } else {
+                setNotification({ type: 'error', message: res.error || "Failed to connect to browser." });
+            }
+        } catch (err) {
+            console.error("Web connection failed", err);
+            setNotification({ type: 'error', message: "Failed to initialize web session." });
+        } finally {
+            setIsConnecting(false);
+        }
+    };
+
     const handleDisconnect = async () => {
+        setIsConnected(false);
+        setScreenshot(null);
+        setXmlSource('');
+        setStagedSteps([]);
+        setPendingStep(null);
+        setHighlightBounds(null);
+        setLastIdentifiedElement(null);
+        setCurrentLine(null);
+
         try {
             await inspectorApi.disconnect();
         } catch (err) {
             console.error("Failed to disconnect", err);
-        } finally {
-            setIsConnected(false);
-            setScreenshot(null);
-            setXmlSource('');
         }
     };
 
@@ -382,9 +420,9 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
         setIsRefreshingScreenshot(true);
         try {
             const [scrRes, srcRes, ctxRes] = await Promise.all([
-                inspectorApi.getScreenshot(),
-                inspectorApi.getSource(),
-                inspectorApi.getContexts()
+                inspectorApi.getScreenshot(activeTab),
+                inspectorApi.getSource(activeTab),
+                activeTab === 'APP' ? inspectorApi.getContexts() : Promise.resolve({ success: false })
             ]);
 
             if (scrRes.success) setScreenshot(scrRes.data);
@@ -460,7 +498,12 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                 });
                 setActiveRunId(response.data.run_id);
             } else {
-                setNotification({ type: 'info', message: `Running WEB steps feature is coming soon!` });
+                const response = await api.post<{ run_id: string }>('/run/active-steps', {
+                    steps: validSteps,
+                    project_id: activeProject.id,
+                    platform: 'WEB'
+                });
+                setActiveRunId(response.data.run_id);
             }
         } catch (err: any) {
             console.error("Failed to start run", err);
@@ -764,27 +807,25 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                             <FolderPlus className="w-4 h-4" /> New
                         </button>
                         {activeTab === 'APP' && (
-                            <>
-                                <div className="relative">
-                                    <input
-                                        type="file"
-                                        accept=".xlsx, .xls"
-                                        onChange={handleFileUpload}
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                    />
-                                    <button className="flex items-center gap-2 px-4 py-2 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-500 border border-emerald-500/20 rounded-xl text-xs font-black uppercase tracking-widest transition-all">
-                                        <Upload className="w-4 h-4" /> Import Excel
-                                    </button>
-                                </div>
-                                <button
-                                    onClick={toggleInspector}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${isInspectorOpen ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400'}`}
-                                    title="Toggle Inspector"
-                                >
-                                    <MousePointer2 className="w-4 h-4" /> Inspector
+                            <div className="relative">
+                                <input
+                                    type="file"
+                                    accept=".xlsx, .xls"
+                                    onChange={handleFileUpload}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                />
+                                <button className="flex items-center gap-2 px-4 py-2 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-500 border border-emerald-500/20 rounded-xl text-xs font-black uppercase tracking-widest transition-all">
+                                    <Upload className="w-4 h-4" /> Import Excel
                                 </button>
-                            </>
+                            </div>
                         )}
+                        <button
+                            onClick={toggleInspector}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${isInspectorOpen ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400'}`}
+                            title="Toggle Inspector"
+                        >
+                            <MousePointer2 className="w-4 h-4" /> Inspector
+                        </button>
                         <button
                             onClick={handleSaveClick}
                             className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl text-xs font-black uppercase tracking-widest transition-all text-gray-500 dark:text-gray-400"
@@ -1050,583 +1091,909 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                         </div>
                     </div>
                 </div>
-                {isInspectorOpen && activeTab === 'APP' && (
-                    <div className="w-[1100px] bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl shadow-xl flex flex-col transition-all overflow-hidden animate-in slide-in-from-right duration-300">
-                        <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-900/10">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-500">
-                                    <MousePointer2 className="w-4 h-4" />
-                                </div>
-                                <h3 className="text-xs font-black uppercase tracking-widest text-gray-900 dark:text-white">App Inspector</h3>
-                                {isConnected && (
-                                    <span className="px-2 py-1 bg-emerald-500/10 text-emerald-500 rounded text-[8px] font-black uppercase tracking-widest border border-emerald-500/20">Session Active</span>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {isConnected && (
-                                    <>
-                                        {/* App Inspector Modes */}
-                                        <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl mr-2">
-                                            <button
-                                                onClick={() => setAppInspectorMode('NAVIGATE')}
-                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${appInspectorMode === 'NAVIGATE' ? 'bg-white dark:bg-[#16191f] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-                                            >
-                                                <MousePointer2 className="w-3.5 h-3.5" /> Navigate
-                                            </button>
-                                            <button
-                                                onClick={() => setAppInspectorMode('RECORD')}
-                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${appInspectorMode === 'RECORD' ? 'bg-white dark:bg-[#16191f] text-red-600 dark:text-red-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-                                            >
-                                                <Video className="w-3.5 h-3.5" /> Record
-                                            </button>
-                                            <button
-                                                onClick={() => setAppInspectorMode('INSPECT')}
-                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${appInspectorMode === 'INSPECT' ? 'bg-white dark:bg-[#16191f] text-amber-600 dark:text-amber-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-                                            >
-                                                <Target className="w-3.5 h-3.5" /> Inspect (Repo)
-                                            </button>
-                                        </div>
-
-                                        <div className="bg-gray-100 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center gap-2 px-3 py-1">
-                                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-tighter">Context</span>
-                                            <select
-                                                value={currentContext}
-                                                onChange={(e) => handleSwitchContext(e.target.value)}
-                                                className="bg-transparent text-[10px] font-bold text-gray-600 dark:text-gray-400 outline-none min-w-[100px]"
-                                            >
-                                                {availableContexts.length > 0 ? (
-                                                    availableContexts.map(ctx => (
-                                                        <option key={ctx} value={ctx}>{ctx.replace('NATIVE_APP', 'NATIVE')}</option>
-                                                    ))
-                                                ) : (
-                                                    <option value="NATIVE_APP">NATIVE</option>
-                                                )}
-                                            </select>
-                                        </div>
-                                    </>
-                                )}
-                                <button
-                                    onClick={() => {
-                                        handleDisconnect();
-                                        setIsInspectorOpen(false);
-                                    }}
-                                    className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-xl transition-colors text-gray-400"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="flex-1 overflow-hidden p-6">
-                            {!isConnected ? (
-                                <div className="max-w-md mx-auto space-y-6 py-10">
-                                    <div className="p-6 bg-gray-50 dark:bg-gray-900/50 rounded-3xl border border-gray-100 dark:border-gray-800 space-y-4">
-                                        <div className="flex items-center gap-3 mb-2">
+                {/* SLIDE-OUT INSPECTOR PANEL */}
+                {isInspectorOpen && (
+                    <div className="fixed inset-0 z-[100] flex justify-end">
+                        <div
+                            className="absolute inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm transition-colors"
+                            onClick={toggleInspector}
+                        />
+                        <div className="relative w-full max-w-[1200px] h-full bg-white dark:bg-[#16191f] shadow-2xl flex flex-col transition-all overflow-hidden animate-in slide-in-from-right duration-300">
+                            {activeTab === 'APP' ? (
+                                <>
+                                    <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-900/10">
+                                        <div className="flex items-center gap-3">
                                             <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-500">
-                                                <RefreshCw className="w-4 h-4" />
+                                                <MousePointer2 className="w-4 h-4" />
                                             </div>
-                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-500">Device Discovery</h4>
-                                        </div>
-                                        <div className="space-y-3">
-                                            <label className="block text-[10px] font-bold text-gray-400 uppercase">Available Hardware</label>
-                                            <select
-                                                value={selectedDeviceId}
-                                                onChange={(e) => setSelectedDeviceId(e.target.value)}
-                                                className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:border-indigo-500 transition-colors"
-                                            >
-                                                {availableDevices.length > 0 ? (
-                                                    availableDevices.map(dev => (
-                                                        <option key={dev.id} value={dev.id}>{dev.alias} ({dev.id})</option>
-                                                    ))
-                                                ) : (
-                                                    <option value="">No devices found</option>
-                                                )}
-                                            </select>
-                                            <button onClick={fetchDevices} className="text-[9px] font-black text-indigo-500 uppercase tracking-widest hover:underline">Refresh List</button>
-                                        </div>
-                                        <button
-                                            onClick={handleConnect}
-                                            disabled={isConnecting || availableDevices.length === 0}
-                                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
-                                        >
-                                            {isConnecting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                                            Initialize Session
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="flex h-full gap-6">
-                                    {/* Column 1: Screenshot & Recording Controls */}
-                                    <div className="w-[280px] flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-2 h-full">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Live Stream</span>
-                                        </div>
-
-                                        <div
-                                            className="relative group/device bg-black rounded-[2rem] border-4 border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-gray-800 flex-shrink-0"
-                                            style={{ aspectRatio: imageAspectRatio, width: '100%', height: 'auto' }}
-                                        >
-                                            {screenshot ? (
-                                                <div className="w-full h-full relative cursor-crosshair" onClick={handleInspectorClick}>
-                                                    <img
-                                                        src={`data:image/png;base64,${screenshot}`}
-                                                        alt="Device"
-                                                        className="w-full h-full object-contain"
-                                                        onLoad={(e) => {
-                                                            const img = e.currentTarget;
-                                                            if (img.naturalWidth && img.naturalHeight) {
-                                                                setImageAspectRatio(img.naturalWidth / img.naturalHeight);
-                                                                setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-                                                            }
-                                                        }}
-                                                    />
-
-                                                    {/* Highlight Overlay */}
-                                                    {highlightBounds && (
-                                                        <div
-                                                            className="absolute border-2 border-indigo-500 bg-indigo-500/20 rounded shadow-[0_0_15px_rgba(99,102,241,0.5)] pointer-events-none z-10 transition-all duration-200"
-                                                            style={{
-                                                                left: `${(highlightBounds.x1 / (lastIdentifiedElement?.window_size?.width || hardwareResolution.width)) * 100}%`,
-                                                                top: `${(highlightBounds.y1 / (lastIdentifiedElement?.window_size?.height || hardwareResolution.height)) * 100}%`,
-                                                                width: `${((highlightBounds.x2 - highlightBounds.x1) / (lastIdentifiedElement?.window_size?.width || hardwareResolution.width)) * 100}%`,
-                                                                height: `${((highlightBounds.y2 - highlightBounds.y1) / (lastIdentifiedElement?.window_size?.height || hardwareResolution.height)) * 100}%`
-                                                            }}
-                                                        >
-                                                            <div className="absolute -top-6 left-0 bg-indigo-600 text-white text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-tighter whitespace-nowrap shadow-lg">
-                                                                {lastIdentifiedElement?.name || 'Selected'}
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {isRefreshingScreenshot && (
-                                                        <div className="absolute top-4 right-4 animate-spin text-white"><RefreshCw className="w-4 h-4 opacity-50" /></div>
-                                                    )}
-
-                                                    {/* Mode Indicator Overlay */}
-                                                    <div className="absolute top-4 left-4 flex gap-2 pointer-events-none">
-                                                        {appInspectorMode === 'RECORD' && (
-                                                            <div className="bg-red-600/90 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-lg backdrop-blur-sm animate-pulse">
-                                                                <span className="w-2 h-2 rounded-full bg-white opacity-80" />
-                                                                Recording Steps
-                                                            </div>
-                                                        )}
-                                                        {appInspectorMode === 'NAVIGATE' && (
-                                                            <div className="bg-blue-600/90 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-lg backdrop-blur-sm">
-                                                                <MousePointer2 className="w-3 h-3" />
-                                                                Navigating App
-                                                            </div>
-                                                        )}
-                                                        {appInspectorMode === 'INSPECT' && (
-                                                            <div className="bg-amber-500/90 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-lg backdrop-blur-sm">
-                                                                <Target className="w-3 h-3" />
-                                                                Object Inspection
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-gray-500 italic text-[10px]">
-                                                    <RefreshCw className="w-6 h-6 animate-spin opacity-20" />
-                                                    Loading Screen...
-                                                </div>
+                                            <h3 className="text-xs font-black uppercase tracking-widest text-gray-900 dark:text-white">App Inspector</h3>
+                                            {isConnected && (
+                                                <span className="px-2 py-1 bg-emerald-500/10 text-emerald-500 rounded text-[8px] font-black uppercase tracking-widest border border-emerald-500/20">Session Active</span>
                                             )}
                                         </div>
-
-                                        {appInspectorMode === 'RECORD' && (
-                                            <div className="p-4 bg-red-500/5 dark:bg-red-500/10 rounded-2xl border border-red-500/10 space-y-3 shrink-0">
-                                                <div className="flex items-center justify-between">
-                                                    <h4 className="text-[9px] font-black uppercase tracking-widest text-red-500">Record Action Mode</h4>
-                                                    <span className="flex h-1.5 w-1.5 rounded-full bg-red-500 animate-ping" />
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    {(['CLICK', 'TAP', 'SWIPE', 'INPUT'] as const).map(mode => (
+                                        <div className="flex items-center gap-2">
+                                            {isConnected && (
+                                                <>
+                                                    {/* App Inspector Modes */}
+                                                    <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl mr-2">
                                                         <button
-                                                            key={mode}
-                                                            onClick={() => {
-                                                                setRecordMode(mode);
-                                                                setSwipeStart(null);
-                                                            }}
-                                                            className={`py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${recordMode === mode ? 'bg-red-500 text-white shadow-lg' : 'bg-white dark:bg-[#0c0e12] text-gray-500 border border-gray-100 dark:border-gray-800 hover:border-red-500/30'}`}
+                                                            onClick={() => setAppInspectorMode('NAVIGATE')}
+                                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${appInspectorMode === 'NAVIGATE' ? 'bg-white dark:bg-[#16191f] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
                                                         >
-                                                            {mode}
+                                                            <MousePointer2 className="w-3.5 h-3.5" /> Navigate
                                                         </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Column 2: XML Source Viewer */}
-                                    <div className="flex-1 min-w-0 flex flex-col gap-4">
-                                        <div className="flex items-center justify-between mb-1">
-                                            <div className="flex items-center gap-2">
-                                                <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">UI Hierarchy (XML)</span>
-                                            </div>
-                                            <button onClick={refreshScreenshot} className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded transition-colors" title="Refresh Source">
-                                                <RefreshCw className={`w-3.5 h-3.5 text-gray-400 ${isRefreshingScreenshot ? 'animate-spin' : ''}`} />
-                                            </button>
-                                        </div>
-                                        <div
-                                            ref={xmlViewerRef}
-                                            className="flex-1 bg-[#0c0e12] rounded-3xl border border-gray-200 dark:border-gray-800 p-6 font-mono text-[11px] overflow-auto custom-scrollbar-dark shadow-inner group"
-                                        >
-                                            {xmlSource ? (
-                                                <pre className="text-indigo-400/90 whitespace-pre leading-relaxed select-text">
-                                                    {xmlSource.split('\n').map((line, idx) => (
-                                                        <div
-                                                            key={idx}
-                                                            className={`${currentLine === idx + 1 ? 'bg-indigo-500/20 text-indigo-200 -mx-6 px-6' : ''}`}
+                                                        <button
+                                                            onClick={() => setAppInspectorMode('RECORD')}
+                                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${appInspectorMode === 'RECORD' ? 'bg-white dark:bg-[#16191f] text-red-600 dark:text-red-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
                                                         >
-                                                            {line}
-                                                        </div>
-                                                    ))}
-                                                </pre>
-                                            ) : (
-                                                <div className="h-full flex flex-col items-center justify-center text-gray-600 gap-3 italic">
-                                                    <FileText className="w-12 h-12 opacity-10" />
-                                                    <p>Retrieving page source...</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
+                                                            <Video className="w-3.5 h-3.5" /> Record
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setAppInspectorMode('INSPECT')}
+                                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${appInspectorMode === 'INSPECT' ? 'bg-white dark:bg-[#16191f] text-amber-600 dark:text-amber-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                                        >
+                                                            <Target className="w-3.5 h-3.5" /> Inspect (Repo)
+                                                        </button>
+                                                    </div>
 
-                                    {/* Column 3: Live Recorded Steps */}
-                                    <div className="w-[300px] flex flex-col gap-4 overflow-y-auto custom-scrollbar h-full pr-2">
-                                        <div className="flex items-center justify-between mb-1">
-                                            <div className="flex items-center gap-2">
-                                                <Zap className="w-3.5 h-3.5 text-amber-500" />
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">
-                                                    {pendingStep ? "Action Confirmation" : "Staged Steps"}
-                                                </span>
-                                            </div>
-                                            {!pendingStep && <span className="px-2 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-500 rounded-full text-[9px] font-black tracking-widest border border-amber-500/20">{stagedSteps.length}</span>}
-                                        </div>
-
-                                        <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900/50 rounded-3xl border border-gray-100 dark:border-gray-800 p-4 space-y-3 custom-scrollbar">
-                                            {pendingStep ? (
-                                                <div className="space-y-4">
-                                                    <div className="p-5 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="px-2 py-1 bg-indigo-500 text-white rounded text-[8px] font-black uppercase tracking-widest">Pending Action</span>
-                                                            <span className="text-[10px] font-bold text-indigo-500">{pendingStep.action.toUpperCase()}</span>
-                                                        </div>
-
-                                                        <div className="space-y-3">
-                                                            <div className="space-y-1">
-                                                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Description</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={pendingStep.stepName || ''}
-                                                                    onChange={(e) => setPendingStep({ ...pendingStep, stepName: e.target.value })}
-                                                                    className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-[10px] font-bold outline-none focus:border-indigo-500"
-                                                                />
-                                                            </div>
-                                                            <div className="space-y-1">
-                                                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Selector</label>
-                                                                <div className="text-[9px] text-gray-600 dark:text-gray-400 font-mono bg-gray-100 dark:bg-white/5 p-2 rounded-lg break-all">{pendingStep.selectorValue}</div>
-                                                            </div>
-                                                            {pendingStep.option && (
-                                                                <div className="space-y-1">
-                                                                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Value / Option</label>
-                                                                    <div className="text-[10px] text-indigo-500 font-bold">{pendingStep.option}</div>
-                                                                </div>
+                                                    <div className="bg-gray-100 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center gap-2 px-3 py-1">
+                                                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-tighter">Context</span>
+                                                        <select
+                                                            value={currentContext}
+                                                            onChange={(e) => handleSwitchContext(e.target.value)}
+                                                            className="bg-transparent text-[10px] font-bold text-gray-600 dark:text-gray-400 outline-none min-w-[100px]"
+                                                        >
+                                                            {availableContexts.length > 0 ? (
+                                                                availableContexts.map(ctx => (
+                                                                    <option key={ctx} value={ctx}>{ctx.replace('NATIVE_APP', 'NATIVE')}</option>
+                                                                ))
+                                                            ) : (
+                                                                <option value="NATIVE_APP">NATIVE</option>
                                                             )}
-                                                        </div>
-
-                                                        <div className="grid grid-cols-2 gap-2 pt-2">
-                                                            <button
-                                                                onClick={() => {
-                                                                    setPendingStep(null);
-                                                                    setHighlightBounds(null);
-                                                                }}
-                                                                className="py-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
-                                                            >
-                                                                Cancel
-                                                            </button>
-                                                            <button
-                                                                onClick={async () => {
-                                                                    const resAct = await inspectorApi.performAction(pendingStep);
-                                                                    if (resAct.success) {
-                                                                        setStagedSteps([...stagedSteps, pendingStep]);
-                                                                        setPendingStep(null);
-                                                                        setTimeout(refreshScreenshot, 1500);
-                                                                    } else {
-                                                                        setNotification({ type: 'error', message: `Execution failed: ${resAct.error}` });
-                                                                    }
-                                                                }}
-                                                                className="py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2"
-                                                            >
-                                                                Confirm & Run
-                                                            </button>
-                                                        </div>
+                                                        </select>
                                                     </div>
-
-                                                    <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-2xl">
-                                                        <div className="flex items-center gap-2 mb-1">
-                                                            <AlertTriangle className="w-3 h-3 text-amber-500" />
-                                                            <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Warning</span>
-                                                        </div>
-                                                        <p className="text-[9px] text-amber-600/70 font-medium leading-relaxed">Confirming will execute this action on the real hardware device.</p>
-                                                    </div>
-                                                </div>
-                                            ) : stagedSteps.length > 0 ? stagedSteps.map((s, i) => (
-                                                <div key={i} className="p-4 bg-white dark:bg-[#0c0e12] border border-gray-100 dark:border-gray-800 rounded-2xl flex flex-col gap-2 group relative shadow-sm hover:shadow-md transition-all">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">{s.action}</span>
-                                                        <button onClick={() => setStagedSteps(stagedSteps.filter((_, idx) => idx !== i))} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all">
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <div className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Selector</div>
-                                                        <div className="text-[10px] text-gray-700 dark:text-gray-300 font-mono break-all line-clamp-2 bg-gray-50 dark:bg-white/5 p-2 rounded-lg">{s.selectorValue}</div>
-                                                    </div>
-                                                    {s.option && (
-                                                        <div className="space-y-1">
-                                                            <div className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Value / Option</div>
-                                                            <div className="text-[10px] text-indigo-500 font-bold bg-indigo-50 dark:bg-indigo-500/10 p-2 rounded-lg">{s.option}</div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )) : (
-                                                <div className="h-full flex flex-col items-center justify-center text-gray-400 italic text-[10px] gap-4 py-20 px-6 text-center">
-                                                    <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-gray-300 dark:text-gray-600">
-                                                        <MousePointer2 className="w-8 h-8" />
-                                                    </div>
-                                                    <p className="font-medium">No steps recorded yet.<br />Interacting with the device will automatically stage steps here.</p>
-                                                </div>
+                                                </>
                                             )}
-                                        </div>
-
-                                        {stagedSteps.length > 0 && (
                                             <button
                                                 onClick={() => {
-                                                    // Filter out the initial empty step if no action/selector is set
-                                                    const currentSteps = steps;
-                                                    const hasRealSteps = currentSteps.length > 1 || (currentSteps[0]?.action !== '' && currentSteps[0]?.selectorValue !== '');
-
-                                                    const finalSteps = hasRealSteps ? [...currentSteps, ...stagedSteps] : [...stagedSteps];
-
-                                                    // Re-index IDs to ensure continuity
-                                                    const reindexedSteps = finalSteps.map((s, idx) => ({
-                                                        ...s,
-                                                        id: (idx + 1).toString()
-                                                    }));
-
-                                                    setSteps(reindexedSteps);
-                                                    setStagedSteps([]);
-                                                    setNotification({ type: 'success', message: `${stagedSteps.length} steps applied to scenario!` });
+                                                    handleDisconnect();
+                                                    setIsInspectorOpen(false);
                                                 }}
-                                                className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-600/30 transition-all flex items-center justify-center gap-2"
+                                                className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-xl transition-colors text-gray-400"
                                             >
-                                                <CheckCircle2 className="w-4 h-4" /> Apply {stagedSteps.length} Steps
+                                                <X className="w-4 h-4" />
                                             </button>
-                                        )}
-
-                                        <div className="p-4 bg-indigo-50 dark:bg-indigo-500/5 rounded-2xl border border-indigo-100 dark:border-indigo-500/10">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <Info className="w-3.5 h-3.5 text-indigo-500" />
-                                                <h4 className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Help</h4>
-                                            </div>
-                                            <p className="text-[9px] text-indigo-600/70 dark:text-indigo-400/60 leading-relaxed font-medium">
-                                                {isRecording ? "RECORDING ACTIVE: Every action is captured as a staged step." : "INTERACTIVE MODE: Explore UI hierarchy without recording."}
-                                            </p>
                                         </div>
                                     </div>
-                                </div>
+
+                                    <div className="flex-1 overflow-hidden p-6">
+                                        {!isConnected ? (
+                                            <div className="max-w-md mx-auto space-y-6 py-10">
+                                                <div className="p-6 bg-gray-50 dark:bg-gray-900/50 rounded-3xl border border-gray-100 dark:border-gray-800 space-y-4">
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-500">
+                                                            <RefreshCw className="w-4 h-4" />
+                                                        </div>
+                                                        <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-500">Device Discovery</h4>
+                                                    </div>
+                                                    <div className="space-y-3">
+                                                        <label className="block text-[10px] font-bold text-gray-400 uppercase">Available Hardware</label>
+                                                        <select
+                                                            value={selectedDeviceId}
+                                                            onChange={(e) => setSelectedDeviceId(e.target.value)}
+                                                            className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:border-indigo-500 transition-colors"
+                                                        >
+                                                            {availableDevices.length > 0 ? (
+                                                                availableDevices.map(dev => (
+                                                                    <option key={dev.id} value={dev.id}>{dev.alias} ({dev.id})</option>
+                                                                ))
+                                                            ) : (
+                                                                <option value="">No devices found</option>
+                                                            )}
+                                                        </select>
+                                                        <button onClick={fetchDevices} className="text-[9px] font-black text-indigo-500 uppercase tracking-widest hover:underline">Refresh List</button>
+                                                    </div>
+                                                    <button
+                                                        onClick={handleConnect}
+                                                        disabled={isConnecting || availableDevices.length === 0}
+                                                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
+                                                    >
+                                                        {isConnecting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                                                        Initialize Session
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="flex h-full gap-6">
+                                                {/* Column 1: Screenshot & Recording Controls */}
+                                                <div className="w-[280px] flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-2 h-full">
+                                                    <div className="flex items-center gap-3 mb-4">
+                                                        <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-600 dark:text-emerald-400 border border-emerald-500/10 shadow-sm">
+                                                            <Activity className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-900 dark:text-white">Live Device</h4>
+                                                            {appInspectorMode === 'RECORD' && (
+                                                                <span className="bg-red-600/10 text-red-600 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest animate-pulse border border-red-500/20">Recording</span>
+                                                            )}
+                                                            {appInspectorMode === 'NAVIGATE' && (
+                                                                <span className="bg-blue-600/10 text-blue-600 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border border-blue-500/20">Navigate</span>
+                                                            )}
+                                                            {appInspectorMode === 'INSPECT' && (
+                                                                <span className="bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border border-amber-500/20">Inspect</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div
+                                                        className="relative group/device bg-black rounded-[2rem] border-4 border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-gray-800 flex-shrink-0"
+                                                        style={{ aspectRatio: imageAspectRatio, width: '100%', height: 'auto' }}
+                                                    >
+                                                        {screenshot ? (
+                                                            <div className="w-full h-full relative cursor-crosshair" onClick={handleInspectorClick}>
+                                                                <img
+                                                                    src={`data:image/png;base64,${screenshot}`}
+                                                                    alt="Device"
+                                                                    className="w-full h-full object-contain"
+                                                                    onLoad={(e) => {
+                                                                        const img = e.currentTarget;
+                                                                        if (img.naturalWidth && img.naturalHeight) {
+                                                                            setImageAspectRatio(img.naturalWidth / img.naturalHeight);
+                                                                            setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+                                                                        }
+                                                                    }}
+                                                                />
+
+                                                                {/* Highlight Overlay */}
+                                                                {highlightBounds && (
+                                                                    <div
+                                                                        className="absolute border-2 border-indigo-500 bg-indigo-500/20 rounded shadow-[0_0_20px_rgba(99,102,241,0.6)] pointer-events-none z-[60] transition-all duration-200"
+                                                                        style={{
+                                                                            left: `${(highlightBounds.x1 / (lastIdentifiedElement?.window_size?.width || hardwareResolution.width)) * 100}%`,
+                                                                            top: `${(highlightBounds.y1 / (lastIdentifiedElement?.window_size?.height || hardwareResolution.height)) * 100}%`,
+                                                                            width: `${((highlightBounds.x2 - highlightBounds.x1) / (lastIdentifiedElement?.window_size?.width || hardwareResolution.width)) * 100}%`,
+                                                                            height: `${((highlightBounds.y2 - highlightBounds.y1) / (lastIdentifiedElement?.window_size?.height || hardwareResolution.height)) * 100}%`
+                                                                        }}
+                                                                    >
+                                                                        <div className="absolute -top-6 left-0 bg-indigo-600 text-white text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-tighter whitespace-nowrap shadow-lg">
+                                                                            {lastIdentifiedElement?.name || 'Selected'}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {isRefreshingScreenshot && (
+                                                                    <div className="absolute top-4 right-4 animate-spin text-white"><RefreshCw className="w-4 h-4 opacity-50" /></div>
+                                                                )}
+
+                                                            </div>
+                                                        ) : (
+                                                            <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-gray-500 italic text-[10px]">
+                                                                <RefreshCw className="w-6 h-6 animate-spin opacity-20" />
+                                                                Loading Screen...
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {appInspectorMode === 'RECORD' && (
+                                                        <div className="p-4 bg-red-500/5 dark:bg-red-500/10 rounded-2xl border border-red-500/10 space-y-3 shrink-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <h4 className="text-[9px] font-black uppercase tracking-widest text-red-500">Record Action Mode</h4>
+                                                                <span className="flex h-1.5 w-1.5 rounded-full bg-red-500 animate-ping" />
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                {(['CLICK', 'TAP', 'SWIPE', 'INPUT'] as const).map(mode => (
+                                                                    <button
+                                                                        key={mode}
+                                                                        onClick={() => {
+                                                                            setRecordMode(mode);
+                                                                            setSwipeStart(null);
+                                                                        }}
+                                                                        className={`py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${recordMode === mode ? 'bg-red-500 text-white shadow-lg' : 'bg-white dark:bg-[#0c0e12] text-gray-500 border border-gray-100 dark:border-gray-800 hover:border-red-500/30'}`}
+                                                                    >
+                                                                        {mode}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="flex-1 flex flex-col gap-4 overflow-y-auto custom-scrollbar h-full pr-2">
+                                                    <div className="flex items-center justify-between mb-4 px-1">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-600 dark:text-indigo-400 border border-indigo-500/10 shadow-sm">
+                                                                <FileText className="w-4 h-4" />
+                                                            </div>
+                                                            <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-900 dark:text-white">UI Hierarchy</h4>
+                                                        </div>
+                                                        <button onClick={refreshScreenshot} className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group" title="Refresh Source">
+                                                            <RefreshCw className={`w-4 h-4 text-gray-400 group-hover:text-indigo-500 ${isRefreshingScreenshot ? 'animate-spin' : ''}`} />
+                                                        </button>
+                                                    </div>
+                                                    <div
+                                                        ref={xmlViewerRef}
+                                                        className="flex-1 bg-[#0c0e12] rounded-[2rem] border border-gray-200 dark:border-gray-800 p-6 font-mono text-[11px] overflow-auto custom-scrollbar-dark shadow-2xl group"
+                                                    >
+                                                        {xmlSource ? (
+                                                            <pre className="text-indigo-400/90 whitespace-pre leading-relaxed select-text">
+                                                                {xmlSource.split('\n').map((line, idx) => (
+                                                                    <div
+                                                                        key={idx}
+                                                                        className={`${currentLine === idx + 1 ? 'bg-indigo-500/20 text-indigo-200 -mx-6 px-6' : ''}`}
+                                                                    >
+                                                                        {line}
+                                                                    </div>
+                                                                ))}
+                                                            </pre>
+                                                        ) : (
+                                                            <div className="h-full flex flex-col items-center justify-center text-gray-600 gap-3 italic">
+                                                                <FileText className="w-12 h-12 opacity-10" />
+                                                                <p>Retrieving page source...</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Column 3: Live Recorded Steps */}
+                                                <div className="w-[300px] flex flex-col gap-4 overflow-y-auto custom-scrollbar h-full pr-2">
+                                                    <div className="flex items-center justify-between mb-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="p-2 bg-amber-500/10 rounded-xl text-amber-600 dark:text-amber-400 border border-amber-500/10 shadow-sm">
+                                                                <Zap className="w-4 h-4" />
+                                                            </div>
+                                                            <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-900 dark:text-white">
+                                                                {pendingStep ? "Action Confirmation" : "Staged Steps"}
+                                                            </h4>
+                                                        </div>
+                                                        {!pendingStep && <span className="px-2 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-500 rounded-full text-[10px] font-black tracking-widest border border-amber-500/20">{stagedSteps.length}</span>}
+                                                    </div>
+
+                                                    <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900/50 rounded-3xl border border-gray-100 dark:border-gray-800 p-4 space-y-3 custom-scrollbar">
+                                                        {pendingStep ? (
+                                                            <div className="space-y-4">
+                                                                <div className="p-5 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="px-2 py-1 bg-indigo-500 text-white rounded text-[8px] font-black uppercase tracking-widest">Pending Action</span>
+                                                                        <span className="text-[10px] font-bold text-indigo-500">{pendingStep.action.toUpperCase()}</span>
+                                                                    </div>
+
+                                                                    <div className="space-y-3">
+                                                                        <div className="space-y-1">
+                                                                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Description</label>
+                                                                            <input
+                                                                                type="text"
+                                                                                value={pendingStep.stepName || ''}
+                                                                                onChange={(e) => setPendingStep({ ...pendingStep, stepName: e.target.value })}
+                                                                                className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-[10px] font-bold outline-none focus:border-indigo-500"
+                                                                            />
+                                                                        </div>
+                                                                        <div className="space-y-1">
+                                                                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Selector</label>
+                                                                            <div className="text-[9px] text-gray-600 dark:text-gray-400 font-mono bg-gray-100 dark:bg-white/5 p-2 rounded-lg break-all">{pendingStep.selectorValue}</div>
+                                                                        </div>
+                                                                        {pendingStep.option && (
+                                                                            <div className="space-y-1">
+                                                                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Value / Option</label>
+                                                                                <div className="text-[10px] text-indigo-500 font-bold">{pendingStep.option}</div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+
+                                                                    <div className="grid grid-cols-2 gap-2 pt-2">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setPendingStep(null);
+                                                                                setHighlightBounds(null);
+                                                                            }}
+                                                                            className="py-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
+                                                                        >
+                                                                            Cancel
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                const resAct = await inspectorApi.performAction(pendingStep);
+                                                                                if (resAct.success) {
+                                                                                    setStagedSteps([...stagedSteps, pendingStep]);
+                                                                                    setPendingStep(null);
+                                                                                    setTimeout(refreshScreenshot, 1500);
+                                                                                } else {
+                                                                                    setNotification({ type: 'error', message: `Execution failed: ${resAct.error}` });
+                                                                                }
+                                                                            }}
+                                                                            className="py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2"
+                                                                        >
+                                                                            Confirm & Run
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-2xl">
+                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                        <AlertTriangle className="w-3 h-3 text-amber-500" />
+                                                                        <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Warning</span>
+                                                                    </div>
+                                                                    <p className="text-[9px] text-amber-600/70 font-medium leading-relaxed">Confirming will execute this action on the real hardware device.</p>
+                                                                </div>
+                                                            </div>
+                                                        ) : stagedSteps.length > 0 ? stagedSteps.map((s, i) => (
+                                                            <div key={i} className="p-4 bg-white dark:bg-[#0c0e12] border border-gray-100 dark:border-gray-800 rounded-2xl flex flex-col gap-2 group relative shadow-sm hover:shadow-md transition-all">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">{s.action}</span>
+                                                                    <button onClick={() => setStagedSteps(stagedSteps.filter((_, idx) => idx !== i))} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all">
+                                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    <div className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Selector</div>
+                                                                    <div className="text-[10px] text-gray-700 dark:text-gray-300 font-mono break-all line-clamp-2 bg-gray-50 dark:bg-white/5 p-2 rounded-lg">{s.selectorValue}</div>
+                                                                </div>
+                                                                {s.option && (
+                                                                    <div className="space-y-1">
+                                                                        <div className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Value / Option</div>
+                                                                        <div className="text-[10px] text-indigo-500 font-bold bg-indigo-50 dark:bg-indigo-500/10 p-2 rounded-lg">{s.option}</div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )) : (
+                                                            <div className="h-full flex flex-col items-center justify-center text-gray-400 italic text-[10px] gap-4 py-20 px-6 text-center">
+                                                                <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-gray-300 dark:text-gray-600">
+                                                                    <MousePointer2 className="w-8 h-8" />
+                                                                </div>
+                                                                <p className="font-medium">No steps recorded yet.<br />Interacting with the device will automatically stage steps here.</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {stagedSteps.length > 0 && (
+                                                        <button
+                                                            onClick={() => {
+                                                                // Filter out the initial empty step if no action/selector is set
+                                                                const currentSteps = steps;
+                                                                const hasRealSteps = currentSteps.length > 1 || (currentSteps[0]?.action !== '' && currentSteps[0]?.selectorValue !== '');
+
+                                                                const finalSteps = hasRealSteps ? [...currentSteps, ...stagedSteps] : [...stagedSteps];
+
+                                                                // Re-index IDs to ensure continuity
+                                                                const reindexedSteps = finalSteps.map((s, idx) => ({
+                                                                    ...s,
+                                                                    id: (idx + 1).toString()
+                                                                }));
+
+                                                                setSteps(reindexedSteps);
+                                                                setStagedSteps([]);
+                                                                setNotification({ type: 'success', message: `${stagedSteps.length} steps applied to scenario!` });
+                                                            }}
+                                                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-600/30 transition-all flex items-center justify-center gap-2"
+                                                        >
+                                                            <CheckCircle2 className="w-4 h-4" /> Apply {stagedSteps.length} Steps
+                                                        </button>
+                                                    )}
+                                                    <div className="p-4 bg-indigo-50 dark:bg-indigo-500/5 rounded-2xl border border-indigo-100 dark:border-indigo-500/10">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <Info className="w-3.5 h-3.5 text-indigo-500" />
+                                                            <h4 className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Help</h4>
+                                                        </div>
+                                                        <p className="text-[9px] text-indigo-600/70 dark:text-indigo-400/60 leading-relaxed font-medium">
+                                                            {isRecording ? "RECORDING ACTIVE: Every action is captured as a staged step." : "INTERACTIVE MODE: Explore UI hierarchy without recording."}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-900/10">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-500">
+                                                <Globe className="w-4 h-4" />
+                                            </div>
+                                            <h3 className="text-xs font-black uppercase tracking-widest text-gray-900 dark:text-white">Web Inspector</h3>
+                                            {isConnected && (
+                                                <span className="px-2 py-1 bg-emerald-500/10 text-emerald-500 rounded text-[8px] font-black uppercase tracking-widest border border-emerald-500/20">Session Active</span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {isConnected && (
+                                                <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl mr-2">
+                                                    <button
+                                                        onClick={() => setAppInspectorMode('NAVIGATE')}
+                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${appInspectorMode === 'NAVIGATE' ? 'bg-white dark:bg-[#16191f] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                                    >
+                                                        <MousePointer2 className="w-3.5 h-3.5" /> Navigate
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setAppInspectorMode('RECORD')}
+                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${appInspectorMode === 'RECORD' ? 'bg-white dark:bg-[#16191f] text-red-600 dark:text-red-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                                    >
+                                                        <Video className="w-3.5 h-3.5" /> Record
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setAppInspectorMode('INSPECT')}
+                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${appInspectorMode === 'INSPECT' ? 'bg-white dark:bg-[#16191f] text-amber-600 dark:text-amber-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                                    >
+                                                        <Target className="w-3.5 h-3.5" /> Inspect
+                                                    </button>
+                                                </div>
+                                            )}
+                                            <button
+                                                onClick={() => {
+                                                    handleDisconnect();
+                                                    setIsInspectorOpen(false);
+                                                }}
+                                                className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-xl transition-colors text-gray-400"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 overflow-hidden p-6">
+                                        {!isConnected ? (
+                                            <div className="max-w-md mx-auto space-y-6 py-10">
+                                                <div className="p-6 bg-gray-50 dark:bg-gray-900/50 rounded-3xl border border-gray-100 dark:border-gray-800 space-y-4">
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-500">
+                                                            <Globe className="w-4 h-4" />
+                                                        </div>
+                                                        <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-500">Browser Configuration</h4>
+                                                    </div>
+                                                    <div className="space-y-3">
+                                                        <label className="block text-[10px] font-bold text-gray-400 uppercase">Target URL</label>
+                                                        <input
+                                                            type="text"
+                                                            value={targetUrl}
+                                                            onChange={(e) => setTargetUrl(e.target.value)}
+                                                            placeholder="https://example.com"
+                                                            className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:border-indigo-500 transition-colors"
+                                                        />
+                                                    </div>
+                                                    <button
+                                                        onClick={handleWebConnect}
+                                                        disabled={isConnecting || !targetUrl}
+                                                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
+                                                    >
+                                                        {isConnecting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                                                        Start Web Session
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="flex h-full gap-6">
+                                                <div className="flex-1 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-2 h-full">
+                                                    <div className="flex items-center gap-3 mb-4">
+                                                        <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-600 dark:text-emerald-400 border border-emerald-500/10 shadow-sm">
+                                                            <Activity className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-900 dark:text-white">Live Browser</h4>
+                                                            {appInspectorMode === 'RECORD' && (
+                                                                <span className="bg-red-600/10 text-red-600 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest animate-pulse border border-red-500/20">Recording</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div
+                                                        className="relative group/device bg-white rounded-[1rem] border-2 border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-gray-800 flex-shrink-0"
+                                                        style={{ aspectRatio: imageAspectRatio, width: '100%', height: 'auto' }}
+                                                    >
+                                                        {screenshot ? (
+                                                            <div className="w-full h-full relative cursor-crosshair" onClick={handleInspectorClick}>
+                                                                <img
+                                                                    src={`data:image/png;base64,${screenshot}`}
+                                                                    alt="Browser"
+                                                                    className="w-full h-full object-contain"
+                                                                    onLoad={(e) => {
+                                                                        const img = e.currentTarget;
+                                                                        if (img.naturalWidth && img.naturalHeight) {
+                                                                            setImageAspectRatio(img.naturalWidth / img.naturalHeight);
+                                                                            setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+                                                                        }
+                                                                    }}
+                                                                />
+                                                                {highlightBounds && (
+                                                                    <div
+                                                                        className="absolute border-2 border-indigo-500 bg-indigo-500/20 rounded shadow-[0_0_20px_rgba(99,102,241,0.6)] pointer-events-none z-[60] transition-all duration-200"
+                                                                        style={{
+                                                                            left: `${(highlightBounds.x1 / (imageDimensions?.width || 1280)) * 100}%`,
+                                                                            top: `${(highlightBounds.y1 / (imageDimensions?.height || 720)) * 100}%`,
+                                                                            width: `${((highlightBounds.x2 - highlightBounds.x1) / (imageDimensions?.width || 1280)) * 100}%`,
+                                                                            height: `${((highlightBounds.y2 - highlightBounds.y1) / (imageDimensions?.height || 720)) * 100}%`
+                                                                        }}
+                                                                    >
+                                                                        <div className="absolute -top-6 left-0 bg-indigo-600 text-white text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-tighter whitespace-nowrap shadow-lg">
+                                                                            {lastIdentifiedElement?.name || 'Selected'}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {isRefreshingScreenshot && (
+                                                                    <div className="absolute top-4 right-4 animate-spin text-indigo-500"><RefreshCw className="w-4 h-4" /></div>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-gray-500 italic text-[10px]">
+                                                                <RefreshCw className="w-6 h-6 animate-spin opacity-20" />
+                                                                Loading Browser...
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {appInspectorMode === 'RECORD' && (
+                                                        <div className="p-4 bg-red-500/5 dark:bg-red-500/10 rounded-2xl border border-red-500/10 space-y-3 shrink-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <h4 className="text-[9px] font-black uppercase tracking-widest text-red-500">Record Action Mode</h4>
+                                                                <span className="flex h-1.5 w-1.5 rounded-full bg-red-500 animate-ping" />
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                {(['CLICK', 'INPUT'] as const).map(mode => (
+                                                                    <button
+                                                                        key={mode}
+                                                                        onClick={() => {
+                                                                            setRecordMode(mode);
+                                                                            setSwipeStart(null);
+                                                                        }}
+                                                                        className={`py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${recordMode === mode ? 'bg-red-500 text-white shadow-lg' : 'bg-white dark:bg-[#0c0e12] text-gray-500 border border-gray-100 dark:border-gray-800 hover:border-red-500/30'}`}
+                                                                    >
+                                                                        {mode}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="w-[380px] shrink-0 flex flex-col gap-4 overflow-y-auto custom-scrollbar h-full pr-2">
+                                                    <div className="flex items-center justify-between mb-4 px-1">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-600 dark:text-indigo-400 border border-indigo-500/10 shadow-sm">
+                                                                <FileText className="w-4 h-4" />
+                                                            </div>
+                                                            <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-900 dark:text-white">DOM Hierarchy</h4>
+                                                        </div>
+                                                        <button onClick={refreshScreenshot} disabled={isRefreshingScreenshot} className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all group" title="Refresh Page">
+                                                            <RefreshCw className={`w-4 h-4 text-gray-400 group-hover:text-indigo-500 ${isRefreshingScreenshot ? 'animate-spin' : ''}`} />
+                                                        </button>
+                                                    </div>
+                                                    <div
+                                                        ref={xmlViewerRef}
+                                                        className="flex-1 bg-[#0c0e12] rounded-[2rem] border border-gray-200 dark:border-gray-800 p-6 font-mono text-[11px] overflow-auto custom-scrollbar-dark shadow-2xl group"
+                                                    >
+                                                        {xmlSource ? (
+                                                            <pre className="text-indigo-400/90 whitespace-pre leading-relaxed select-text">
+                                                                {xmlSource.split('\n').map((line, idx) => (
+                                                                    <div
+                                                                        key={idx}
+                                                                        className={`${currentLine === idx + 1 ? 'bg-indigo-500/20 text-indigo-200 -mx-6 px-6' : ''}`}
+                                                                    >
+                                                                        {line}
+                                                                    </div>
+                                                                ))}
+                                                            </pre>
+                                                        ) : (
+                                                            <div className="h-full flex flex-col items-center justify-center text-gray-600 gap-3 italic">
+                                                                <FileText className="w-12 h-12 opacity-10" />
+                                                                <p>Retrieving page source...</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="w-[300px] flex flex-col gap-4 overflow-y-auto custom-scrollbar h-full pr-2">
+                                                    <div className="flex items-center justify-between mb-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="p-2 bg-amber-500/10 rounded-xl text-amber-600 dark:text-amber-400 border border-amber-500/10 shadow-sm">
+                                                                <Zap className="w-4 h-4" />
+                                                            </div>
+                                                            <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-900 dark:text-white">
+                                                                {pendingStep ? "Confirmation" : "Staged Steps"}
+                                                            </h4>
+                                                        </div>
+                                                        {!pendingStep && <span className="px-2 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-500 rounded-full text-[10px] font-black tracking-widest border border-amber-500/20">{stagedSteps.length}</span>}
+                                                    </div>
+
+                                                    <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900/50 rounded-3xl border border-gray-100 dark:border-gray-800 p-4 space-y-3 custom-scrollbar">
+                                                        {pendingStep ? (
+                                                            <div className="space-y-4">
+                                                                <div className="p-5 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl space-y-4">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="px-2 py-1 bg-indigo-500 text-white rounded text-[8px] font-black uppercase tracking-widest">Pending Action</span>
+                                                                        <span className="text-[10px] font-bold text-indigo-500">{pendingStep.action.toUpperCase()}</span>
+                                                                    </div>
+                                                                    <div className="space-y-3">
+                                                                        <div className="space-y-1">
+                                                                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Description</label>
+                                                                            <input
+                                                                                type="text"
+                                                                                value={pendingStep.stepName || ''}
+                                                                                onChange={(e) => setPendingStep({ ...pendingStep, stepName: e.target.value })}
+                                                                                className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-[10px] font-bold outline-none focus:border-indigo-500"
+                                                                            />
+                                                                        </div>
+                                                                        <div className="space-y-1">
+                                                                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Selector</label>
+                                                                            <div className="text-[9px] text-gray-600 dark:text-gray-400 font-mono bg-gray-100 dark:bg-white/5 p-2 rounded-lg break-all">{pendingStep.selectorValue}</div>
+                                                                        </div>
+                                                                        {pendingStep.option && (
+                                                                            <div className="space-y-1">
+                                                                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Value</label>
+                                                                                <div className="text-[10px] text-indigo-500 font-bold">{pendingStep.option}</div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="grid grid-cols-2 gap-2 pt-2">
+                                                                        <button onClick={() => { setPendingStep(null); setHighlightBounds(null); }} className="py-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Cancel</button>
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                const resAct = await inspectorApi.performAction(pendingStep);
+                                                                                if (resAct.success) {
+                                                                                    setStagedSteps([...stagedSteps, pendingStep]);
+                                                                                    setPendingStep(null);
+                                                                                    setTimeout(refreshScreenshot, 1500);
+                                                                                } else {
+                                                                                    setNotification({ type: 'error', message: `Execution failed: ${resAct.error}` });
+                                                                                }
+                                                                            }}
+                                                                            className="py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-indigo-600/30 transition-all"
+                                                                        >
+                                                                            Confirm
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ) : stagedSteps.length > 0 ? (
+                                                            stagedSteps.map((s, i) => (
+                                                                <div key={i} className="p-4 bg-white dark:bg-[#0c0e12] border border-gray-100 dark:border-gray-800 rounded-2xl flex flex-col gap-2 group relative shadow-sm">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">{s.action}</span>
+                                                                        <button onClick={() => setStagedSteps(stagedSteps.filter((_, idx) => idx !== i))} className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg transition-all">
+                                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                    </div>
+                                                                    <div className="text-[10px] text-gray-700 dark:text-gray-300 font-mono break-all line-clamp-2 bg-gray-50 dark:bg-white/5 p-2 rounded-lg">{s.selectorValue}</div>
+                                                                </div>
+                                                            ))
+                                                        ) : (
+                                                            <div className="h-full flex flex-col items-center justify-center text-gray-400 italic text-[10px] gap-4 py-20 px-6 text-center">
+                                                                <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-gray-300 dark:text-gray-600">
+                                                                    <Globe className="w-8 h-8" />
+                                                                </div>
+                                                                <p className="font-medium">Interact with the browser or DOM to record steps.</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {stagedSteps.length > 0 && (
+                                                        <button
+                                                            onClick={() => {
+                                                                const currentSteps = webSteps;
+                                                                const hasRealSteps = currentSteps.length > 1 || (currentSteps[0]?.action !== '' && currentSteps[0]?.selectorValue !== '');
+                                                                let finalSteps;
+                                                                if (!hasRealSteps) {
+                                                                    const urlStep: TestStep = {
+                                                                        id: '1',
+                                                                        action: 'Navigate',
+                                                                        selectorType: 'URL',
+                                                                        selectorValue: targetUrl,
+                                                                        stepName: `Open ${targetUrl}`,
+                                                                        platform: 'WEB',
+                                                                        option: targetUrl
+                                                                    };
+                                                                    finalSteps = [urlStep, ...stagedSteps];
+                                                                } else {
+                                                                    finalSteps = [...currentSteps, ...stagedSteps];
+                                                                }
+                                                                const reindexedSteps = finalSteps.map((s, idx) => ({ ...s, id: (idx + 1).toString() }));
+                                                                setWebSteps(reindexedSteps);
+                                                                setStagedSteps([]);
+                                                                setIsInspectorOpen(false);
+                                                                setNotification({ type: 'success', message: `Added ${stagedSteps.length} steps to scenario.` });
+                                                            }}
+                                                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-600/30 transition-all flex items-center justify-center gap-2"
+                                                        >
+                                                            <CheckCircle2 className="w-4 h-4" /> Apply {stagedSteps.length} Steps
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>
                 )}
-            </div>
 
-            {/* EXECUTION MONITOR OVERLAY */}
-            {activeRunId && (
-                <LiveExecutionModal
-                    runId={activeRunId}
-                    onClose={() => setActiveRunId(null)}
-                    onComplete={(status) => {
-                        console.log(`Execution complete: ${status}`);
-                        // Redundant alert removed per user request
+                {/* EXECUTION MONITOR OVERLAY */}
+                {
+                    activeRunId && (
+                        <LiveExecutionModal
+                            runId={activeRunId}
+                            onClose={() => setActiveRunId(null)}
+                            onComplete={(status) => {
+                                console.log(`Execution complete: ${status}`);
+                                // Redundant alert removed per user request
+                            }}
+                        />
+                    )
+                }
+
+                {/* Object Registration Modal */}
+                <ObjectRegistrationModal
+                    isOpen={isRegisterModalOpen}
+                    onClose={() => setIsRegisterModalOpen(false)}
+                    projectId={activeProject.id}
+                    initialData={pendingObjectData}
+                    onRegistered={(newObj) => {
+                        setAvailableObjects([...availableObjects, newObj]);
+                        setNotification({ type: 'success', message: `Registered object: ${newObj.name}` });
                     }}
                 />
-            )}
 
-            {/* Object Registration Modal */}
-            <ObjectRegistrationModal
-                isOpen={isRegisterModalOpen}
-                onClose={() => setIsRegisterModalOpen(false)}
-                projectId={activeProject.id}
-                initialData={pendingObjectData}
-                onRegistered={(newObj) => {
-                    setAvailableObjects([...availableObjects, newObj]);
-                    setNotification({ type: 'success', message: `Registered object: ${newObj.name}` });
-                }}
-            />
-
-            {/* New Asset Save Modal */}
-            {
-                showSaveModal && (
-                    <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center transition-colors">
-                        <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl transition-colors">
-                            <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-lg font-bold text-gray-900 dark:text-white transition-colors">Save New Asset</h3>
-                                <button onClick={() => setShowSaveModal(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-white transition-colors"><X className="w-5 h-5" /></button>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Asset Name</label>
-                                    <input
-                                        type="text"
-                                        value={assetName}
-                                        onChange={(e) => setAssetName(e.target.value)}
-                                        className="w-full bg-gray-50 dark:bg-[#0f1115] border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 outline-none focus:border-indigo-500 transition-all font-bold"
-                                        placeholder="e.g. Login Flow Test"
-                                        autoFocus
-                                    />
+                {/* New Asset Save Modal */}
+                {
+                    showSaveModal && (
+                        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center transition-colors">
+                            <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl transition-colors">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white transition-colors">Save New Asset</h3>
+                                    <button onClick={() => setShowSaveModal(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-white transition-colors"><X className="w-5 h-5" /></button>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Description (Optional)</label>
-                                    <textarea
-                                        value={assetDescription}
-                                        onChange={(e) => setAssetDescription(e.target.value)}
-                                        className="w-full bg-gray-50 dark:bg-[#0f1115] border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-gray-300 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 transition-all resize-none h-24 text-sm"
-                                        placeholder="Brief description of this test..."
-                                    />
-                                </div>
-                            </div>
 
-                            <div className="flex gap-3 mt-8">
-                                <button
-                                    onClick={() => setShowSaveModal(false)}
-                                    className="flex-1 py-3 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold transition-all"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleCreateAsset}
-                                    className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20"
-                                >
-                                    Save Steps
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
-
-            {/* Confirmation Modal */}
-            {
-                confirmation && (
-                    <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center transition-colors">
-                        <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl transition-colors">
-                            <div className="flex justify-between items-top mb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500">
-                                        <AlertTriangle className="w-6 h-6" />
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Asset Name</label>
+                                        <input
+                                            type="text"
+                                            value={assetName}
+                                            onChange={(e) => setAssetName(e.target.value)}
+                                            className="w-full bg-gray-50 dark:bg-[#0f1115] border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 outline-none focus:border-indigo-500 transition-all font-bold"
+                                            placeholder="e.g. Login Flow Test"
+                                            autoFocus
+                                        />
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white transition-colors">Confirmation</h3>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Description (Optional)</label>
+                                        <textarea
+                                            value={assetDescription}
+                                            onChange={(e) => setAssetDescription(e.target.value)}
+                                            className="w-full bg-gray-50 dark:bg-[#0f1115] border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-gray-300 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 transition-all resize-none h-24 text-sm"
+                                            placeholder="Brief description of this test..."
+                                        />
                                     </div>
                                 </div>
-                                <button onClick={() => setConfirmation(null)} className="text-gray-500 hover:text-gray-700 dark:hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+
+                                <div className="flex gap-3 mt-8">
+                                    <button
+                                        onClick={() => setShowSaveModal(false)}
+                                        className="flex-1 py-3 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold transition-all"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleCreateAsset}
+                                        className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20"
+                                    >
+                                        Save Steps
+                                    </button>
+                                </div>
                             </div>
-                            <div className="mb-6">
-                                <p className="text-gray-900 dark:text-white font-bold mb-1 transition-colors">{confirmation.message}</p>
-                                {confirmation.detail && <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors">{confirmation.detail}</p>}
+                        </div>
+                    )
+                }
+
+                {/* Confirmation Modal */}
+                {
+                    confirmation && (
+                        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center transition-colors">
+                            <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl transition-colors">
+                                <div className="flex justify-between items-top mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500">
+                                            <AlertTriangle className="w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-bold text-gray-900 dark:text-white transition-colors">Confirmation</h3>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setConfirmation(null)} className="text-gray-500 hover:text-gray-700 dark:hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+                                </div>
+                                <div className="mb-6">
+                                    <p className="text-gray-900 dark:text-white font-bold mb-1 transition-colors">{confirmation.message}</p>
+                                    {confirmation.detail && <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors">{confirmation.detail}</p>}
+                                </div>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setConfirmation(null)}
+                                        className="flex-1 py-3 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold transition-all"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={confirmation.onConfirm}
+                                        className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20"
+                                    >
+                                        {confirmation.confirmText}
+                                    </button>
+                                </div>
                             </div>
-                            <div className="flex gap-3">
+                        </div>
+                    )
+                }
+
+                {/* Notification Modal (Success/Error/Info) */}
+                {
+                    notification && (
+                        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center transition-colors">
+                            <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl transition-colors">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className={`text-lg font-bold ${notification.type === 'success' ? 'text-emerald-500' :
+                                        notification.type === 'error' ? 'text-red-500' : 'text-blue-500'
+                                        }`}>
+                                        {notification.type === 'success' ? 'Success' : notification.type === 'error' ? 'Error' : 'Info'}
+                                    </h3>
+                                    <button onClick={() => setNotification(null)} className="text-gray-500 hover:text-gray-700 dark:hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+                                </div>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 whitespace-pre-wrap transition-colors">{notification.message}</p>
                                 <button
-                                    onClick={() => setConfirmation(null)}
-                                    className="flex-1 py-3 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold transition-all"
+                                    onClick={() => setNotification(null)}
+                                    className="w-full py-3 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-900 dark:text-white rounded-xl font-bold transition-all"
                                 >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={confirmation.onConfirm}
-                                    className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20"
-                                >
-                                    {confirmation.confirmText}
+                                    OK
                                 </button>
                             </div>
                         </div>
-                    </div>
-                )
-            }
+                    )
+                }
+                {/* Inspector Input Modal */}
+                {
+                    showInspectorInputModal && (
+                        <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center transition-colors">
+                            <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl transition-colors">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white transition-colors">Input Text</h3>
+                                    <button onClick={() => setShowInspectorInputModal(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+                                </div>
 
-            {/* Notification Modal (Success/Error/Info) */}
-            {
-                notification && (
-                    <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center transition-colors">
-                        <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl transition-colors">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className={`text-lg font-bold ${notification.type === 'success' ? 'text-emerald-500' :
-                                    notification.type === 'error' ? 'text-red-500' : 'text-blue-500'
-                                    }`}>
-                                    {notification.type === 'success' ? 'Success' : notification.type === 'error' ? 'Error' : 'Info'}
-                                </h3>
-                                <button onClick={() => setNotification(null)} className="text-gray-500 hover:text-gray-700 dark:hover:text-white transition-colors"><X className="w-5 h-5" /></button>
-                            </div>
-                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 whitespace-pre-wrap transition-colors">{notification.message}</p>
-                            <button
-                                onClick={() => setNotification(null)}
-                                className="w-full py-3 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-900 dark:text-white rounded-xl font-bold transition-all"
-                            >
-                                OK
-                            </button>
-                        </div>
-                    </div>
-                )
-            }
-            {/* Inspector Input Modal */}
-            {showInspectorInputModal && (
-                <div className="fixed inset-0 bg-black/50 dark:bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center transition-colors">
-                    <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl transition-colors">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-lg font-bold text-gray-900 dark:text-white transition-colors">Input Text</h3>
-                            <button onClick={() => setShowInspectorInputModal(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-white transition-colors"><X className="w-5 h-5" /></button>
-                        </div>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Text to find/input</label>
+                                        <input
+                                            type="text"
+                                            value={inspectorInputText}
+                                            onChange={(e) => setInspectorInputText(e.target.value)}
+                                            className="w-full bg-gray-50 dark:bg-[#0f1115] border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 outline-none focus:border-indigo-500 transition-all font-bold"
+                                            placeholder="Enter search text or values..."
+                                            autoFocus
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') handleInspectorInputConfirm();
+                                                if (e.key === 'Escape') setShowInspectorInputModal(false);
+                                            }}
+                                        />
+                                        <p className="mt-2 text-[10px] text-gray-500 font-medium">Recorded on: <span className="text-indigo-500 font-bold">{inspectorInputPendingRes?.name}</span></p>
+                                    </div>
+                                </div>
 
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Text to find/input</label>
-                                <input
-                                    type="text"
-                                    value={inspectorInputText}
-                                    onChange={(e) => setInspectorInputText(e.target.value)}
-                                    className="w-full bg-gray-50 dark:bg-[#0f1115] border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white rounded-xl px-4 py-3 outline-none focus:border-indigo-500 transition-all font-bold"
-                                    placeholder="Enter search text or values..."
-                                    autoFocus
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') handleInspectorInputConfirm();
-                                        if (e.key === 'Escape') setShowInspectorInputModal(false);
-                                    }}
-                                />
-                                <p className="mt-2 text-[10px] text-gray-500 font-medium">Recorded on: <span className="text-indigo-500 font-bold">{inspectorInputPendingRes?.name}</span></p>
+                                <div className="flex gap-3 mt-8">
+                                    <button
+                                        onClick={() => setShowInspectorInputModal(false)}
+                                        className="flex-1 py-3 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold transition-all"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleInspectorInputConfirm}
+                                        className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20"
+                                    >
+                                        Confirm
+                                    </button>
+                                </div>
                             </div>
                         </div>
-
-                        <div className="flex gap-3 mt-8">
-                            <button
-                                onClick={() => setShowInspectorInputModal(false)}
-                                className="flex-1 py-3 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold transition-all"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleInspectorInputConfirm}
-                                className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20"
-                            >
-                                Confirm
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div >
+                    )
+                }
+            </div>
+        </div>
     );
 };
 

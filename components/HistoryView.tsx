@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import {
    History, Search, Filter, Calendar, Clock, ChevronRight,
@@ -9,6 +8,7 @@ import {
 } from 'lucide-react';
 import { TestHistory, Project, ExecutionTrigger } from '../types';
 import api from '../api/client';
+import TestDashboard from './TestDashboard';
 
 interface HistoryViewProps {
    history: TestHistory[];
@@ -18,7 +18,7 @@ interface HistoryViewProps {
 }
 
 const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRefresh, onNavigateToLibrary }) => {
-   //console.log('HistoryView received history:', history);
+   const [activeTab, setActiveTab] = useState<'dashboard' | 'history'>('dashboard');
 
    // Refresh history on mount
    React.useEffect(() => {
@@ -133,282 +133,318 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
    };
 
    return (
-      <div className="p-8 max-w-6xl mx-auto h-full overflow-y-auto custom-scrollbar">
-         {/* Header & Stats Dashboard */}
-         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
-            <div>
-               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1 transition-colors">Execution History</h2>
-               <p className="text-gray-500 dark:text-gray-400 text-sm transition-colors">Review asset performance and AI failure analysis for {activeProject.name}.</p>
-            </div>
-
-            <div className="flex gap-4">
-               <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl p-4 min-w-[120px] transition-colors shadow-sm dark:shadow-none">
-                  <div className="text-[10px] font-black text-gray-500 dark:text-gray-600 uppercase mb-1 transition-colors">Total Runs</div>
-                  <div className="text-2xl font-black text-gray-900 dark:text-white transition-colors">{stats.total}</div>
-               </div>
-               <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl p-4 min-w-[120px] transition-colors shadow-sm dark:shadow-none">
-                  <div className="text-[10px] font-black text-gray-500 dark:text-gray-600 uppercase mb-1 transition-colors">Success Rate</div>
-                  <div className={`text-2xl font-black ${stats.rate > 90 ? 'text-green-600 dark:text-green-500' : 'text-amber-500'}`}>{stats.rate}%</div>
-               </div>
-               <div className="bg-purple-600/5 border border-purple-500/20 rounded-2xl p-4 min-w-[120px]">
-                  <div className="text-[10px] font-black text-purple-600 dark:text-purple-400 uppercase mb-1 transition-colors">Pipeline Auto</div>
-                  <div className="text-2xl font-black text-gray-900 dark:text-white transition-colors">{stats.pipelineRuns}</div>
-               </div>
-            </div>
-         </div>
-
-         {/* Filters Bar */}
-         <div className="space-y-4 mb-6">
-            <div className="flex flex-col md:flex-row gap-4">
-               <div className="relative flex-[2]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                  <input
-                     type="text"
-                     value={searchTerm}
-                     onChange={(e) => setSearchTerm(e.target.value)}
-                     placeholder="Search by script name..."
-                     className="w-full bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-colors shadow-sm dark:shadow-none placeholder:text-gray-400 dark:placeholder:text-gray-600"
-                  />
-               </div>
-
-               {/* New Context Filter (Deployment/Batch) */}
-               <div className="relative flex-1">
-                  <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
-                  <select
-                     value={selectedContext}
-                     onChange={(e) => setSelectedContext(e.target.value)}
-                     className="w-full bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 pl-10 pr-4 text-[11px] font-bold text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none uppercase transition-colors shadow-sm dark:shadow-none"
+      <div className="h-full flex flex-col bg-gray-50 dark:bg-[#0c0e12] overflow-hidden">
+         {/* Tab Navigation - Design Center Style */}
+         <div className="flex-none px-8 pt-2 pb-0 bg-white dark:bg-[#0c0e12] border-b border-gray-200 dark:border-gray-800 transition-colors">
+            <div className="max-w-6xl mx-auto">
+               <div className="flex gap-2">
+                  <button
+                     onClick={() => setActiveTab('dashboard')}
+                     className={`px-6 py-3 text-sm font-black flex items-center gap-2 border-b-2 transition-all uppercase tracking-widest ${activeTab === 'dashboard'
+                        ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                        : 'border-transparent text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300'
+                        }`}
                   >
-                     <option value="All Contexts">All Contexts</option>
-                     {contextOptions.versions.length > 0 && (
-                        <optgroup label="Deployment Releases">
-                           {contextOptions.versions.map(v => <option key={v} value={v!}>Release: {v}</option>)}
-                        </optgroup>
-                     )}
-                     {contextOptions.schedules.length > 0 && (
-                        <optgroup label="Batch Schedules">
-                           {contextOptions.schedules.map(s => <option key={s} value={s!}>Batch: {s}</option>)}
-                        </optgroup>
-                     )}
-                  </select>
-               </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-4">
-               <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
-                  {(['all', 'passed', 'failed'] as const).map((s) => (
-                     <button
-                        key={s}
-                        onClick={() => setStatusFilter(s)}
-                        className={`px-4 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-                     >
-                        {s}
-                     </button>
-                  ))}
-               </div>
-
-               <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
-                  <div className="px-3 py-1.5 flex items-center text-[9px] font-black text-white bg-indigo-500/80 dark:bg-indigo-600/50 rounded-md shadow-sm uppercase tracking-widest mr-1">Trigger</div>
-                  {(['all', 'pipeline', 'manual', 'scheduled'] as const).map((t) => (
-                     <button
-                        key={t}
-                        onClick={() => setTriggerFilter(t as any)}
-                        className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${triggerFilter === t
-                           ? t === 'pipeline' ? 'bg-purple-100 dark:bg-purple-600 text-purple-600 dark:text-white shadow-sm' : t === 'scheduled' ? 'bg-amber-100 dark:bg-amber-600 text-amber-600 dark:text-white' : 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                           : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-400'
-                           }`}
-                     >
-                        {t}
-                     </button>
-                  ))}
-               </div>
-
-               <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
-                  <div className="px-3 py-1.5 flex items-center text-[9px] font-black text-white bg-emerald-500/80 dark:bg-emerald-600/50 rounded-md shadow-sm uppercase tracking-widest mr-1">Origin</div>
-                  {(['all', 'AI', 'AI_EXPLORATION', 'MANUAL', 'STEP'] as const).map((o) => (
-                     <button
-                        key={o}
-                        onClick={() => setOriginFilter(o)}
-                        className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${originFilter === o
-                           ? o === 'STEP' ? 'bg-emerald-100 dark:bg-emerald-600 text-emerald-600 dark:text-white shadow-sm' : (o === 'AI' || o === 'AI_EXPLORATION') ? 'bg-indigo-100 dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 shadow-sm'
-                           : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-400'
-                           }`}
-                     >
-                        {o.replace('_', ' ')}
-                     </button>
-                  ))}
+                     Dashboard
+                  </button>
+                  <button
+                     onClick={() => setActiveTab('history')}
+                     className={`px-6 py-3 text-sm font-black flex items-center gap-2 border-b-2 transition-all uppercase tracking-widest ${activeTab === 'history'
+                        ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                        : 'border-transparent text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300'
+                        }`}
+                  >
+                     Execution History
+                  </button>
                </div>
             </div>
          </div>
 
-         {/* History Table */}
-         <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden shadow-xl dark:shadow-2xl transition-colors">
-            <table className="w-full text-left">
-               <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800 text-[10px] font-black uppercase text-gray-500 transition-colors">
-                  <tr>
-                     <th className="px-6 py-4">Status</th>
-                     <th className="px-6 py-4">Origin Context</th>
-                     <th className="px-6 py-4">Golden Script Asset</th>
-                     <th className="px-6 py-4">Persona</th>
-                     <th className="px-6 py-4 text-right">Execution Data</th>
-                  </tr>
-               </thead>
-               <tbody className="divide-y divide-gray-100 dark:divide-gray-800 transition-colors">
-                  {paginatedHistory.map((item) => (
-                     <tr
-                        key={item.id}
-                        onClick={async () => {
-                           if (item.trigger === 'ai_exploration') {
-                              try {
-                                 const res = await api.get(`/history/${item.id}`);
-                                 setSelectedReport({ ...res.data });
-                              } catch (e) {
-                                 console.error("Failed to fetch history details", e);
-                                 setSelectedReport(item);
-                              }
-                           } else {
-                              setSelectedReport(item);
-                           }
-                        }}
-                        className="hover:bg-gray-50 dark:hover:bg-indigo-500/5 transition-all group cursor-pointer"
-                     >
-                        <td className="px-6 py-5">
-                           <div className="flex items-center gap-2">
-                              {item.status === 'passed' ? (
-                                 <CheckCircle2 className="w-5 h-5 text-green-500" />
-                              ) : (
-                                 <XCircle className="w-5 h-5 text-red-500" />
-                              )}
-                              <span className={`text-[10px] font-black uppercase ${item.status === 'passed' ? 'text-green-500' : 'text-red-500'}`}>
-                                 {item.status}
-                              </span>
-                           </div>
-                        </td>
-                        <td className="px-6 py-5">
-                           <div className="flex flex-col gap-1.5">
-                              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-black uppercase text-[9px] tracking-widest w-fit ${item.trigger === 'pipeline' ? 'bg-purple-100 dark:bg-purple-600/10 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-500/20' :
-                                 item.trigger === 'scheduled' ? 'bg-amber-100 dark:bg-amber-600/10 text-amber-600 dark:text-amber-500 border-amber-200 dark:border-amber-500/20' :
-                                    (item.trigger === 'ai_exploration') ? 'bg-indigo-100 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20' :
-                                       'bg-gray-100 dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700'
-                                 }`}>
-                                 {getTriggerIcon(item.trigger)}
-                                 {getTriggerLabel(item.trigger)}
-                              </div>
-
-                              {item.scriptOrigin && (
-                                 <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-black uppercase text-[9px] tracking-widest w-fit ${item.scriptOrigin === 'STEP' ? 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20' :
-                                    (item.scriptOrigin === 'AI' || item.scriptOrigin === 'AI_EXPLORATION') ? 'bg-indigo-50 dark:bg-indigo-900/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20' :
-                                       'bg-gray-50 dark:bg-gray-800/50 text-gray-500 border-gray-200 dark:border-gray-700'
-                                    }`}>
-                                    {item.scriptOrigin.replace('_', ' ')}
-                                 </div>
-                              )}
-
-                              {/* Context Details (Version or Schedule Name) */}
-                              {item.deploymentVersion && (
-                                 <div className="flex items-center gap-1 text-[9px] font-bold text-purple-600 dark:text-purple-300 mono opacity-80">
-                                    <Layers className="w-2.5 h-2.5" /> {item.deploymentVersion}
-                                 </div>
-                              )}
-                              {item.scheduleName && (
-                                 <div className="flex items-center gap-1 text-[9px] font-bold text-amber-600 dark:text-amber-400 opacity-80">
-                                    <Hash className="w-2.5 h-2.5" /> {item.scheduleName}
-                                 </div>
-                              )}
-                           </div>
-                        </td>
-                        <td className="px-6 py-5">
-                           <div className="flex flex-col">
-                              <span className="text-sm font-bold text-gray-900 dark:text-gray-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{item.scriptName}</span>
-                              <span className="text-[10px] text-gray-500 dark:text-gray-600 font-medium truncate max-w-[150px]">ID: {item.scriptId}</span>
-                           </div>
-                        </td>
-                        <td className="px-6 py-5">
-                           <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg w-fit transition-colors">
-                              <Users className="w-3 h-3 text-indigo-500" />
-                              <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400">{item.personaName}</span>
-                           </div>
-                        </td>
-                        <td className="px-6 py-5 text-right">
-                           <div className="flex flex-col items-end">
-                              <div className="flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-gray-300 font-medium transition-colors">
-                                 <Calendar className="w-3 h-3 text-gray-400 dark:text-gray-600" /> {new Date(item.runDate).toLocaleString()}
-                              </div>
-                              <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500">
-                                 <Clock className="w-3 h-3" /> {item.duration}
-                              </div>
-                           </div>
-                        </td>
-                     </tr>
-                  ))}
-                  {filteredHistory.length === 0 && (
-                     <tr>
-                        <td colSpan={5} className="py-20 text-center">
-                           <History className="w-10 h-10 text-gray-300 dark:text-gray-800 mx-auto mb-4 transition-colors" />
-                           <p className="text-gray-400 dark:text-gray-600 text-xs font-black uppercase tracking-widest transition-colors">No matching history results</p>
-                        </td>
-                     </tr>
-                  )}
-               </tbody>
-            </table>
-
-            {/* Pagination Controls */}
-            {filteredHistory.length > 0 && (
-               <div className="bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-800 p-4 flex items-center justify-between transition-colors">
-                  <div className="flex items-center gap-3">
-                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Rows per page:</span>
-                     <select
-                        value={itemsPerPage}
-                        onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-none text-xs font-bold text-gray-600 dark:text-gray-300 rounded px-2 py-1 focus:ring-0 cursor-pointer transition-colors"
-                     >
-                        <option value={10}>10</option>
-                        <option value={20}>20</option>
-                        <option value={50}>50</option>
-                     </select>
-                     <span className="text-[10px] text-gray-600 dark:text-gray-600 ml-2">
-                        Showing {((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, filteredHistory.length)} of {filteredHistory.length}
-                     </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                     <button
-                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                        disabled={currentPage === 1}
-                        className="px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-transparent hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black text-gray-500 dark:text-gray-400 rounded transition-colors uppercase"
-                     >
-                        Previous
-                     </button>
-                     <div className="flex items-center gap-1">
-                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                           // Simple pagination logic for display
-                           let p = i + 1;
-                           if (totalPages > 5 && currentPage > 3) {
-                              p = currentPage - 2 + i;
-                           }
-                           if (p > totalPages) return null;
-
-                           return (
-                              <button
-                                 key={p}
-                                 onClick={() => setCurrentPage(p)}
-                                 className={`w-7 h-7 flex items-center justify-center rounded text-[10px] font-bold transition-all ${currentPage === p ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-                              >
-                                 {p}
-                              </button>
-                           );
-                        })}
+         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+            <div className="max-w-6xl mx-auto pb-20">
+               {activeTab === 'dashboard' ? (
+                  <TestDashboard
+                     history={history}
+                     activeProject={activeProject}
+                     onViewDetail={(report) => {
+                        setSelectedReport(report);
+                        // We don't automatically switch tabs, just show the modal
+                     }}
+                  />
+               ) : (
+                  <>
+                     {/* Stats Row */}
+                     <div className="mb-10 flex gap-6">
+                        <div className="flex-1 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 transition-colors shadow-sm dark:shadow-none">
+                           <div className="text-[10px] font-black text-gray-500 dark:text-gray-600 uppercase mb-2 transition-colors tracking-widest">Total Runs</div>
+                           <div className="text-3xl font-black text-gray-900 dark:text-white transition-colors">{stats.total}</div>
+                        </div>
+                        <div className="flex-1 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 transition-colors shadow-sm dark:shadow-none">
+                           <div className="text-[10px] font-black text-gray-500 dark:text-gray-600 uppercase mb-2 transition-colors tracking-widest">Success Rate</div>
+                           <div className={`text-3xl font-black ${stats.rate > 90 ? 'text-green-600 dark:text-green-500' : 'text-amber-500'}`}>{stats.rate}%</div>
+                        </div>
+                        <div className="flex-1 bg-purple-600/5 border border-purple-500/20 rounded-3xl p-6">
+                           <div className="text-[10px] font-black text-purple-600 dark:text-purple-400 uppercase mb-2 transition-colors tracking-widest">Pipeline Auto</div>
+                           <div className="text-3xl font-black text-gray-900 dark:text-white transition-colors">{stats.pipelineRuns}</div>
+                        </div>
                      </div>
-                     <button
-                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                        disabled={currentPage === totalPages}
-                        className="px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-transparent hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black text-gray-500 dark:text-gray-400 rounded transition-colors uppercase"
-                     >
-                        Next
-                     </button>
-                  </div>
-               </div>
-            )}
+
+                     {/* Filters Bar */}
+                     <div className="space-y-4 mb-6">
+                        <div className="flex flex-col md:flex-row gap-4">
+                           <div className="relative flex-[2]">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                              <input
+                                 type="text"
+                                 value={searchTerm}
+                                 onChange={(e) => setSearchTerm(e.target.value)}
+                                 placeholder="Search by script name..."
+                                 className="w-full bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-colors shadow-sm dark:shadow-none placeholder:text-gray-400 dark:placeholder:text-gray-600"
+                              />
+                           </div>
+
+                           {/* New Context Filter (Deployment/Batch) */}
+                           <div className="relative flex-1">
+                              <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                              <select
+                                 value={selectedContext}
+                                 onChange={(e) => setSelectedContext(e.target.value)}
+                                 className="w-full bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 pl-10 pr-4 text-[11px] font-bold text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none uppercase transition-colors shadow-sm dark:shadow-none"
+                              >
+                                 <option value="All Contexts">All Contexts</option>
+                                 {contextOptions.versions.length > 0 && (
+                                    <optgroup label="Deployment Releases">
+                                       {contextOptions.versions.map(v => <option key={v} value={v!}>Release: {v}</option>)}
+                                    </optgroup>
+                                 )}
+                                 {contextOptions.schedules.length > 0 && (
+                                    <optgroup label="Batch Schedules">
+                                       {contextOptions.schedules.map(s => <option key={s} value={s!}>Batch: {s}</option>)}
+                                    </optgroup>
+                                 )}
+                              </select>
+                           </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                           <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
+                              {(['all', 'passed', 'failed'] as const).map((s) => (
+                                 <button
+                                    key={s}
+                                    onClick={() => setStatusFilter(s)}
+                                    className={`px-4 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                 >
+                                    {s}
+                                 </button>
+                              ))}
+                           </div>
+
+                           <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
+                              <div className="px-3 py-1.5 flex items-center text-[9px] font-black text-white bg-indigo-500/80 dark:bg-indigo-600/50 rounded-md shadow-sm uppercase tracking-widest mr-1">Trigger</div>
+                              {(['all', 'pipeline', 'manual', 'scheduled'] as const).map((t) => (
+                                 <button
+                                    key={t}
+                                    onClick={() => setTriggerFilter(t as any)}
+                                    className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${triggerFilter === t
+                                       ? t === 'pipeline' ? 'bg-purple-100 dark:bg-purple-600 text-purple-600 dark:text-white shadow-sm' : t === 'scheduled' ? 'bg-amber-100 dark:bg-amber-600 text-amber-600 dark:text-white' : 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                       : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-400'
+                                       }`}
+                                 >
+                                    {t}
+                                 </button>
+                              ))}
+                           </div>
+
+                           <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
+                              <div className="px-3 py-1.5 flex items-center text-[9px] font-black text-white bg-emerald-500/80 dark:bg-emerald-600/50 rounded-md shadow-sm uppercase tracking-widest mr-1">Origin</div>
+                              {(['all', 'AI', 'AI_EXPLORATION', 'MANUAL', 'STEP'] as const).map((o) => (
+                                 <button
+                                    key={o}
+                                    onClick={() => setOriginFilter(o)}
+                                    className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${originFilter === o
+                                       ? o === 'STEP' ? 'bg-emerald-100 dark:bg-emerald-600 text-emerald-600 dark:text-white shadow-sm' : (o === 'AI' || o === 'AI_EXPLORATION') ? 'bg-indigo-100 dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 shadow-sm'
+                                       : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-400'
+                                       }`}
+                                 >
+                                    {o.replace('_', ' ')}
+                                 </button>
+                              ))}
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* History Table */}
+                     <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden shadow-xl dark:shadow-2xl transition-colors">
+                        <table className="w-full text-left">
+                           <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800 text-[10px] font-black uppercase text-gray-500 transition-colors">
+                              <tr>
+                                 <th className="px-6 py-4">Status</th>
+                                 <th className="px-6 py-4">Origin Context</th>
+                                 <th className="px-6 py-4">Golden Script Asset</th>
+                                 <th className="px-6 py-4">Persona</th>
+                                 <th className="px-6 py-4 text-right">Execution Data</th>
+                              </tr>
+                           </thead>
+                           <tbody className="divide-y divide-gray-100 dark:divide-gray-800 transition-colors">
+                              {paginatedHistory.map((item) => (
+                                 <tr
+                                    key={item.id}
+                                    onClick={async () => {
+                                       if (item.trigger === 'ai_exploration') {
+                                          try {
+                                             const res = await api.get(`/history/${item.id}`);
+                                             setSelectedReport({ ...res.data });
+                                          } catch (e) {
+                                             console.error("Failed to fetch history details", e);
+                                             setSelectedReport(item);
+                                          }
+                                       } else {
+                                          setSelectedReport(item);
+                                       }
+                                    }}
+                                    className="hover:bg-gray-50 dark:hover:bg-indigo-500/5 transition-all group cursor-pointer"
+                                 >
+                                    <td className="px-6 py-5">
+                                       <div className="flex items-center gap-2">
+                                          {item.status === 'passed' ? (
+                                             <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                          ) : (
+                                             <XCircle className="w-5 h-5 text-red-500" />
+                                          )}
+                                          <span className={`text-[10px] font-black uppercase ${item.status === 'passed' ? 'text-green-500' : 'text-red-500'}`}>
+                                             {item.status}
+                                          </span>
+                                       </div>
+                                    </td>
+                                    <td className="px-6 py-5">
+                                       <div className="flex flex-col gap-1.5">
+                                          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-black uppercase text-[9px] tracking-widest w-fit ${item.trigger === 'pipeline' ? 'bg-purple-100 dark:bg-purple-600/10 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-500/20' :
+                                             item.trigger === 'scheduled' ? 'bg-amber-100 dark:bg-amber-600/10 text-amber-600 dark:text-amber-500 border-amber-200 dark:border-amber-500/20' :
+                                                (item.trigger === 'ai_exploration') ? 'bg-indigo-100 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20' :
+                                                   'bg-gray-100 dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700'
+                                             }`}>
+                                             {getTriggerIcon(item.trigger)}
+                                             {getTriggerLabel(item.trigger)}
+                                          </div>
+
+                                          {item.scriptOrigin && (
+                                             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-black uppercase text-[9px] tracking-widest w-fit ${item.scriptOrigin === 'STEP' ? 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20' :
+                                                (item.scriptOrigin === 'AI' || item.scriptOrigin === 'AI_EXPLORATION') ? 'bg-indigo-50 dark:bg-indigo-900/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20' :
+                                                   'bg-gray-50 dark:bg-gray-800/50 text-gray-500 border-gray-200 dark:border-gray-700'
+                                                }`}>
+                                                {item.scriptOrigin.replace('_', ' ')}
+                                             </div>
+                                          )}
+
+                                          {/* Context Details (Version or Schedule Name) */}
+                                          {item.deploymentVersion && (
+                                             <div className="flex items-center gap-1 text-[9px] font-bold text-purple-600 dark:text-purple-300 mono opacity-80">
+                                                <Layers className="w-2.5 h-2.5" /> {item.deploymentVersion}
+                                             </div>
+                                          )}
+                                          {item.scheduleName && (
+                                             <div className="flex items-center gap-1 text-[9px] font-bold text-amber-600 dark:text-amber-400 opacity-80">
+                                                <Hash className="w-2.5 h-2.5" /> {item.scheduleName}
+                                             </div>
+                                          )}
+                                       </div>
+                                    </td>
+                                    <td className="px-6 py-5">
+                                       <div className="flex flex-col">
+                                          <span className="text-sm font-bold text-gray-900 dark:text-gray-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{item.scriptName}</span>
+                                          <span className="text-[10px] text-gray-500 dark:text-gray-600 font-medium truncate max-w-[150px]">ID: {item.scriptId}</span>
+                                       </div>
+                                    </td>
+                                    <td className="px-6 py-5">
+                                       <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg w-fit transition-colors">
+                                          <Users className="w-3 h-3 text-indigo-500" />
+                                          <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400">{item.personaName}</span>
+                                       </div>
+                                    </td>
+                                    <td className="px-6 py-5 text-right">
+                                       <div className="flex flex-col items-end">
+                                          <div className="flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-gray-300 font-medium transition-colors">
+                                             <Calendar className="w-3 h-3 text-gray-400 dark:text-gray-600" /> {new Date(item.runDate).toLocaleString()}
+                                          </div>
+                                          <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500">
+                                             <Clock className="w-3 h-3" /> {item.duration}
+                                          </div>
+                                       </div>
+                                    </td>
+                                 </tr>
+                              ))}
+                              {filteredHistory.length === 0 && (
+                                 <tr>
+                                    <td colSpan={5} className="py-20 text-center">
+                                       <History className="w-10 h-10 text-gray-300 dark:text-gray-800 mx-auto mb-4 transition-colors" />
+                                       <p className="text-gray-400 dark:text-gray-600 text-xs font-black uppercase tracking-widest transition-colors">No matching history results</p>
+                                    </td>
+                                 </tr>
+                              )}
+                           </tbody>
+                        </table>
+
+                        {/* Pagination Controls */}
+                        {filteredHistory.length > 0 && (
+                           <div className="bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-800 p-4 flex items-center justify-between transition-colors">
+                              <div className="flex items-center gap-3">
+                                 <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Rows per page:</span>
+                                 <select
+                                    value={itemsPerPage}
+                                    onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                                    className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-none text-xs font-bold text-gray-600 dark:text-gray-300 rounded px-2 py-1 focus:ring-0 cursor-pointer transition-colors"
+                                 >
+                                    <option value={10}>10</option>
+                                    <option value={20}>20</option>
+                                    <option value={50}>50</option>
+                                 </select>
+                                 <span className="text-[10px] text-gray-600 dark:text-gray-600 ml-2">
+                                    Showing {((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, filteredHistory.length)} of {filteredHistory.length}
+                                 </span>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                 <button
+                                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-transparent hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black text-gray-500 dark:text-gray-400 rounded transition-colors uppercase"
+                                 >
+                                    Previous
+                                 </button>
+                                 <div className="flex items-center gap-1">
+                                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                       // Simple pagination logic for display
+                                       let p = i + 1;
+                                       if (totalPages > 5 && currentPage > 3) {
+                                          p = currentPage - 2 + i;
+                                       }
+                                       if (p > totalPages) return null;
+
+                                       return (
+                                          <button
+                                             key={p}
+                                             onClick={() => setCurrentPage(p)}
+                                             className={`w-7 h-7 flex items-center justify-center rounded text-[10px] font-bold transition-all ${currentPage === p ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                                          >
+                                             {p}
+                                          </button>
+                                       );
+                                    })}
+                                 </div>
+                                 <button
+                                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-transparent hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black text-gray-500 dark:text-gray-400 rounded transition-colors uppercase"
+                                 >
+                                    Next
+                                 </button>
+                              </div>
+                           </div>
+                        )}
+                     </div>
+                  </>
+               )}
+            </div>
          </div>
 
          {/* Intelligent Report Modal */}

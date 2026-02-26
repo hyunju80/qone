@@ -90,7 +90,10 @@ class SchedulerService:
                              "id": script.id,
                              "name": script.name,
                              "project_id": script.project_id,
-                             "code": script.code
+                             "code": script.code,
+                             "origin": script.origin,
+                             "platform": getattr(script, 'platform', 'WEB'),
+                             "steps": getattr(script, 'steps', [])
                          })
             finally:
                 db.close() # Release DB connection immediately
@@ -108,6 +111,10 @@ class SchedulerService:
                      def __init__(self, data):
                          self.code = data['code']
                          self.name = data['name']
+                         self.origin = data.get('origin', '')
+                         self.platform = data.get('platform', 'WEB')
+                         self.steps = data.get('steps', [])
+                         self.project_id = data.get('project_id')
                  
                  script_obj = ScriptObj(script_data)
                  
@@ -117,19 +124,22 @@ class SchedulerService:
                      logs = report['logs']
                      failure_reason = report.get('error')
                      duration = report['duration']
+                     step_results = report.get('step_results', [])
                  except Exception as exc:
                      logger.error(f"Error running script {script_data['name']}: {exc}")
                      status = "failed"
                      logs = [{"msg": str(exc), "type": "error"}]
                      failure_reason = str(exc)
                      duration = "0s"
+                     step_results = []
 
                  # 3. Save Result Phase (Short DB Lock)
                  db_save: Session = SessionLocal()
+                 import uuid
                  try:
                      history_in = models.TestHistory(
-                         id=f"hist_{int(datetime.now().timestamp()*1000)}",
-                         # project_id=script_data['project_id'], # Removed: TestHistory doesn't have project_id
+                         id=f"hist_{uuid.uuid4().hex[:16]}",
+                         project_id=script_data['project_id'],
                          script_id=script_data['id'],
                          script_name=script_data['name'],
                          status=status,
@@ -139,6 +149,7 @@ class SchedulerService:
                          schedule_id=schedule_id,
                          schedule_name=schedule_name,
                          failure_reason=failure_reason,
+                         step_results=step_results,
                          run_date=datetime.now(KST)
                      )
                      db_save.add(history_in)

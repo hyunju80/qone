@@ -1,6 +1,9 @@
 
 import base64
 import re
+import sys
+import asyncio
+import threading
 from typing import Dict, Any, Optional
 from playwright.async_api import async_playwright, Page, Browser, Playwright
 from bs4 import BeautifulSoup
@@ -9,6 +12,36 @@ class CrawlerService:
     # Singleton-like storage for sessions
     # Dictionary structure: { "session_id": { "browser": Browser, "page": Page, "playwright": Playwright } }
     _sessions: Dict[str, Dict[str, Any]] = {}
+
+    def __init__(self):
+        self._bg_thread = None
+        self._bg_loop = None
+        self._loop_ready = threading.Event()
+
+    def _start_background_loop(self):
+        """Runs in a dedicated background thread to handle Playwright on Windows."""
+        try:
+            if sys.platform == 'win32':
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+            
+            self._bg_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._bg_loop)
+            self._loop_ready.set()
+            self._bg_loop.run_forever()
+        except:
+            pass
+
+    def _ensure_background_thread(self):
+        if self._bg_thread is None or not self._bg_thread.is_alive():
+            self._loop_ready.clear()
+            self._bg_thread = threading.Thread(target=self._start_background_loop, daemon=True, name="CrawlerThread")
+            self._bg_thread.start()
+            self._loop_ready.wait()
+
+    def _run_in_bg(self, coro):
+        self._ensure_background_thread()
+        future = asyncio.run_coroutine_threadsafe(coro, self._bg_loop)
+        return asyncio.wrap_future(future)
 
     def _ensure_session(self, session_id: str):
         if session_id not in self._sessions:
@@ -58,9 +91,12 @@ class CrawlerService:
         """
         Starts a persistent browser session (Async).
         """
+        return await self._run_in_bg(self._start_session_impl(session_id, url))
+
+    async def _start_session_impl(self, session_id: str, url: str) -> Dict[str, Any]:
         if session_id in self._sessions:
             try:
-                await self.close_session(session_id)
+                await self._close_session_impl(session_id)
             except:
                 pass
 
@@ -83,7 +119,7 @@ class CrawlerService:
             "page": page
         }
         
-        return await self.get_state(session_id)
+        return await self._get_state_impl(session_id)
 
     def _get_active_page(self, session_id: str) -> Page:
         # Note: This helper might need to return the page object directly.
@@ -117,6 +153,9 @@ class CrawlerService:
         """
         Executes an action on the active page.
         """
+        return await self._run_in_bg(self._perform_action_impl(session_id, action_type, selector, value))
+
+    async def _perform_action_impl(self, session_id: str, action_type: str, selector: str = None, value: str = None) -> Dict[str, Any]:
         page = self._get_active_page(session_id)
         await self._bring_to_front(page)
         
@@ -148,14 +187,17 @@ class CrawlerService:
             await page.wait_for_timeout(1000)
 
         except Exception as e:
-             return {"error": str(e), **await self.get_state(session_id)}
+             return {"error": str(e), **await self._get_state_impl(session_id)}
 
-        return await self.get_state(session_id)
+        return await self._get_state_impl(session_id)
 
     async def get_state(self, session_id: str) -> Dict[str, Any]:
         """
         Returns the current state (Title, URL, Clean HTML, Screenshot).
         """
+        return await self._run_in_bg(self._get_state_impl(session_id))
+
+    async def _get_state_impl(self, session_id: str) -> Dict[str, Any]:
         page = self._get_active_page(session_id)
         await self._bring_to_front(page)
         
@@ -181,6 +223,10 @@ class CrawlerService:
         }
 
     async def close_session(self, session_id: str):
+        if self._bg_thread and self._bg_thread.is_alive():
+            await self._run_in_bg(self._close_session_impl(session_id))
+
+    async def _close_session_impl(self, session_id: str):
         if session_id in self._sessions:
             session = self._sessions[session_id]
             try:
@@ -189,6 +235,9 @@ class CrawlerService:
             except Exception as e:
                 # Browser might be already closed or process dead
                 print(f"Warning during session close: {e}")
+            finally:
+                del self._sessions[session_id]
+
     async def crawl(self, url: str) -> Dict[str, Any]:
         """
         One-off crawl (Async).

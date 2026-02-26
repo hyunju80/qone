@@ -4,6 +4,7 @@ import re
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from app.services.app_runner import app_step_runner
+from app.services.web_inspector import web_inspector_service
 from app.services.device_service import device_service
 from sqlalchemy.orm import Session
 from app.api import deps
@@ -97,23 +98,52 @@ def connect_device(
     else:
         return {"success": False, "error": f"Appium Session Error: {error}"}
 
+@router.post("/web/connect")
+async def connect_web(
+    payload: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Start a Playwright session for a specific URL.
+    Payload: {"url": "..."}
+    """
+    url = payload.get("url", "https://www.google.com")
+    logger.info(f"Connecting Web Inspector to {url}")
+    
+    success, error = await web_inspector_service.start_session(url)
+    if success:
+        return {
+            "success": True,
+            "message": f"Connected to {url}",
+            "window_size": {"width": 1280, "height": 800} # Default Playwright viewport
+        }
+    else:
+        return {"success": False, "error": f"Playwright Session Error: {error}"}
+
 
 @router.get("/screenshot")
-def get_screenshot() -> Dict[str, Any]:
+async def get_screenshot(platform: str = "APP") -> Dict[str, Any]:
     """
-    Get live screenshot from the active Appium session.
+    Get live screenshot from the active session.
     """
-    screenshot = app_step_runner.get_screenshot()
+    if platform == "WEB":
+        screenshot = await web_inspector_service.get_screenshot()
+    else:
+        screenshot = app_step_runner.get_screenshot()
+
     if not screenshot:
         return {"success": False, "error": "No active session or failed to capture screenshot"}
     return {"success": True, "data": screenshot}
 
 @router.get("/source")
-def get_source() -> Dict[str, Any]:
+async def get_source(platform: str = "APP") -> Dict[str, Any]:
     """
-    Get current XML page source.
+    Get current XML or HTML page source.
     """
-    source = app_step_runner.get_page_source()
+    if platform == "WEB":
+        source = await web_inspector_service.get_page_source()
+    else:
+        source = app_step_runner.get_page_source()
+        
     if not source:
         return {"success": False, "error": "No active session or failed to capture source"}
     return {"success": True, "data": source}
@@ -141,7 +171,7 @@ def switch_context(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"success": False, "error": f"Failed to switch to {context_name}"}
 
 @router.post("/identify")
-def identify_element(payload: Dict[str, Any]) -> Dict[str, Any]:
+async def identify_element(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Identify element at (x, y) coordinates with improved selector ranking and highlighting support.
     Payload: {"x": 100, "y": 200, "display_width": 300, "display_height": 533}
@@ -151,6 +181,10 @@ def identify_element(payload: Dict[str, Any]) -> Dict[str, Any]:
     y = payload.get("y")
     display_w = payload.get("display_width", 1080)
     display_h = payload.get("display_height", 1920)
+    platform = payload.get("platform", "APP")
+
+    if platform == "WEB":
+        return await web_inspector_service.identify_element(x, y, display_w, display_h)
     
     # Use actual device window size for mapping if available
     window_size = app_step_runner.window_size
@@ -397,16 +431,37 @@ def identify_element(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 @router.post("/action")
-def perform_action(step: Dict[str, Any]) -> Dict[str, Any]:
+async def perform_action(step: Dict[str, Any]) -> Dict[str, Any]:
     """
     Perform a direct action on the device (for recording/live interaction).
     """
-    result = app_step_runner.execute_step(step)
+    platform = step.get("platform", "APP")
+    if platform == "WEB":
+        result = await web_inspector_service.execute_step(step)
+    else:
+        result = app_step_runner.execute_step(step)
     return result
-@router.post("/disconnect")
-def disconnect_device() -> Dict[str, Any]:
+@router.post("/scroll")
+async def scroll_page(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Terminate the current Appium session.
+    Scroll the active session page.
+    Payload: {"delta_y": 100, "platform": "WEB"}
+    """
+    delta_y = payload.get("delta_y", 0)
+    platform = payload.get("platform", "APP")
+    
+    if platform == "WEB":
+        return await web_inspector_service.scroll(delta_y)
+    else:
+        # App scroll logic could be added here if needed, 
+        # but for now we focus on Web Inspector
+        return {"success": False, "error": "Scroll not implemented for APP platform via this endpoint"}
+
+@router.post("/disconnect")
+async def disconnect_device() -> Dict[str, Any]:
+    """
+    Terminate current sessions.
     """
     app_step_runner.stop_session()
-    return {"success": True, "message": "Disconnected and session terminated"}
+    await web_inspector_service.stop_session()
+    return {"success": True, "message": "Sessions terminated"}

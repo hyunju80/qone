@@ -166,6 +166,11 @@ except Exception as outer_e:
         Used by the Scheduler.
         """
         import time
+        import asyncio
+        import base64
+        
+        if getattr(script, 'origin', '') == 'STEP' and getattr(script, 'steps', []):
+            return self._run_steps_headless(script)
         
         run_id = str(uuid.uuid4())
         run_dir = RUNS_DIR / run_id
@@ -230,7 +235,164 @@ except Exception as outer_e:
                 "passed": False,
                 "duration": "0s",
                 "logs": [{"msg": str(e), "type": "error"}],
-                "error": str(e)
+                "error": str(e),
+                "step_results": []
             }
+
+    def _run_steps_headless(self, script) -> dict:
+        import time
+        import asyncio
+        import base64
+        
+        start_time = time.time()
+        logs = []
+        step_results = []
+        passed = True
+        error_msg = None
+        
+        def log(msg, level="info"):
+            logs.append({"msg": msg, "type": level})
+
+        async def _execute():
+            nonlocal passed, error_msg
+            runner = None
+            is_web = script.platform.upper() == 'WEB'
+            
+            try:
+                if is_web:
+                    from app.services.web_runner import WebStepRunner
+                    runner = WebStepRunner()
+                    success, err = await runner.start_session()
+                else:
+                    from app.services.app_runner import AppStepRunner
+                    runner = AppStepRunner()
+                    
+                    from app.db.session import SessionLocal
+                    db_session = SessionLocal()
+                    mobile_config = {}
+                    device_id = "DefaultDevice"
+                    try:
+                        from app.models.project import Project
+                        from app.models.device import Device
+                        proj = db_session.query(Project).filter(Project.id == getattr(script, 'project_id', None)).first()
+                        if proj and proj.mobile_config:
+                            mobile_config = proj.mobile_config
+                            
+                        # Try to find a connected device live
+                        from app.services.device_service import device_service
+                        connected_devices = device_service.get_connected_devices()
+                        if connected_devices:
+                            device_id = connected_devices[0]["id"]
+                        else:
+                            dev = db_session.query(Device).filter(Device.status == "connected").first()
+                            if dev:
+                                device_id = dev.id
+                    finally:
+                        db_session.close()
+                        
+                    caps = {
+                        "platformName": "Android",
+                        "automationName": "UiAutomator2",
+                        "deviceName": device_id,
+                        "udid": device_id,
+                    }
+                    for k, v in mobile_config.items():
+                        if not k.startswith("appium:"):
+                            caps[f"appium:{k}"] = v
+                        else:
+                            caps[k] = v
+                            
+                    success, err = runner.start_session(caps)
+                
+                if not success:
+                    passed = False
+                    error_msg = f"Setup Failed: {err}"
+                    log(error_msg, "error")
+                    return
+                
+                log(f"Session established successfully for {script.name}.")
+                
+                for i, step in enumerate(script.steps):
+                    step_name = step.get("stepName") or step.get("name") or step.get("action")
+                    action = step.get("action")
+                    target = step.get("selectorValue") or step.get("selector_value") or step.get("target")
+                    value = step.get("option")
+                    
+                    log(f"Step {i+1}: [{action}] target={target} value={value}")
+                    
+                    # Ensure DB dependency if needed for mobile execution
+                    if not is_web:
+                        from app.db.session import SessionLocal
+                        db_session = SessionLocal()
+                    else:
+                        db_session = None
+
+                    step_start = time.time()
+                    try:
+                        if is_web:
+                            res = await runner.execute_step(step)
+                        else:
+                            res = runner.execute_step(step, db=db_session)
+                    finally:
+                        if db_session: db_session.close()
+                        
+                    step_end = time.time()
+                    
+                    # Capture screenshot
+                    screen_data = None
+                    should_capture = step.get("screenshot") is True or not res["success"]
+                    if should_capture:
+                        try:
+                            if is_web:
+                                screen_data = await runner.get_screenshot()
+                            else:
+                                screen_data = runner.get_screenshot()
+                        except:
+                            pass
+
+                    result_entry = {
+                        "step_number": i + 1,
+                        "name": step_name,
+                        "status": "passed" if res["success"] else "failed",
+                        "duration": f"{round(step_end - step_start, 1)}s",
+                        "error_message": res.get("error"),
+                        "screenshot_data": screen_data,
+                        "metadata": {
+                            "action": action,
+                            "target": target,
+                            "value": value
+                        }
+                    }
+                    step_results.append(result_entry)
+                    
+                    if not res["success"]:
+                        log(f"Step {i+1} FAILED: {res.get('error')}", "error")
+                        passed = False
+                        error_msg = res.get('error')
+                        break
+                        
+                    log(f"Step {i+1} PASSED ({round(step_end - step_start, 1)}s)")
+
+            except Exception as ex:
+                passed = False
+                error_msg = str(ex)
+                log(f"Fatal error during step execution: {ex}", "error")
+            finally:
+                if runner:
+                    if is_web:
+                        await runner.stop_session()
+                    else:
+                        runner.stop_session()
+                        
+        asyncio.run(_execute())
+        
+        duration = time.time() - start_time
+        return {
+            "passed": passed,
+            "duration": f"{duration:.2f}s",
+            "logs": logs,
+            "error": error_msg,
+            "step_results": step_results
+        }
 
 runner_service = TestRunner()

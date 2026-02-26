@@ -14,6 +14,7 @@ RUNS_DIR = Path(tempfile.gettempdir()) / "qone_runs"
 router = APIRouter()
 
 from app.services.app_runner import app_step_runner
+from app.services.web_runner import web_step_runner
 from app.services.device_service import device_service
 from app.models.project import Project
 from app.models.test import TestHistory, TestScript
@@ -140,15 +141,17 @@ async def start_active_steps_run(
     import uuid
     run_id = str(uuid.uuid4())
     
-    # Auto-discover device if not provided
+    # Auto-discover device if not provided (Only for mobile)
     device_id = request.device_id
-    if not device_id:
+    if not device_id and request.platform.upper() != "WEB":
         connected = device_service.get_connected_devices()
         if connected:
             device_id = connected[0]["id"]
             print(f"DEBUG: Auto-discovered device {device_id}")
         else:
             raise HTTPException(400, "No device connected and no device_id provided")
+    elif not device_id:
+        device_id = "WEB_BROWSER"
 
     # Fetch project for mobile_config
     project = db.query(Project).filter(Project.id == request.project_id).first()
@@ -175,42 +178,54 @@ async def start_active_steps_run(
                     lf.flush()
                     execution_logs.append({"msg": msg, "type": level.lower()})
 
-                log(f"Starting execution for project {request.project_id} on {device_id}...")
+                if request.platform.upper() != "WEB":
+                    log(f"Starting execution for project {request.project_id} on {device_id}...")
+                    
+                    # Setup capabilities
+                    platform_name = "Android" if request.platform.upper() in ["APP", "ANDROID"] else "iOS"
+                    caps = {
+                        "platformName": platform_name,
+                        "automationName": "UiAutomator2" if platform_name == "Android" else "XCUITest",
+                        "deviceName": device_id,
+                        "udid": device_id,
+                    }
+                    # Merge mobile_config
+                    if mobile_config:
+                        for k, v in mobile_config.items():
+                            if not k.startswith("appium:"):
+                                caps[f"appium:{k}"] = v
+                            else:
+                                caps[k] = v
+                    
+                    log(f"Connecting to Appium with caps: {platform_name} / {device_id}")
+                    success, err = app_step_runner.start_session(caps)
+                    if not success:
+                        log(f"Failed to start session: {err}", "ERROR")
+                        overall_status = "failed"
+                        _save_history_record(overall_status, "Setup Failure: " + str(err), step_results, execution_logs=execution_logs)
+                        with open(exit_code_file, "w") as ef: ef.write("1")
+                        return
+                    log("Appium session established successfully.")
+                else:
+                    log(f"Starting WEB execution for project {request.project_id}...")
+                    success, err = await web_step_runner.start_session()
+                    if not success:
+                        log(f"Failed to start Playwright session: {err}", "ERROR")
+                        overall_status = "failed"
+                        _save_history_record(overall_status, "Setup Failure: " + str(err), step_results, execution_logs=execution_logs)
+                        with open(exit_code_file, "w") as ef: ef.write("1")
+                        return
+                    log("Playwright session established successfully.")
                 
-                # Setup capabilities
-                platform_name = "Android" if request.platform.upper() in ["APP", "ANDROID"] else "iOS"
-                caps = {
-                    "platformName": platform_name,
-                    "automationName": "UiAutomator2" if platform_name == "Android" else "XCUITest",
-                    "deviceName": device_id,
-                    "udid": device_id,
-                }
-                # Merge mobile_config
-                if mobile_config:
-                    for k, v in mobile_config.items():
-                        if not k.startswith("appium:"):
-                            caps[f"appium:{k}"] = v
-                        else:
-                            caps[k] = v
-                
-                log(f"Connecting to Appium with caps: {platform_name} / {device_id}")
-                success, err = app_step_runner.start_session(caps)
-                if not success:
-                    log(f"Failed to start session: {err}", "ERROR")
-                    overall_status = "failed"
-                    # with open(exit_code_file, "w") as ef: ef.write("1") <- Removed for race condition
-                    # Save history even on setup failure
-                    _save_history_record(overall_status, "Setup Failure: " + str(err), step_results, execution_logs=execution_logs)
-                    with open(exit_code_file, "w") as ef: ef.write("1") # Write AFTER saving history
-                    return
-                
-                log("Appium session established successfully.")
+                log("Session established successfully.")
+                                
+                runner = web_step_runner if request.platform.upper() == "WEB" else app_step_runner
 
                 # Initial screenshot
-                def update_screen(label="screenshot"):
+                async def update_screen(label="screenshot"):
                     try:
                         log(f"Capturing {label}...")
-                        screenshot_b64 = app_step_runner.get_screenshot()
+                        screenshot_b64 = await runner.get_screenshot() if request.platform.upper() == "WEB" else runner.get_screenshot()
                         if screenshot_b64:
                             with open(img_file, "wb") as f:
                                 f.write(base64.b64decode(screenshot_b64))
@@ -220,7 +235,7 @@ async def start_active_steps_run(
                         log(f"Failed to capture {label}: {str(e)}", "WARNING")
                     return None
 
-                update_screen("initial state")
+                await update_screen("initial state")
 
                 try:
                     for i, step in enumerate(request.steps):
@@ -236,14 +251,14 @@ async def start_active_steps_run(
                         log(log_msg)
                         
                         step_start = asyncio.get_event_loop().time()
-                        res = app_step_runner.execute_step(step, db=db)
+                        res = await runner.execute_step(step) if request.platform.upper() == "WEB" else runner.execute_step(step, db=db)
                         step_end = asyncio.get_event_loop().time()
                         
                         # Capture logic: screen option OR failure
                         should_capture = step.get("screenshot") is True or not res["success"]
                         screen_data = None
                         if should_capture:
-                            screen_data = update_screen(f"result of Step {i+1}")
+                            screen_data = await update_screen(f"result of Step {i+1}")
 
                         result_entry = {
                             "step_number": i + 1,
@@ -273,13 +288,15 @@ async def start_active_steps_run(
                         log("All steps completed successfully.")
                         # with open(exit_code_file, "w") as ef: ef.write("0") <- Moved to finally
                     
-                    # FINAL CAPTURE: One last screenshot after all steps to show the end state
                     try:
                         await asyncio.sleep(0.5) # Wait for final UI transition
-                        update_screen("final state")
+                        await update_screen("final state")
                     except: pass
                 finally:
-                    app_step_runner.stop_session()
+                    if request.platform.upper() == "WEB":
+                        await web_step_runner.stop_session()
+                    else:
+                        app_step_runner.stop_session()
                     
                     # Final History Save
                     duration_str = f"{round(asyncio.get_event_loop().time() - start_time, 1)}s"
