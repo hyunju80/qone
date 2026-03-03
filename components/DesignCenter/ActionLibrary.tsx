@@ -112,7 +112,7 @@ const ActionLibrary: React.FC<ActionLibraryProps> = ({ activeProject, onAlert })
                     <div key={action.id} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl p-5 hover:border-indigo-500 transition-all cursor-pointer group relative">
                         <div className="flex justify-between items-start mb-3">
                             <div className="flex items-center gap-2">
-                                <div className={`p-2 rounded-lg ${action.project_id ? 'bg-indigo-100 text-indigo-600' : 'bg-orange-100 text-orange-600'}`}>
+                                <div className={`p-2 rounded-lg ${action.projectId ? 'bg-indigo-100 text-indigo-600' : 'bg-orange-100 text-orange-600'}`}>
                                     <Zap className="w-5 h-5" />
                                 </div>
                                 <div>
@@ -182,8 +182,8 @@ const ActionLibrary: React.FC<ActionLibraryProps> = ({ activeProject, onAlert })
                                             key={p}
                                             onClick={() => setCurrentAction({ ...currentAction, platform: p as any })}
                                             className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border ${currentAction.platform === p
-                                                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                                                    : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-400 hover:border-gray-300'
+                                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                                                : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-400 hover:border-gray-300'
                                                 }`}
                                         >
                                             {p}

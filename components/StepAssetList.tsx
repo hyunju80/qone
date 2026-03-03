@@ -61,39 +61,13 @@ const StepAssetList: React.FC<StepAssetListProps> = ({ project, activeTab, onSel
         onSelectAsset(id);
     };
 
-    const handleDelete = async (e: React.MouseEvent, id: string) => {
-        e.stopPropagation();
-
-        setConfirmation({
-            message: "Delete saved step?",
-            detail: "This action cannot be undone.",
-            confirmText: "Delete",
-            onConfirm: async () => {
-                try {
-                    await api.delete(`/scripts/${id}`);
-                    fetchAssets();
-                    if (selectedId === id) setSelectedId(null);
-                    setConfirmation(null);
-                } catch (err) {
-                    console.error("Delete failed", err);
-                    setConfirmation({
-                        message: "Error",
-                        detail: "Failed to delete asset.",
-                        confirmText: "OK",
-                        onConfirm: () => setConfirmation(null)
-                    });
-                }
-            }
-        });
-    };
-
     return (
         <div className="flex flex-col h-full bg-white dark:bg-[#16191f] border-r border-gray-200 dark:border-gray-800 w-64 transition-colors">
             {/* Header */}
             <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between transition-colors">
                 <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
                     <Folder className="w-4 h-4 text-indigo-500" />
-                    Saved Steps
+                    Step Scenario
                 </h3>
                 <button
                     onClick={fetchAssets}
@@ -144,14 +118,6 @@ const StepAssetList: React.FC<StepAssetListProps> = ({ project, activeTab, onSel
                                             {asset.description}
                                         </div>
                                     )}
-                                </div>
-                                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                        onClick={(e) => handleDelete(e, asset.id)}
-                                        className="text-gray-600 hover:text-red-400 p-1 rounded hover:bg-red-400/10"
-                                    >
-                                        <Trash2 className="w-3 h-3" />
-                                    </button>
                                 </div>
                             </div>
                         </div>

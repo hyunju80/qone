@@ -6,7 +6,7 @@ import {
    ChevronRight, MoreVertical, Play, AlertCircle,
    CheckCircle2, Info, Send, Mail, MessageSquare,
    Target, Settings2, BarChart, History, Zap, ExternalLink,
-   GitBranch, Sparkles, Activity, ShieldCheck
+   GitBranch, Sparkles, Activity, ShieldCheck, Search
 } from 'lucide-react';
 import { TestSchedule, TestScript, Project, Incident, TriggerStrategy } from '../types';
 import { schedulesApi } from '../api/schedules';
@@ -28,6 +28,7 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
    const [editingId, setEditingId] = useState<string | null>(null);
    const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null); // Added state
    const [showIncidentModal, setShowIncidentModal] = useState<TestSchedule | null>(null);
+   const [searchQuery, setSearchQuery] = useState('');
    const [form, setForm] = useState<Partial<TestSchedule>>({
       name: '',
       scriptIds: [],
@@ -143,6 +144,17 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
       }
    };
 
+   const filteredSchedules = schedules.filter(sch => {
+      if (!searchQuery) return true;
+      const query = searchQuery.toLowerCase();
+      const nameMatch = sch.name.toLowerCase().includes(query);
+      const scriptMatch = sch.scriptIds.some(sid => {
+         const script = scripts.find(s => s.id === sid);
+         return script && script.name.toLowerCase().includes(query);
+      });
+      return nameMatch || scriptMatch;
+   });
+
    return (
       <div className="p-8 max-w-6xl mx-auto h-full overflow-y-auto custom-scrollbar">
          <div className="flex items-center justify-between mb-10">
@@ -158,8 +170,21 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
             </button>
          </div>
 
+         <div className="flex items-center gap-4 mb-6">
+            <div className="relative flex-1">
+               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+               <input
+                  type="text"
+                  placeholder="Search by schedule or script name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-colors"
+               />
+            </div>
+         </div>
+
          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-20">
-            {schedules.map(sch => {
+            {filteredSchedules.map(sch => {
                const hasIncident = sch.incidentHistory && sch.incidentHistory.length > 0;
                return (
                   <div key={sch.id} className={`bg-white dark:bg-[#16191f] border rounded-[2rem] p-6 transition-all group flex flex-col relative overflow-hidden ${sch.isActive ? 'border-gray-200 dark:border-gray-800 hover:border-indigo-500/30 shadow-xl shadow-gray-200/50 dark:shadow-black/50' : 'border-red-500/20 dark:border-red-900/20 opacity-60 grayscale'}`}>
@@ -246,7 +271,6 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
                         </button>
                         <div className="flex gap-1 transition-opacity">
                            <button onClick={() => handleEdit(sch)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-900 dark:text-gray-500 dark:hover:text-white transition-colors"><Edit3 className="w-4 h-4" /></button>
-                           <button onClick={() => handleDelete(sch.id)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
                         </div>
                      </div>
                   </div>

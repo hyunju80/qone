@@ -982,11 +982,14 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                                     className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded px-2 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-bold uppercase text-center focus:border-indigo-500 outline-none transition-colors"
                                                 >
                                                     <option value="">Select</option>
-                                                    {availableActions.map(act => (
-                                                        <option key={act.id} value={act.name}>{act.name}</option>
-                                                    ))}
+                                                    <option value="close_app" className="font-bold text-red-500 bg-red-50">Close App</option>
+                                                    <optgroup label="Custom Actions">
+                                                        {availableActions.map(act => (
+                                                            <option key={act.id} value={act.name}>{act.name}</option>
+                                                        ))}
+                                                    </optgroup>
                                                     {/* Legacy Support */}
-                                                    {step.action && !availableActions.some(a => a.name === step.action) && (
+                                                    {step.action && step.action !== 'close_app' && !availableActions.some(a => a.name === step.action) && (
                                                         <option value={step.action}>{step.action} (Legacy)</option>
                                                     )}
                                                 </select>

@@ -154,7 +154,7 @@ class AppStepRunner:
         action_name = step.get("action", "").lower()
         
         # 1. Check for Custom Action in DB
-        if db and action_name not in ["click", "tap", "send_keys", "type", "swipe", "app_start", "app_close", "wait"]:
+        if db and action_name not in ["click", "tap", "send_keys", "type", "swipe", "app_start", "app_close", "close_app", "wait"]:
             from app.models.test import TestAction
             custom_action = db.query(TestAction).filter(TestAction.name == action_name, TestAction.platform == "APP").first()
             if custom_action:
@@ -222,8 +222,38 @@ class AppStepRunner:
             elif action == "app_start":
                 # Option could be the app package or bundle ID if not already started
                 pass # Already handled by session start usually
-            elif action == "app_close":
-                self.driver.terminate_app(option)
+            elif action == "app_close" or action == "close_app":
+                app_id = option
+                if not app_id:
+                    caps = self.driver.capabilities
+                    app_id = caps.get("appPackage") or caps.get("appium:appPackage") or caps.get("bundleId") or caps.get("appium:bundleId")
+                    
+                    # If still not found (e.g., app launched via click instead of session caps)
+                    if not app_id:
+                        try:
+                            # Try to get the currently running package directly from the device (Android specific)
+                            app_id = self.driver.current_package
+                            logger.info(f"Retrieved current package from device: {app_id}")
+                        except Exception as e:
+                            logger.warning(f"Could not retrieve current package from device: {e}")
+
+                if app_id:
+                    try:
+                        self.driver.terminate_app(app_id)
+                    except Exception as e:
+                        logger.warning(f"Standard terminate_app failed for {app_id}: {e}")
+                        
+                    # For extra safety on Android, attempt to explicitly run force-stop via mobile shell
+                    try:
+                        self.driver.execute_script('mobile: shell', {
+                            'command': 'am',
+                            'args': ['force-stop', app_id]
+                        })
+                        logger.info(f"Executed 'am force-stop {app_id}' via shell")
+                    except Exception as shell_e:
+                        logger.info(f"Shell force-stop could not run or was not needed: {shell_e}")
+                else:
+                    return {"success": False, "error": "No appPackage/bundleId provided or found in caps definition to close"}
             elif action == "wait":
                 time.sleep(float(option) if option else 1.0)
             else:
