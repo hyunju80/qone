@@ -8,6 +8,8 @@ from app.api import deps
 import uuid
 
 from app.services.crawler import CrawlerService
+from app.services.app_runner import app_step_runner
+from app.services.device_service import device_service
 from app.core.config import settings
 
 router = APIRouter()
@@ -22,21 +24,33 @@ class SaveRequest(BaseModel):
     goal: str
     persona_id: Optional[str] = None
     persona_name: Optional[str] = None
+    platform: str = "WEB"
     history: List[Dict[str, Any]]
     final_status: str # passed / failed
+    capture_screenshots: bool = False
 
 class StartRequest(BaseModel):
     url: str
+    platform: str = "WEB"
+    device_id: Optional[str] = None
+    app_package: Optional[str] = None
+    capture_screenshots: bool = False
 
 class StepRequest(BaseModel):
     session_id: str
     goal: str
+    platform: str = "WEB"
     history: List[Dict[str, Any]] # Previous steps context
     username: Optional[str] = None
     password: Optional[str] = None
+    user_feedback: Optional[str] = None
+    persona_context: Optional[str] = None
+    override_step: Optional[Dict[str, Any]] = None
+    capture_screenshots: bool = False
 
 class StopRequest(BaseModel):
     session_id: str
+    platform: str = "WEB"
 
 class ScoreBreakdown(BaseModel):
     Goal_Alignment: int = 0
@@ -55,13 +69,15 @@ class ExplorationStep(BaseModel):
     status: str # In-Progress, Completed, Failed
     expectation: str = "" 
     observation: str = ""
+    expected_text: str = ""
+    screenshot_data: Optional[str] = None
 
 # --- API Endpoints ---
 
 @router.post("/start")
 async def start_session(req: StartRequest):
     """
-    Starts a browser session.
+    Starts a browser or mobile session.
     """
     session_id = str(uuid.uuid4())
     
@@ -69,8 +85,50 @@ async def start_session(req: StartRequest):
     print(f"[DEBUG] Current Event Loop Type: {type(asyncio.get_running_loop())}")
 
     try:
-        initial_state = await crawler_service.start_session(session_id, req.url)
-        return {"session_id": session_id, "state": initial_state}
+        if req.platform.upper() == "APP":
+            device_id = req.device_id
+            if not device_id:
+                connected = device_service.get_connected_devices()
+                if connected:
+                    device_id = connected[0]["id"]
+            
+            if not device_id:
+                raise HTTPException(status_code=400, detail="No connected devices found for App testing.")
+                
+            caps = {
+                "platformName": "Android",
+                "udid": device_id,
+                "automationName": "UiAutomator2"
+            }
+            if req.app_package:
+                caps["appPackage"] = req.app_package
+                
+            success, err = app_step_runner.start_session(caps)
+            if not success:
+                raise HTTPException(status_code=500, detail=f"Appium session failed: {err}")
+                
+            # Explicitly bring the app to the foreground if a package was provided
+            if req.app_package and app_step_runner.driver:
+                try:
+                    app_step_runner.driver.activate_app(req.app_package)
+                except Exception as activate_e:
+                    print(f"Warning: Core activate_app failed for {req.app_package}: {activate_e}")
+                
+            # Add a small delay and capture state
+            await asyncio.sleep(4)
+            xml_source = app_step_runner.get_clean_source()
+            initial_state = {
+                "title": f"App ({req.app_package or 'Device'})",
+                "url": "App Interface",
+                "html_structure": xml_source
+            }
+            if req.capture_screenshots:
+                initial_state["screenshot"] = app_step_runner.get_screenshot() or ""
+            return {"session_id": session_id, "state": initial_state}
+            
+        else:
+            initial_state = await crawler_service.start_session(session_id, req.url)
+            return {"session_id": session_id, "state": initial_state}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -84,7 +142,19 @@ async def next_step(req: StepRequest):
 
     # 1. Get Current State (or result of last action)
     try:
-         state = await crawler_service.get_state(req.session_id)
+        if req.platform.upper() == "APP":
+            xml_source = app_step_runner.get_clean_source()
+            state = {
+                "title": "Mobile App UI",
+                "url": "App Interface",
+                "html_structure": xml_source
+            }
+            if req.capture_screenshots:
+                state["screenshot"] = app_step_runner.get_screenshot() or ""
+        else:
+            state = await crawler_service.get_state(req.session_id)
+            if not req.capture_screenshots and "screenshot" in state:
+                state["screenshot"] = "" # Clear if not requested to save bandwidth
     except ValueError:
          raise HTTPException(status_code=404, detail="Session expired or not found")
 
@@ -94,13 +164,24 @@ async def next_step(req: StepRequest):
     if req.username and req.password:
         user_context_str = "Authorized User Context Available. Use placeholder {{USERNAME}} for the ID/Email field and {{PASSWORD}} for the password field."
 
+    persona_str = ""
+    if req.persona_context:
+        persona_str = f"Persona Context: {req.persona_context}\n    (Adopt this persona's traits, skill level, and typing speed when generating thoughts and actions.)"
+
+    feedback_str = ""
+    if req.user_feedback:
+        feedback_str = f"User's Latest Feedback / Instruction: {req.user_feedback}\n    (Prioritize this instruction over general goals. Overcome the previous failure with this context.)"
+
     prompt = f"""
     You are a Self-Driving Browser Agent.
     Goal: {req.goal}
+    {persona_str}
+    {feedback_str}
+
     My Context: {user_context_str}
     
     Current Page: {state['title']} ({state['url']})
-    HTML Structure (Simplified):
+    UI Structure (Simplified HTML/XML):
     {state['html_structure']}
     
     History:
@@ -110,11 +191,14 @@ async def next_step(req: StepRequest):
     Determine the NEXT interaction to move towards the goal.
     
     CRITICAL RULES for Action Selection:
-    1. **FAIL-FAST**: If the previous 2 steps were 'wait' or if the page state has not changed after an action, you MUST change strategy or declare 'Failed'. Do NOT loop 'wait'.
-    2. **STUCK PREVENTION**: If you cannot find a suitable element to interact with, do NOT guess. Mark status as 'Failed' with a clear thought explaining why.
-    3. **LOGIN**: If your goal is to login and you are on a login page, prioritize finding the ID/Password inputs.
-    4. **MULTI-STEP GOALS**: If the user provided a numbered list or sequence of tasks, you MUST complete ALL of them. Do not set status to 'Completed' until the final step is done.
-    5. **LANGUAGE**: All 'thought' and 'description' fields in the JSON output MUST be written in Korean (한국어).
+    1. **LOADING WAIT**: If an app was just launched or a button was clicked, the next screen might be loading. It is OK to output a 'wait' action (e.g., 3-5 seconds) before declaring failure.
+    2. **STUCK PREVENTION**: If you cannot find a suitable element to interact with and the page is fully loaded, do NOT guess. Mark status as 'Failed' with a clear thought explaining why.
+    3. **MISSING ELEMENTS (SCROLLING)**: If your target element (e.g., a specific menu, text, or button) is not visible in the current UI structure, you MUST output a 'scroll' action (e.g., action_target='', action_value='down', 'up', 'left', or 'right') to search for it before declaring failure.
+    4. **LOGIN**: If your goal is to login and you are on a login page, prioritize finding the ID/Password inputs.
+    5. **MULTI-STEP GOALS**: If the user provided a numbered list or sequence of tasks, you MUST complete ALL of them. Do not set status to 'Completed' until the final step is done.
+    6. **APP SELECTORS (IMPORTANT)**: If platform is APP, prefer using 'accessibility_id' if available. If not, use exact text for 'action_target'. E.g. "Search", "Login", or basic IDs like "com.example:id/button". DO NOT GUESS complex XPaths if you see simple text.
+    7. **LANGUAGE**: All 'thought' and 'description' fields in the JSON output MUST be written in Korean (한국어).
+    8. **ASSERTION (expected_text)**: You MUST provide an EXACT, LITERAL string of text that you expect to see on the screen after your action succeeds. This will be used for a strict string-matching assertion by a dumb script runner. Do NOT write natural language like "I should see the login success message." Write EXACTLY "Login Success" or "Welcome, User". If no text is expected, leave it blank.
     
     Safety Instruction:
     - Never hallucinate passwords.
@@ -133,62 +217,106 @@ async def next_step(req: StepRequest):
         "observation": "What do you see on the current page? (Actual Outcome of previous step)",
         "thought": "Reasoning...",
         "action_type": "click/type/scroll/wait/finish",
-        "action_target": "css_selector",
+        "action_target": "{'xpath, element_id, accessibility_id or EXACT text' if req.platform.upper() == 'APP' else 'css_selector'}",
         "action_value": "text_to_type_or_placeholder",
         "expectation": "What should happen after this action? (Expected Outcome)",
+        "expected_text": "EXACT literal text string expected on the next screen for assertion (e.g. 'Payment Complete')",
         "description": "Short description for UI",
         "status": "In-Progress/Completed/Failed"
     }}
     """
 
-    # 3. Call LLM
-    from google import genai
-    from google.genai import types
-    client = genai.Client(api_key=settings.GOOGLE_API_KEY)
-    
-    # Generate content (Async?)
-    # Validating if google-genai supports async. It does via client.aio...
-    # But here we used sync calls inside async def?
-    # If the library is sync, we should use run_in_threadpool for THIS part if it blocks?
-    # Actually, google-genai new SDK has async support?
-    # Let's keep it sync for now as it's just an HTTP call, or use client.aio if available.
-    # To minimize risk, I will wrap LLM call in threadpool if it's sync.
-    
-    def _call_llm():
-        return client.models.generate_content(
-            model=settings.GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=ExplorationStep
-            )
+    # 3. Call LLM OR Use Override
+    if req.override_step:
+        # User manually provided the next step parameters
+        op = req.override_step
+        plan = ExplorationStep(
+            step_number=len(req.history) + 1,
+            matching_score=100,
+            observation="Manual Override",
+            thought=op.get("thought", "User explicitly requested this action."),
+            action_type=op.get("action_type", "wait"),
+            action_target=op.get("action_target", ""),
+            action_value=op.get("action_value", ""),
+            description="Manual Step: " + op.get("action_type", "action") + " on " + op.get("action_target", ""),
+            status="In-Progress"
         )
-    
-    response = await run_in_threadpool(_call_llm)
-    
-    if not response.parsed:
-         raise ValueError("LLM failed to return JSON")
-         
-    plan: ExplorationStep = response.parsed
+    else:
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+        
+        def _call_llm():
+            return client.models.generate_content(
+                model=settings.GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=ExplorationStep
+                )
+            )
+        
+        response = await run_in_threadpool(_call_llm)
+        
+        if not response.parsed:
+             raise ValueError("LLM failed to return JSON")
+             
+        plan = response.parsed
     
     # 4. Execute Action (in backend)
     # Inject credentials
+    if plan.action_type:
+        plan.action_type = plan.action_type.lower()
+        
     if plan.action_type == "type":
         if "{{PASSWORD}}" in plan.action_value and req.password:
             plan.action_value = plan.action_value.replace("{{PASSWORD}}", req.password)
         if "{{USERNAME}}" in plan.action_value and req.username:
             plan.action_value = plan.action_value.replace("{{USERNAME}}", req.username)
         
-    # Execute via Crawler
-    # Execute via Crawler
+    # Execute via Runner
     if plan.action_type in ["click", "type", "scroll", "wait", "navigate"]:
         try:
-            await crawler_service.perform_action(
-                req.session_id, 
-                plan.action_type, 
-                plan.action_target, 
-                plan.action_value
-            )
+            if req.platform.upper() == "APP":
+                # Heuristic mapping for Appium Action execution (with fallback in app_runner)
+                s_type = "XPATH"
+                
+                target = plan.action_target or ""
+                if not target.startswith("/"):
+                    if ":id/" in target or "id/" in target:
+                        s_type = "ID"
+                    elif "scroll" not in plan.action_type and target:
+                        # If it's pure text without xpath characters, we'll let app_runner handle it via XPATH fallback
+                        s_type = "XPATH"
+                        
+                step_dict = {
+                    "action": plan.action_type,
+                    "selector_type": s_type,
+                    "selector_value": target,
+                    "option": plan.action_value
+                }
+                action_res = app_step_runner.execute_step(step_dict)
+            else:
+                action_res = await crawler_service.perform_action(
+                    req.session_id, 
+                    plan.action_type, 
+                    plan.action_target, 
+                    plan.action_value
+                )
+                
+            if action_res and "error" in action_res and action_res["error"]:
+                err_msg = action_res['error']
+                if "Target closed" in err_msg or "has been closed" in err_msg:
+                    print(f"[INFO] Browser/Popup closed after action {plan.action_type}. Marking as Completed.")
+                    plan.status = "Completed"
+                    plan.observation = "Action successful (Target page or popup closed)."
+                else:
+                    print(f"[runner error] {err_msg}")
+                    plan.status = "Failed"
+                    plan.observation = f"Execution Error: {err_msg}"
+            else:
+                plan.observation = "Action executed successfully."
+                
         except Exception as e:
             # If browser closed (Target closed), assume it was a terminal action (like logout closing window)
             msg = str(e)
@@ -199,38 +327,62 @@ async def next_step(req: StepRequest):
             else:
                 raise e
         
+        # Finally, attach screenshot after action if requested
+        if req.capture_screenshots:
+            if req.platform.upper() == "APP":
+                plan.screenshot_data = app_step_runner.get_screenshot() or ""
+            else:
+                final_state = await crawler_service.get_state(req.session_id)
+                plan.screenshot_data = final_state.get("screenshot", "")
+
     return plan
 
 @router.post("/stop")
 async def stop_session(req: StopRequest):
-    await crawler_service.close_session(req.session_id)
+    if req.platform.upper() == "APP":
+        app_step_runner.stop_session()
+    else:
+        await crawler_service.close_session(req.session_id)
     return {"status": "cost-stopped"}
 
 @router.post("/save")
 async def save_history(req: SaveRequest):
     """
-    Saves the full exploration history to DB.
+    Saves the exploration session and directly converts it into a TestScript Asset.
+    Bypasses TestHistory and Scenario generation.
     """
-    from app.services.history_service import history_service
     from app.db.session import SessionLocal
+    from app.models.ai import AiExplorationSession
+    from app.services.asset_manager import AssetManager
+    import uuid
 
     db = SessionLocal()
     try:
-        session_data = {
-            "url": req.url,
-            "goal": req.goal,
-            "persona_id": req.persona_id,
-            "persona_name": req.persona_name
-        }
+        session_id = str(uuid.uuid4())
         
-        history_id = history_service.save_ai_session(
-            db, 
-            req.dict(), 
-            req.history, 
-            req.final_status,
-            project_id=req.project_id
+        # Calculate simple score average if available
+        final_score = 0
+        if req.history:
+            scores = [s.get("matching_score", 0) for s in req.history if "matching_score" in s]
+            if scores:
+                final_score = int(sum(scores) / len(scores))
+
+        # 1. Create AiExplorationSession
+        ai_session = AiExplorationSession(
+            id=session_id,
+            target_url=req.url,
+            goal=req.goal,
+            persona_id=req.persona_id,
+            steps_data=req.history,
+            final_score=final_score
         )
-        return {"status": "saved", "history_id": history_id}
+        db.add(ai_session)
+        
+        # 2. Assetize into TestScript immediately
+        manager = AssetManager()
+        script = manager.convert_session_to_script(db, ai_session, req.project_id, req.platform, req.capture_screenshots)
+        
+        return {"status": "saved", "script_id": script.id, "session_id": session_id}
     except Exception as e:
         import traceback
         traceback.print_exc()

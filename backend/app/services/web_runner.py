@@ -108,7 +108,7 @@ class WebStepRunner:
         action = step.get("action", "").lower()
         selector_type = (step.get("selector_type") or step.get("selectorType") or "").lower()
         selector_value = step.get("selector_value") or step.get("selectorValue")
-        option = step.get("option", "")
+        option = step.get("inputValue") or step.get("option") or step.get("value", "")
 
         try:
             pw_selector = selector_value
@@ -139,6 +139,20 @@ class WebStepRunner:
                 await self.page.wait_for_selector(pw_selector, state="visible", timeout=5000)
             else:
                 return {"success": False, "error": f"Unsupported web action: {action}"}
+
+            # Apply post-action Step Assertion if configured
+            assert_text = step.get("assertText")
+            if assert_text and str(assert_text).strip() != "":
+                logger.info(f"WebStepRunner: Verifying step assertion: '{assert_text}'")
+                await asyncio.sleep(2) # Wait for page transition / UI to settle
+                try:
+                    # Simple text content check since Playwright exposes raw DOM
+                    content = await self.page.content()
+                    if assert_text not in content:
+                        return {"success": False, "error": f"Assertion Failed: Expected text '{assert_text}' not found on screen."}
+                    logger.info("WebStepRunner: Assertion Passed.")
+                except Exception as e:
+                    return {"success": False, "error": f"Assertion execution failed: {e}"}
 
             return {"success": True}
         except Exception as e:

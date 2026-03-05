@@ -94,9 +94,11 @@ class CrawlerService:
         return await self._run_in_bg(self._start_session_impl(session_id, url))
 
     async def _start_session_impl(self, session_id: str, url: str) -> Dict[str, Any]:
-        if session_id in self._sessions:
+        # To prevent zombie browsers stealing resources on consecutive runs,
+        # aggressively close ANY existing sessions before starting a new one.
+        for existing_id in list(self._sessions.keys()):
             try:
-                await self._close_session_impl(session_id)
+                await self._close_session_impl(existing_id)
             except:
                 pass
 
@@ -121,11 +123,7 @@ class CrawlerService:
         
         return await self._get_state_impl(session_id)
 
-    def _get_active_page(self, session_id: str) -> Page:
-        # Note: This helper might need to return the page object directly.
-        # But in async, we can't easily wait for 'pages' property if it was a property.
-        # Actually context.pages is a property list, so it's sync access for the list object,
-        # but the page object methods are async.
+    async def _get_active_page(self, session_id: str) -> Page:
         session = self._ensure_session(session_id)
         context = session.get("context")
         
@@ -133,15 +131,18 @@ class CrawlerService:
         if context and context.pages:
             target_page = context.pages[-1]
             try:
-                # bring_to_front is async
-                # We can't await here if this is sync.
-                # So we should make _get_active_page async or just return the page.
-                pass 
+                # bring_to_front is async, now correctly awaited
+                await target_page.bring_to_front()
             except:
                 pass
             return target_page
-            
-        return session["page"]
+        
+        page = session["page"]
+        try:
+             await page.bring_to_front()
+        except:
+             pass
+        return page
 
     async def _bring_to_front(self, page: Page):
         try:
@@ -156,20 +157,27 @@ class CrawlerService:
         return await self._run_in_bg(self._perform_action_impl(session_id, action_type, selector, value))
 
     async def _perform_action_impl(self, session_id: str, action_type: str, selector: str = None, value: str = None) -> Dict[str, Any]:
-        page = self._get_active_page(session_id)
-        await self._bring_to_front(page)
+        page = await self._get_active_page(session_id)
         
         try:
             if action_type == "click":
+                # Convert jQuery :contains to Playwright :has-text
+                if ":contains(" in selector:
+                    selector = selector.replace(":contains(", ":has-text(")
+                    
                 # Fallback to loose matching if strict selector fails
                 try:
-                    await page.click(selector, timeout=3000)
-                except:
-                    # Try finding by text if selector looks like text
-                    if not selector.startswith((".", "#", "//")):
-                         await page.get_by_text(selector).first.click(timeout=3000)
+                    await page.click(selector, timeout=3000, force=True)
+                except Exception as click_err:
+                    # Try finding by text if selector looks like pure text
+                    if not any(char in selector for char in [".", "#", ">", ":", "[", "]"]):
+                         await page.get_by_text(selector).first.click(timeout=3000, force=True)
                     else:
-                        raise
+                        # As a last resort, force a JavaScript click directly on the DOM node to bypass any Playwright visibility checks
+                        try:
+                            await page.evaluate(f"document.querySelector(`{selector}`).click()")
+                        except Exception:
+                            raise click_err
 
             elif action_type == "type":
                  await page.fill(selector, value)
@@ -198,8 +206,7 @@ class CrawlerService:
         return await self._run_in_bg(self._get_state_impl(session_id))
 
     async def _get_state_impl(self, session_id: str) -> Dict[str, Any]:
-        page = self._get_active_page(session_id)
-        await self._bring_to_front(page)
+        page = await self._get_active_page(session_id)
         
         # Screenshot
         try:
@@ -215,9 +222,21 @@ class CrawlerService:
         except:
             clean_html = "<html>Error capturing DOM</html>"
 
+        # Title and URL (Safe extraction in case target closed)
+        try:
+            page_title = await page.title()
+            page_url = page.url
+        except Exception as e:
+            if "Target closed" in str(e) or "has been closed" in str(e):
+                page_title = "Browser Closed"
+                page_url = "about:blank"
+            else:
+                page_title = "Error reading title"
+                page_url = "Error reading url"
+
         return {
-            "title": await page.title(),
-            "url": page.url,
+            "title": page_title,
+            "url": page_url,
             "html_structure": clean_html,
             "screenshot": screenshot_b64
         }

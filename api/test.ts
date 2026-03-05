@@ -12,6 +12,7 @@ const mapScript = (s: any): TestScript => {
         isActive: s.is_active !== undefined ? s.is_active : s.isActive,
         isFavorite: s.is_favorite !== undefined ? s.is_favorite : s.isFavorite,
         lastRun: s.last_run || s.lastRun,
+        captureScreenshots: s.capture_screenshots !== undefined ? s.capture_screenshots : false,
         // Ensure persona relation is preserved if returned
         persona: s.persona
     };

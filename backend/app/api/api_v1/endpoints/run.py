@@ -39,6 +39,7 @@ class RunStepsRequest(BaseModel):
     script_name: Optional[str] = None
     trigger: str = "manual"
     persona_name: Optional[str] = "Default"
+    capture_screenshots: bool = False
 
 class DryRunResponse(BaseModel):
     run_id: str
@@ -243,7 +244,8 @@ async def start_active_steps_run(
                         action = step.get("action")
                         # Support both camelCase (from UI) and snake_case (from DB)
                         target = step.get("selectorValue") or step.get("selector_value") or step.get("target")
-                        value = step.get("option")
+                        value = step.get("inputValue") or step.get("option") or step.get("value")
+                        description = step.get("description")
                         
                         log_msg = f"Step {i+1}: [{action}]"
                         if target: log_msg += f" target={target}"
@@ -254,11 +256,12 @@ async def start_active_steps_run(
                         res = await runner.execute_step(step) if request.platform.upper() == "WEB" else runner.execute_step(step, db=db)
                         step_end = asyncio.get_event_loop().time()
                         
-                        # Capture logic: screen option OR failure
-                        should_capture = step.get("screenshot") is True or not res["success"]
-                        screen_data = None
-                        if should_capture:
-                            screen_data = await update_screen(f"result of Step {i+1}")
+                        # Always capture for the live execution stream
+                        current_screen_b64 = await update_screen(f"stream update after Step {i+1}")
+                        
+                        # Record logic: attach to DB history if requested OR failure
+                        should_capture = request.capture_screenshots or step.get("screenshot") is True or not res["success"]
+                        screen_data = current_screen_b64 if should_capture else None
 
                         result_entry = {
                             "step_number": i + 1,
@@ -270,7 +273,9 @@ async def start_active_steps_run(
                             "metadata": {
                                 "action": action,
                                 "target": target,
-                                "value": value
+                                "value": value,
+                                "description": description,
+                                "assertText": step.get("assertText")
                             }
                         }
                         step_results.append(result_entry)
@@ -282,7 +287,7 @@ async def start_active_steps_run(
                             break # Stop execution on failure
                         
                         log(f"Step {i+1} PASSED ({round(step_end - step_start, 1)}s)")
-                        await asyncio.sleep(0.3)
+                        await asyncio.sleep(1.0) # Added delay to allow the live view to keep up visually
 
                     if overall_status == "passed":
                         log("All steps completed successfully.")

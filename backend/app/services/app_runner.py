@@ -52,13 +52,22 @@ class AppStepRunner:
             processed_caps["appium:fullContextList"] = True
             processed_caps["appium:enableMultiWindows"] = True
             processed_caps["appium:allowInvisibleElements"] = True
+            processed_caps["appium:disableWindowAnimation"] = True
+            processed_caps["appium:ignoreUnimportantViews"] = False
+            
+            # Prevent app data from being cleared and prevent force-stopping the app
+            if "appium:noReset" not in processed_caps:
+                processed_caps["appium:noReset"] = True
+            if "appium:dontStopAppOnReset" not in processed_caps:
+                processed_caps["appium:dontStopAppOnReset"] = True
 
             logger.info(f"Starting Appium session with capabilities: {processed_caps}")
             options = AppiumOptions()
             options.load_capabilities(processed_caps)
             self.driver = webdriver.Remote(self.command_executor, options=options)
+            self.driver.implicitly_wait(0) # Disable implicit wait to use rapid explicit polling
             self.current_device_id = capabilities.get("udid") or capabilities.get("deviceName")
-            logger.info("Appium session started successfully.")
+            logger.info("Appium session started successfully with 0s implicit wait.")
             
             # Fetch and store window size
             try:
@@ -105,11 +114,52 @@ class AppStepRunner:
                 time.sleep(1) # Wait a bit for the UI to stabilize
             except Exception as e:
                 logger.error(f"Failed to capture page source: {e}")
-                return None
-        
+                
         return source # Return whatever we have at the end
 
-    def find_element(self, selector_type: str, selector_value: str):
+    def get_clean_source(self) -> str:
+        """Returns a simplified XML source for LLM consumption."""
+        source = self.get_page_source()
+        if not source:
+            return ""
+        
+        try:
+            from bs4 import BeautifulSoup
+            import re
+            
+            # Use xml parser for Android UI Automator dump
+            soup = BeautifulSoup(source, 'xml')
+            
+            allowed_attrs = ['resource-id', 'text', 'content-desc', 'class', 'clickable', 'scrollable', 'focused', 'checked', 'selected', 'bounds']
+            
+            for tag in soup.find_all(True):
+                # Remove generic layout wrappers that have no identity and aren't interactive
+                if tag.name.endswith('Layout') or tag.name.endswith('View'):
+                    has_identity = tag.get('resource-id') or (tag.get('text') and tag.get('text').strip()) or tag.get('content-desc')
+                    is_interactive = tag.get('clickable') == 'true' or tag.get('scrollable') == 'true' or tag.get('checkable') == 'true'
+                    if not has_identity and not is_interactive and not tag.find_all(True, recursive=False):
+                        # Empty generic view with no properties -> decompose
+                        tag.decompose()
+                        continue
+                        
+                attrs = list(tag.attrs.keys())
+                for attr in attrs:
+                    if attr not in allowed_attrs:
+                        del tag.attrs[attr]
+                        
+            clean_xml = soup.prettify()
+            clean_xml = re.sub(r'\n\s*\n', '\n', clean_xml)
+            
+            if len(clean_xml) > 100000:
+                clean_xml = clean_xml[:100000] + "...(truncated)"
+                
+            return clean_xml
+            
+        except Exception as e:
+            logger.error(f"Error cleaning XML source: {e}")
+            return source
+
+    def find_element(self, selector_type: str, selector_value: str, timeout: int = 20):
         if not self.driver:
             return None
         
@@ -124,18 +174,195 @@ class AppStepRunner:
         }
         
         by = by_map.get(selector_type.upper(), AppiumBy.XPATH)
+        actual_value = selector_value
+        if selector_type.upper() == "TEXT":
+            by = AppiumBy.XPATH
+            actual_value = f"//*[@text='{selector_value}' or @content-desc='{selector_value}']"
+            
+        start_time = time.time()
+        logged_3s = False
+        logged_6s = False
+        scrolled_once = False
+        
+        # [WEBVIEW ACCESSIBILITY BRIDGE DEFIBRILLATOR]
+        # Android's Native UIAutomator often drops WebView nodes after navigation.
+        # By briefly attaching ChromeDriver (switching context) and switching back, 
+        # we force the OS to rebuild the accessibility tree including the HTML DOM.
         try:
-            return self.driver.find_element(by=by, value=selector_value)
-        except NoSuchElementException:
-            # Robust fallback for ID on Android: try partial match via XPath if it's a simple name
+            contexts = self.driver.contexts
+            webview = next((c for c in contexts if "WEBVIEW" in c), None)
+            if webview:
+                self.driver.switch_to.context(webview)
+                # Forcing a read of the page source here acts as a defibrillator, 
+                # making Chrome actually evaluate the DOM and pass it to Android Accessibility.
+                _ = self.driver.page_source 
+                self.driver.switch_to.context("NATIVE_APP")
+                logger.info("Woke up Chromium Accessibility Bridge via context evaluate.")
+        except Exception as e:
+            logger.debug(f"Failed to pulse WebView bridge: {e}")
+            # Ensure we are back in NATIVE
+            try:
+                self.driver.switch_to.context("NATIVE_APP")
+            except:
+                pass
+        
+        while time.time() - start_time < timeout:
+            try:
+                return self.driver.find_element(by=by, value=actual_value)
+            except Exception:
+                pass
+                
+            # 1. If it was ID, try XPath partial match
             if selector_type.upper() == "ID" and ":" not in selector_value:
                 xpath_fallback = f"//*[contains(@resource-id, 'id/{selector_value}') or @resource-id='{selector_value}']"
-                logger.info(f"ID lookup failed, trying XPath fallback: {xpath_fallback}")
                 try:
                     return self.driver.find_element(by=AppiumBy.XPATH, value=xpath_fallback)
+                except Exception:
+                    pass
+                    
+            # 2. Try as pure text match
+            if selector_type.upper() in ["ACCESSIBILITY_ID", "ID", "XPATH", "TEXT"] and not selector_value.startswith("//"):
+                text_xpath = f"//*[@text='{selector_value}' or @content-desc='{selector_value}']"
+                try:
+                    return self.driver.find_element(by=AppiumBy.XPATH, value=text_xpath)
+                except Exception:
+                    pass
+                    
+            # 3. Try partial text match
+            if selector_type.upper() in ["ACCESSIBILITY_ID", "ID", "XPATH", "TEXT"] and not selector_value.startswith("//"):
+                partial_xpath = f"//*[contains(@text, '{selector_value}') or contains(@content-desc, '{selector_value}')]"
+                try:
+                    return self.driver.find_element(by=AppiumBy.XPATH, value=partial_xpath)
+                except Exception:
+                    pass
+                    
+            # 4. Try fuzzy word match (tolerate space/newline differences)
+            if selector_type.upper() in ["ACCESSIBILITY_ID", "ID", "XPATH", "TEXT"] and not selector_value.startswith("//"):
+                words = selector_value.split()
+                if len(words) > 1:
+                    longest_word = sorted(words, key=len, reverse=True)[0]
+                    if len(longest_word) >= 2:
+                        fuzzy_xpath = f"//*[contains(@text, '{longest_word}') or contains(@content-desc, '{longest_word}')]"
+                        try:
+                            return self.driver.find_element(by=AppiumBy.XPATH, value=fuzzy_xpath)
+                        except Exception:
+                            pass
+                            
+            # 5. Try precise UI Automator match
+            if selector_type.upper() in ["ACCESSIBILITY_ID", "ID", "XPATH", "TEXT"] and not selector_value.startswith("//"):
+                uiauto_exact_text = f'new UiSelector().text("{selector_value}")'
+                uiauto_exact_desc = f'new UiSelector().description("{selector_value}")'
+                try:
+                    return self.driver.find_element(by=AppiumBy.ANDROID_UIAUTOMATOR, value=uiauto_exact_text)
+                except Exception:
+                    try:
+                        return self.driver.find_element(by=AppiumBy.ANDROID_UIAUTOMATOR, value=uiauto_exact_desc)
+                    except Exception:
+                        pass
+                        
+            # 6. Try fuzzy UI Automator match
+            if selector_type.upper() in ["ACCESSIBILITY_ID", "ID", "XPATH", "TEXT"] and not selector_value.startswith("//"):
+                words = selector_value.split()
+                if len(words) > 1:
+                    longest_word = sorted(words, key=len, reverse=True)[0]
+                    if len(longest_word) >= 2:
+                        uiauto_fuzzy_text = f'new UiSelector().textContains("{longest_word}")'
+                        uiauto_fuzzy_desc = f'new UiSelector().descriptionContains("{longest_word}")'
+                        try:
+                            return self.driver.find_element(by=AppiumBy.ANDROID_UIAUTOMATOR, value=uiauto_fuzzy_text)
+                        except Exception:
+                            try:
+                                return self.driver.find_element(by=AppiumBy.ANDROID_UIAUTOMATOR, value=uiauto_fuzzy_desc)
+                            except Exception:
+                                pass
+            
+            time.sleep(0.5)
+            elapsed = time.time() - start_time
+            
+            # Auto-scroll fallback if halfway through timeout and not found
+            if elapsed > timeout / 2 and not scrolled_once:
+                logger.info(f"Element {selector_value} not found after {timeout/2}s. Attempting auto-scroll to trigger lazy loading...")
+                try:
+                    # Switch to native to perform swipe reliably
+                    contexts = self.driver.contexts
+                    if any("WEBVIEW" in c for c in contexts):
+                        self.driver.switch_to.context('NATIVE_APP')
+                    size = self.driver.get_window_size()
+                    start_x = size['width'] // 2
+                    start_y = int(size['height'] * 0.2)
+                    end_y = int(size['height'] * 0.8)
+                    
+                    try:
+                        from selenium.webdriver.common.actions.action_builder import ActionBuilder
+                        from selenium.webdriver.common.actions.pointer_input import PointerInput
+                        from selenium.webdriver.common.actions import interaction
+                        
+                        pointer = PointerInput(interaction.POINTER_TOUCH, "touch")
+                        actions = ActionBuilder(self.driver, mouse=pointer)
+                        actions.pointer_action.move_to_location(start_x, start_y)
+                        actions.pointer_action.pointer_down()
+                        actions.pointer_action.pause(0.2)
+                        # Drag down to scroll page UP
+                        actions.pointer_action.move_to_location(start_x, end_y)
+                        actions.pointer_action.release()
+                        actions.perform()
+                    except Exception as inner_e:
+                        logger.warning(f"W3C SwipeDown failed: {inner_e}")
+                        
+                    time.sleep(1.5) # Wait for WebView to render new items
+                except Exception as e:
+                    logger.warning(f"Auto-scroll fallback failed completely: {e}")
+                scrolled_once = True
+                
+            # Diagnostic periodic logging
+            if elapsed > 3.0 and not logged_3s:
+                try:
+                    import re
+                    src = self.driver.page_source
+                    txts = re.findall(r'text="([^"]+)"', src)
+                    dscs = re.findall(r'content-desc="([^"]+)"', src)
+                    vis = list(set([t for t in (txts + dscs) if t.strip()]))
+                    if vis:
+                        msg = f"[DEBUG 3s] UI text available: {', '.join(vis[:15])} ..."
+                        print(msg, flush=True)
+                        logger.info(msg)
                 except:
                     pass
-            raise
+                logged_3s = True
+                
+            if elapsed > 6.0 and not logged_6s:
+                try:
+                    import re
+                    src = self.driver.page_source
+                    txts = re.findall(r'text="([^"]+)"', src)
+                    dscs = re.findall(r'content-desc="([^"]+)"', src)
+                    vis = list(set([t for t in (txts + dscs) if t.strip()]))
+                    if vis:
+                        msg = f"[DEBUG 6s] UI text available: {', '.join(vis[:15])} ..."
+                        print(msg, flush=True)
+                        logger.info(msg)
+                except:
+                    pass
+                logged_6s = True
+            
+        err_msg = f"Could not find element using {selector_type}={selector_value} or any fallbacks."
+        
+        # Collect available text on screen for debugging
+        try:
+            import re
+            
+            src = self.driver.page_source
+            txts = re.findall(r'text="([^"]+)"', src)
+            dscs = re.findall(r'content-desc="([^"]+)"', src)
+            vis = list(set([t for t in (txts + dscs) if t.strip()]))
+            if vis:
+                sample = ", ".join(vis[:15])
+                err_msg += f"\n[DEBUG] Available text on screen: {sample} ..."
+        except Exception:
+            pass
+            
+        logger.error(f"Failed to find element after {timeout}s: {selector_type}={selector_value}")
+        raise NoSuchElementException(err_msg)
 
     def execute_step(self, step: Dict[str, Any], db: Optional[Any] = None) -> Dict[str, Any]:
         """
@@ -154,7 +381,7 @@ class AppStepRunner:
         action_name = step.get("action", "").lower()
         
         # 1. Check for Custom Action in DB
-        if db and action_name not in ["click", "tap", "send_keys", "type", "swipe", "app_start", "app_close", "close_app", "wait"]:
+        if db and action_name not in ["click", "tap", "send_keys", "type", "swipe", "scroll", "app_start", "activateapp", "app_close", "close_app", "wait"]:
             from app.models.test import TestAction
             custom_action = db.query(TestAction).filter(TestAction.name == action_name, TestAction.platform == "APP").first()
             if custom_action:
@@ -165,7 +392,15 @@ class AppStepRunner:
         # Support both snake_case (DB/Backend) and camelCase (Frontend recording)
         selector_type = step.get("selector_type") or step.get("selectorType", "")
         selector_value = step.get("selector_value") or step.get("selectorValue", "")
-        option = step.get("option", "")
+        
+        # Failsafe for legacy assets that erroneously saved mobile selectors as CSS
+        if selector_type.upper() == "CSS":
+            if ":id/" in selector_value or selector_value.startswith("id/"):
+                selector_type = "ID"
+            else:
+                selector_type = "XPATH"
+        
+        option = step.get("option") or step.get("inputValue") or step.get("value", "")
         sleep_time = step.get("sleep", 0)
 
         try:
@@ -177,23 +412,107 @@ class AppStepRunner:
                 element = None
                 try:
                     element = self.find_element(selector_type, selector_value)
+                    
+                    # Pre-fetch coordinates in case fallback is needed, avoiding stale reference errors later
+                    try:
+                        location = element.location
+                        size = element.size
+                        center_x = location['x'] + (size['width'] / 2)
+                        center_y = location['y'] + (size['height'] / 2)
+                    except Exception:
+                        center_x, center_y = None, None
+                        
                     # Try standard click first
                     element.click()
                 except Exception as e:
-                    logger.warning(f"Standard click failed: {e}")
-                    if element:
+                    err_str = str(e).lower()
+                    logger.warning(f"Standard click failed: {err_str}")
+                    
+                    # If element is stale or detached, the click likely succeeded & caused instant navigation
+                    if "stale" in err_str or "detached" in err_str or "not attached" in err_str:
+                        logger.info("Element became stale during click. Assuming click succeeded and page transitioned.")
+                    elif element and center_x is not None:
                         try:
                             # Fallback: Get element center and tap
-                            location = element.location
-                            size = element.size
-                            center_x = location['x'] + (size['width'] / 2)
-                            center_y = location['y'] + (size['height'] / 2)
                             self.driver.tap([(center_x, center_y)])
                             logger.info(f"Fallback tap at ({center_x}, {center_y}) succeeded.")
                         except Exception as e2:
-                            logger.error(f"Fallback tap also failed: {e2}")
-                            return {"success": False, "error": f"Element found but not clickable: {selector_value}"}
+                            err2_str = str(e2).lower()
+                            if "stale" in err2_str or "detached" in err2_str or "not attached" in err2_str:
+                                logger.info("Element became stale during fallback tap. Assuming tap succeeded.")
+                            else:
+                                logger.error(f"Fallback tap also failed: {e2}")
+                                return {"success": False, "error": f"Element found but not clickable: {selector_value}"}
                     else:
+                        # FALLBACK: Execute click directly in WEBVIEW Javascript
+                        try:
+                            contexts = self.driver.contexts
+                            webview = next((c for c in contexts if "WEBVIEW" in c), None)
+                            if webview and selector_type.upper() in ["TEXT", "XPATH", "CSS", "ID"]:
+                                logger.info(f"NATIVE search failed for {selector_value}. Falling back to WEBVIEW JS execution.")
+                                self.driver.switch_to.context(webview)
+                                
+                                success = False
+                                if selector_type.upper() == "TEXT":
+                                    js_script = """
+                                    var target = arguments[0];
+                                    var els = document.querySelectorAll('*');
+                                    for (var i=0; i<els.length; i++) {
+                                        if (els[i].innerText && (els[i].innerText.trim() === target || els[i].textContent.trim() === target)) {
+                                            els[i].scrollIntoView({block: 'center'});
+                                            els[i].click(); return true;
+                                        }
+                                    }
+                                    for (var i=0; i<els.length; i++) {
+                                        if (els[i].innerText && els[i].innerText.includes(target)) {
+                                            els[i].scrollIntoView({block: 'center'});
+                                            els[i].click(); return true;
+                                        }
+                                    }
+                                    var words = target.split(' ').filter(w => w.length >= 2).sort((a,b) => b.length - a.length);
+                                    if (words.length > 0) {
+                                        for (var i=0; i<els.length; i++) {
+                                            if (els[i].innerText && els[i].innerText.includes(words[0])) {
+                                                els[i].scrollIntoView({block: 'center'});
+                                                els[i].click(); return true;
+                                            }
+                                        }
+                                    }
+                                    return false;
+                                    """
+                                    success = self.driver.execute_script(js_script, selector_value)
+                                elif selector_type.upper() == "XPATH":
+                                    js_script = """
+                                    try {
+                                        var el = document.evaluate(arguments[0], document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                                        if (el) { el.scrollIntoView({block: 'center'}); el.click(); return true; }
+                                    } catch(e) {}
+                                    return false;
+                                    """
+                                    success = self.driver.execute_script(js_script, selector_value)
+                                elif selector_type.upper() == "CSS" or selector_type.upper() == "ID":
+                                    js_script = """
+                                    try {
+                                        var sel = arguments[1] === 'ID' ? '#' + arguments[0] : arguments[0];
+                                        var el = document.querySelector(sel);
+                                        if (el) { el.scrollIntoView({block: 'center'}); el.click(); return true; }
+                                    } catch(e) {}
+                                    return false;
+                                    """
+                                    success = self.driver.execute_script(js_script, selector_value, selector_type.upper())
+                                
+                                self.driver.switch_to.context("NATIVE_APP")
+                                if success:
+                                    logger.info(f"Successfully performed WEBVIEW JS click on '{selector_value}'")
+                                    return {"success": True}
+                                    
+                        except Exception as web_e:
+                            logger.warning(f"WEBVIEW JS fallback failed: {web_e}")
+                            try:
+                                self.driver.switch_to.context("NATIVE_APP")
+                            except:
+                                pass
+                                
                         return {"success": False, "error": f"Element not found: {selector_value} ({selector_type})"}
             elif action == "tap":
                 # Expecting option as "x,y"
@@ -215,13 +534,51 @@ class AppStepRunner:
                     except Exception as e2:
                         logger.error(f"Text input failed: {e2}")
                         return {"success": False, "error": f"Failed to input text: {str(e2)}"}
+                
+                # Attempt to hide the keyboard after typing to ensure the screen isn't blocked for the next action
+                try:
+                    self.driver.hide_keyboard()
+                except Exception:
+                    pass
+                    
+            elif action == "scroll":
+                size = self.driver.get_window_size()
+                start_x = size['width'] // 2
+                start_y = int(size['height'] * 0.8)
+                end_x = start_x
+                end_y = int(size['height'] * 0.2)
+                
+                # Default is down (sliding finger up). Adjust if option specifies direction.
+                if option and isinstance(option, str):
+                    if option.lower() == "up":
+                        start_y, end_y = end_y, start_y
+                    elif option.lower() == "left":
+                        start_x = int(size['width'] * 0.8)
+                        end_x = int(size['width'] * 0.2)
+                        start_y = end_y = size['height'] // 2
+                    elif option.lower() == "right":
+                        start_x = int(size['width'] * 0.2)
+                        end_x = int(size['width'] * 0.8)
+                        start_y = end_y = size['height'] // 2
+                        
+                self.driver.swipe(start_x, start_y, end_x, end_y, 500)
+                time.sleep(1) # wait for settling
             elif action == "swipe":
                 # Expecting option as "start_x,start_y,end_x,end_y,duration"
                 coords = [int(x) for x in option.split(",")]
                 self.driver.swipe(*coords)
-            elif action == "app_start":
-                # Option could be the app package or bundle ID if not already started
-                pass # Already handled by session start usually
+            elif action == "app_start" or action == "activateapp":
+                app_id = option or selector_value
+                if app_id:
+                    try:
+                        self.driver.activate_app(app_id)
+                        logger.info(f"Activated app via core method: {app_id}")
+                    except Exception as e:
+                        logger.warning(f"Core activate_app failed for {app_id}: {e}")
+                        
+                    time.sleep(4) # Implicit wait for app to load its main UI
+                else:
+                    pass # Already handled by session start usually if no specific ID given
             elif action == "app_close" or action == "close_app":
                 app_id = option
                 if not app_id:
@@ -240,24 +597,28 @@ class AppStepRunner:
                 if app_id:
                     try:
                         self.driver.terminate_app(app_id)
+                        logger.info(f"Terminated app via core method: {app_id}")
                     except Exception as e:
                         logger.warning(f"Standard terminate_app failed for {app_id}: {e}")
-                        
-                    # For extra safety on Android, attempt to explicitly run force-stop via mobile shell
-                    try:
-                        self.driver.execute_script('mobile: shell', {
-                            'command': 'am',
-                            'args': ['force-stop', app_id]
-                        })
-                        logger.info(f"Executed 'am force-stop {app_id}' via shell")
-                    except Exception as shell_e:
-                        logger.info(f"Shell force-stop could not run or was not needed: {shell_e}")
                 else:
                     return {"success": False, "error": "No appPackage/bundleId provided or found in caps definition to close"}
             elif action == "wait":
                 time.sleep(float(option) if option else 1.0)
             else:
                 return {"success": False, "error": f"Unsupported action: {action}"}
+
+            # Apply post-action Step Assertion if configured
+            assert_text = step.get("assertText")
+            if assert_text and str(assert_text).strip() != "":
+                logger.info(f"Verifying step assertion: '{assert_text}'")
+                time.sleep(2) # Wait for page transition / UI to settle
+                try:
+                    page_text = self.get_clean_source()
+                    if assert_text not in page_text:
+                        return {"success": False, "error": f"Assertion Failed: Expected text '{assert_text}' not found on screen."}
+                    logger.info("Assertion Passed.")
+                except Exception as e:
+                    return {"success": False, "error": f"Assertion execution failed: {e}"}
 
             logger.info(f"Step {action} executed successfully.")
             return {"success": True, "error": None}

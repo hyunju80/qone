@@ -5,7 +5,7 @@ import {
   MoreVertical, Star, Bot, User as UserIcon, X, Play, Loader2, Terminal as TerminalIcon,
   Copy, Check, Users, Database, Zap, Activity, Info, Table, AlertTriangle, ShieldAlert,
   Code, Tags, Save, Upload, FileUp, Edit3, Trash2, Maximize2, RefreshCw, UserCheck, Settings2, Hash,
-  ToggleLeft, ToggleRight, Target, UserX, Globe, Smartphone, Laptop
+  ToggleLeft, ToggleRight, Target, UserX, Globe, Smartphone, Laptop, Camera
 } from 'lucide-react';
 import { ScriptStatus, TestScript, ScriptOrigin, DataType, TestHistory, Persona, TestDataRow, TestEngine, Scenario, StepAsset } from '../types';
 import { testApi } from '../api/test';
@@ -37,7 +37,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
   const [viewingStep, setViewingStep] = useState<TestScript | null>(null); // Added viewingStep state
   const [executingScript, setExecutingScript] = useState<TestScript | null>(null);
   const [copied, setCopied] = useState(false);
-  const [activeViewerTab, setActiveViewerTab] = useState<'code' | 'context'>('code');
+  const [activeViewerTab, setActiveViewerTab] = useState<'steps' | 'code' | 'context'>('steps');
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [viewingScenario, setViewingScenario] = useState<Scenario | null>(null);
@@ -97,7 +97,8 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         script_id: asset.id,
         script_name: asset.name,
         trigger: "manual",
-        persona_name: asset.persona?.name || "Default"
+        persona_name: asset.persona?.name || "Default",
+        capture_screenshots: asset.captureScreenshots || false
       });
       setActiveRunId(run_id);
     } catch (e: any) {
@@ -111,17 +112,34 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
     setExecutingScript(script);
 
     try {
-      const { run_id } = await testApi.dryRun({
-        code: script.code,
-        project_id: script.projectId, // Assuming TestScript extends Project resource
-        script_id: script.id,
-        script_name: script.name,
-        persona_name: script.persona?.name || 'Default'
-      });
-      setActiveRunId(run_id);
+      if (script.steps && script.steps.length > 0) {
+        // Step-by-Step Reporting execution (AI Assets with Native Steps)
+        const { run_id } = await testApi.runActiveSteps({
+          steps: script.steps,
+          project_id: script.projectId,
+          platform: script.platform || 'WEB',
+          script_id: script.id,
+          script_name: script.name,
+          trigger: "manual",
+          persona_name: script.persona?.name || 'Default',
+          capture_screenshots: script.captureScreenshots || false
+        });
+        setActiveRunId(run_id);
+      } else {
+        // Standard String-based script execution
+        const { run_id } = await testApi.dryRun({
+          code: script.code,
+          project_id: script.projectId, // Assuming TestScript extends Project resource
+          script_id: script.id,
+          script_name: script.name,
+          persona_name: script.persona?.name || 'Default'
+        });
+        setActiveRunId(run_id);
+      }
     } catch (e: any) {
       console.error("Failed to start run", e);
       // Fallback or alert? For now just log.
+      if (onAlert) onAlert("Error", "Failed to start execution.", 'error');
     }
   };
 
@@ -245,7 +263,8 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         tags: script.tags,
         dataset: script.dataset,
         is_active: script.isActive,
-        is_favorite: script.isFavorite
+        is_favorite: script.isFavorite,
+        capture_screenshots: script.captureScreenshots
       };
 
       await testApi.updateScript(script.id, payload);
@@ -465,8 +484,18 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                   </button>
                 </div>
                 <div className="flex gap-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleUpdateScript({ ...script, captureScreenshots: !script.captureScreenshots }, true);
+                    }}
+                    className={`p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors ${script.captureScreenshots ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 hover:text-gray-600 dark:text-gray-500'}`}
+                    title={script.captureScreenshots ? "Screenshot Capture: ON" : "Screenshot Capture: OFF"}
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
                   <button onClick={() => handleModifyScript(script)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500" title="Modify Asset"><Edit3 className="w-4 h-4" /></button>
-                  <button onClick={() => { setViewingScript(script); setActiveViewerTab('code'); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500" title="Asset Intelligence"><Maximize2 className="w-4 h-4" /></button>
+                  <button onClick={() => { setViewingScript(script); setActiveViewerTab('steps'); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500" title="Asset Intelligence"><Maximize2 className="w-4 h-4" /></button>
                   {scenarios.find(s => s.goldenScriptId === script.id) && (
                     <button
                       onClick={() => setViewingScenario(scenarios.find(s => s.goldenScriptId === script.id) || null)}
@@ -618,7 +647,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
       {viewingScript && (
         <div className="fixed inset-0 z-[100] flex justify-end animate-in fade-in duration-300">
           <div className="absolute inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-sm" onClick={() => setViewingScript(null)} />
-          <div className="relative w-full max-w-2xl bg-white dark:bg-[#16191f] border-l border-gray-200 dark:border-gray-800 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 transition-colors">
+          <div className="relative w-full max-w-4xl bg-white dark:bg-[#16191f] border-l border-gray-200 dark:border-gray-800 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 transition-colors">
             <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-gray-900/20 transition-colors">
               <div className="flex items-center gap-4">
                 <div className="p-2.5 bg-indigo-600 rounded-xl text-white">
@@ -635,6 +664,12 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
             </div>
 
             <div className="flex border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#16191f] transition-colors">
+              <button
+                onClick={() => setActiveViewerTab('steps')}
+                className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeViewerTab === 'steps' ? 'text-indigo-600 dark:text-indigo-400 border-indigo-500' : 'text-gray-400 dark:text-gray-500 border-transparent hover:text-gray-600 dark:hover:text-gray-300'}`}
+              >
+                <Tags className="w-3.5 h-3.5 inline mr-2" /> Scenario Steps
+              </button>
               <button
                 onClick={() => setActiveViewerTab('code')}
                 className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeViewerTab === 'code' ? 'text-indigo-600 dark:text-indigo-400 border-indigo-500' : 'text-gray-400 dark:text-gray-500 border-transparent hover:text-gray-600 dark:hover:text-gray-300'}`}
@@ -665,7 +700,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                     {viewingScript.code}
                   </pre>
                 </div>
-              ) : (
+              ) : activeViewerTab === 'context' ? (
                 <div className="p-8 space-y-10">
                   <div className="space-y-4">
                     <div className="text-[10px] font-black text-gray-600 uppercase tracking-widest flex items-center gap-2">
@@ -735,7 +770,74 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                     </div>
                   </div>
                 </div>
-              )}
+              ) : activeViewerTab === 'steps' ? (
+                <div className="p-8 space-y-6">
+                  {viewingScript.steps && viewingScript.steps.length > 0 ? (
+                    <div>
+                      <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center justify-between">
+                        <span>Steps ({viewingScript.steps.length})</span>
+                        {viewingScript.platform && (
+                          <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded uppercase border border-indigo-200 dark:border-indigo-800">
+                            {viewingScript.platform}
+                          </span>
+                        )}
+                      </h4>
+                      <div className="space-y-3">
+                        {viewingScript.steps.map((step, idx) => (
+                          <div key={idx} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl p-4 transition-all hover:border-indigo-500/50">
+                            <div className="flex items-start gap-3">
+                              <div className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">
+                                {idx + 1}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-500/20">
+                                    {step.action || 'Unknown'}
+                                  </span>
+                                  {step.stepName && <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{step.stepName}</span>}
+                                </div>
+                                <p className="text-[11px] text-gray-600 dark:text-gray-400 mb-2 truncate">
+                                  {step.description || "No description"}
+                                </p>
+                                <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-100 dark:border-gray-800">
+                                  <div>
+                                    <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
+                                    <span className="font-mono text-gray-700 dark:text-gray-300">{step.selectorType || '-'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
+                                    <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue}>{step.selectorValue || '-'}</span>
+                                  </div>
+                                </div>
+                                {step.inputValue && (
+                                  <div className="mt-2 text-[10px] bg-indigo-50 dark:bg-indigo-900/10 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/30 transition-colors">
+                                    <span className="text-indigo-400 uppercase tracking-tighter block text-[8px] mb-0.5">Input Value</span>
+                                    <span className="font-mono text-indigo-700 dark:text-indigo-300">{step.inputValue}</span>
+                                  </div>
+                                )}
+                                {step.assertText && (
+                                  <div className="mt-2 text-[10px] bg-blue-50 dark:bg-blue-500/10 p-2 rounded-lg border border-blue-200 dark:border-blue-500/30 transition-colors flex flex-col">
+                                    <span className="text-blue-500 uppercase tracking-tighter text-[8px] mb-0.5 flex items-center gap-1">
+                                      <CheckCircle2 className="w-2.5 h-2.5" /> Rule Assertion
+                                    </span>
+                                    <span className="font-mono text-gray-900 dark:text-white">"{step.assertText}"</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800/50 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center text-center">
+                      <Tags className="w-12 h-12 text-gray-400 mb-4 opacity-50" />
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">No detailed steps recorded</p>
+                      <p className="text-[10px] text-gray-600 mt-2 leading-relaxed">This script does not have native step-by-step metadata available for execution tracking.</p>
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -872,6 +974,20 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                               <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue}>{step.selectorValue}</span>
                             </div>
                           </div>
+                          {step.inputValue && (
+                            <div className="mt-2 text-[10px] bg-indigo-50 dark:bg-indigo-900/10 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/30 transition-colors">
+                              <span className="text-indigo-400 uppercase tracking-tighter block text-[8px] mb-0.5">Input Value</span>
+                              <span className="font-mono text-indigo-700 dark:text-indigo-300">{step.inputValue}</span>
+                            </div>
+                          )}
+                          {step.assertText && (
+                            <div className="mt-2 text-[10px] bg-blue-50 dark:bg-blue-500/10 p-2 rounded-lg border border-blue-200 dark:border-blue-500/30 transition-colors flex flex-col">
+                              <span className="text-blue-500 uppercase tracking-tighter text-[8px] mb-0.5 flex items-center gap-1">
+                                <CheckCircle2 className="w-2.5 h-2.5" /> Rule Assertion
+                              </span>
+                              <span className="font-mono text-gray-900 dark:text-white">"{step.assertText}"</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

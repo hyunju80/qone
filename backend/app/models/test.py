@@ -37,6 +37,7 @@ class TestScript(Base):
     dataset = Column(JSON, default=[])
     engine = Column(String) # Playwright, Appium
     platform = Column(String) # WEB, APP (New for Step Runner)
+    capture_screenshots = Column(Boolean, default=False)
     steps = Column(JSON, default=[]) # Native Step representation for Step scripts
 
     project = relationship("Project", back_populates="scripts")

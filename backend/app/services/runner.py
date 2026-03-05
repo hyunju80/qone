@@ -257,6 +257,7 @@ except Exception as outer_e:
             nonlocal passed, error_msg
             runner = None
             is_web = script.platform.upper() == 'WEB'
+            capture_screenshots = getattr(script, 'capture_screenshots', False)
             
             try:
                 if is_web:
@@ -340,7 +341,7 @@ except Exception as outer_e:
                     
                     # Capture screenshot
                     screen_data = None
-                    should_capture = step.get("screenshot") is True or not res["success"]
+                    should_capture = capture_screenshots or step.get("screenshot") is True or not res["success"]
                     if should_capture:
                         try:
                             if is_web:
@@ -360,7 +361,8 @@ except Exception as outer_e:
                         "metadata": {
                             "action": action,
                             "target": target,
-                            "value": value
+                            "value": value,
+                            "assertText": step.get("assertText")
                         }
                     }
                     step_results.append(result_entry)

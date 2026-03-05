@@ -115,7 +115,7 @@ const AppContent: React.FC = () => {
       case ViewMode.DEVICE_FARM: return 'Device Farm';
       case ViewMode.SCENARIO_GENERATOR: return 'Scenario Generator';
       case ViewMode.AI_GENERATOR: return 'AI Generator';
-      case ViewMode.AI_EXPLORATION: return 'AI QA Agent';
+      case ViewMode.AI_EXPLORATION: return 'AI Exploration';
       case ViewMode.GENERATOR: return 'Test Generator';
       case ViewMode.LIBRARY: return 'Asset Library';
       case ViewMode.PERSONAS: return 'Persona Management';

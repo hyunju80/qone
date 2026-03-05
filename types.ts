@@ -249,6 +249,7 @@ export interface TestScript {
   engine?: TestEngine;
   steps?: TestStep[];
   platform?: 'WEB' | 'APP';
+  captureScreenshots?: boolean;
 }
 
 export interface LogEntry {
@@ -366,6 +367,7 @@ export interface TestStep {
   action: string;
   selectorType: string;
   selectorValue: string;
+  inputValue?: string;
   option?: string;
   stepName?: string;
   description?: string;
@@ -378,6 +380,7 @@ export interface TestStep {
   visible_if?: string;
   true_jump_no?: number;
   false_jump_no?: number;
+  assertText?: string;
 }
 
 export interface StepAsset {

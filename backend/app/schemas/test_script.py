@@ -17,6 +17,7 @@ class TestScriptBase(BaseModel):
     origin: Optional[str] = "MANUAL"
     steps: Optional[List[Dict[str, Any]]] = []
     platform: Optional[str] = None
+    capture_screenshots: Optional[bool] = False
 
 # Creation
 class TestScriptCreate(TestScriptBase):

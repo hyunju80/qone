@@ -5,7 +5,7 @@ from app.db.base_class import Base
 
 class AiExplorationSession(Base):
     id = Column(String, primary_key=True, index=True)
-    history_id = Column(String, ForeignKey("testhistory.id"), unique=True)
+    history_id = Column(String, ForeignKey("testhistory.id"), nullable=True, unique=True)
     
     target_url = Column(String)
     goal = Column(String)

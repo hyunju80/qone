@@ -733,7 +733,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                                                       <span className="text-[10px] text-gray-400 font-mono ml-2">{step.duration}</span>
                                                    </div>
 
-                                                   <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3 leading-relaxed">{step.name}</h3>
+                                                   <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2 leading-relaxed">{step.name}</h3>
+
+                                                   {step.metadata?.description && (
+                                                      <p className="text-[11px] text-gray-600 dark:text-gray-400 mb-3 leading-relaxed">
+                                                         {step.metadata.description}
+                                                      </p>
+                                                   )}
 
                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                                                       <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
@@ -752,6 +758,15 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                                                       <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg mb-3">
                                                          <div className="text-[9px] font-black text-gray-400 uppercase mb-1">Target Element</div>
                                                          <div className="text-[10px] font-mono text-gray-600 dark:text-gray-400 break-all">{step.metadata.target}</div>
+                                                      </div>
+                                                   )}
+
+                                                   {step.metadata?.assertText && (
+                                                      <div className="p-3 bg-blue-50/50 dark:bg-blue-500/10 rounded-lg border border-blue-200 dark:border-blue-500/30 mb-3 flex flex-col">
+                                                         <span className="text-blue-500 uppercase font-black text-[9px] mb-1 flex items-center gap-1">
+                                                            <CheckCircle2 className="w-3 h-3" /> Rule Assertion
+                                                         </span>
+                                                         <span className="font-mono text-[11px] text-gray-900 dark:text-white">"{step.metadata.assertText}"</span>
                                                       </div>
                                                    )}
 

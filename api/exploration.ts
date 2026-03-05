@@ -17,6 +17,7 @@ export interface ExplorationStep {
     status: string;
     expectation?: string;
     observation?: string;
+    expected_text?: string;
 }
 
 export interface SaveRequest {
@@ -28,21 +29,38 @@ export interface SaveRequest {
     persona_name?: string;
     history: ExplorationStep[];
     final_status: 'passed' | 'failed';
+    platform?: string;
+    capture_screenshots?: boolean;
 }
 
 export const explorationApi = {
-    start: async (url: string) => {
-        const response = await api.post<{ session_id: string, state: any }>('/exploration/start', { url });
+    start: async (params: { url?: string, platform?: string, device_id?: string, app_package?: string, capture_screenshots?: boolean }) => {
+        const response = await api.post<{ session_id: string, state: any }>('/exploration/start', params);
         return response.data;
     },
 
-    step: async (sessionId: string, goal: string, history: ExplorationStep[], username?: string, password?: string) => {
+    step: async (
+        sessionId: string,
+        goal: string,
+        history: ExplorationStep[],
+        username?: string,
+        password?: string,
+        user_feedback?: string,
+        persona_context?: any,
+        override_step?: Partial<ExplorationStep>,
+        platform?: string,
+        capture_screenshots?: boolean
+    ) => {
         const payload = {
             session_id: sessionId,
             goal,
             history,
             username,
-            password
+            password,
+            user_feedback,
+            persona_context,
+            override_step,
+            platform
         };
         const response = await api.post<ExplorationStep>('/exploration/step', payload);
         return response.data;

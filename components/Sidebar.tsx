@@ -34,7 +34,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, onSwitchPro
     { id: ViewMode.CONSOLE, label: 'Main Console', icon: Terminal },
     { id: ViewMode.DESIGN_CENTER, label: 'Design Center', icon: LayoutGrid },
     { id: ViewMode.STEP_RUNNER, label: 'Step Flow', icon: PlaySquare },
-    { id: ViewMode.AI_EXPLORATION, label: 'AI QA Agent', icon: Bot },
+    { id: ViewMode.AI_EXPLORATION, label: 'AI Exploration', icon: Bot },
     { id: ViewMode.AI_GENERATOR, label: 'AI Generator', icon: Sparkles },
     { id: ViewMode.LIBRARY, label: 'Asset Library', icon: Library },
     { id: ViewMode.SCHEDULES, label: 'Test Scheduler', icon: CalendarClock },
