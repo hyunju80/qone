@@ -15,9 +15,13 @@ class TestCase(BaseModel):
 class ScenarioBase(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    category: Optional[str] = None
     test_cases: Optional[List[TestCase]] = []
     tags: Optional[List[str]] = []
     is_approved: Optional[bool] = False
+    platform: Optional[str] = "WEB"
+    target: Optional[str] = None
+    persona_id: Optional[str] = None
 
 class ScenarioCreate(ScenarioBase):
     title: str

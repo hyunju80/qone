@@ -24,7 +24,8 @@ interface AssetLibraryProps {
 }
 
 const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, personas, onRecordHistory, onRefresh, onAlert, initialSearchTerm = '' }) => {
-  const [filter, setFilter] = useState<'ALL' | 'AI' | 'AI_EXPLORATION' | 'MANUAL' | 'FAVORITES' | 'STEP'>('ALL'); // Added STEP
+  const [filter, setFilter] = useState<'ALL' | 'AI' | 'AI_EXPLORATION' | 'MANUAL' | 'FAVORITES' | 'STEP'>('ALL');
+  const [platformFilter, setPlatformFilter] = useState<'ALL' | 'WEB' | 'APP'>('ALL');
   const [searchQuery, setSearchQuery] = useState(initialSearchTerm);
 
   // Update search query when initialSearchTerm changes (e.g. navigation from History)
@@ -144,11 +145,16 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
   };
 
   const filteredScripts = scripts.filter(script => {
-    if (filter === 'STEP') return false; // Don't show scripts in STEP filter
-    if (script.origin === ScriptOrigin.STEP) return false; // Exclude STEP assets from script list (handled separately)
-    if (filter === 'ALL') return true;
-    if (filter === 'FAVORITES') return script.isFavorite;
-    return script.origin === filter;
+    if (filter === 'STEP') return false;
+    if (script.origin === ScriptOrigin.STEP) return false;
+
+    // Origin Filter
+    let originMatch = filter === 'ALL' || (filter === 'FAVORITES' ? script.isFavorite : script.origin === filter);
+
+    // Platform Filter
+    let platformMatch = platformFilter === 'ALL' || script.platform === platformFilter;
+
+    return originMatch && platformMatch;
   }).filter(script =>
     (script.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
     (script.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
@@ -158,6 +164,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
 
   const filteredSteps = scripts.filter(script => script.origin === ScriptOrigin.STEP).filter(step => {
     if (filter !== 'STEP' && filter !== 'ALL') return false;
+    if (platformFilter !== 'ALL' && step.platform !== platformFilter) return false;
     return (step.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
       (step.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
       (step.id?.toLowerCase() || '').includes(searchQuery.toLowerCase());
@@ -439,6 +446,20 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
             className="w-full bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-colors"
           />
         </div>
+        <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
+          {(['ALL', 'WEB', 'APP'] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPlatformFilter(p)}
+              className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${platformFilter === p ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'}`}
+              title={p === 'ALL' ? 'All Platforms' : p}
+            >
+              {p === 'ALL' ? <Filter className="w-3.5 h-3.5" /> : p === 'WEB' ? <Globe className="w-3.5 h-3.5" /> : <Smartphone className="w-3.5 h-3.5" />}
+              <span className="text-[10px] font-black uppercase tracking-wider">{p}</span>
+            </button>
+          ))}
+        </div>
+
         <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
           {['ALL', 'FAVORITES', 'AI', 'AI_EXPLORATION', 'MANUAL', 'STEP'].map((f) => (
             <button

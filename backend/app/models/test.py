@@ -30,6 +30,7 @@ class TestScript(Base):
     success_rate = Column(Float, default=0.0)
     code = Column(Text) # The actual script
     origin = Column(String) # MANUAL, AI, STEP
+    category = Column(String, default="Common") # 분과
     tags = Column(JSON, default=[])
     is_favorite = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
@@ -53,11 +54,14 @@ class Scenario(Base):
     project_id = Column(String, ForeignKey("project.id"))
     title = Column(String)
     description = Column(String)
+    category = Column(String, nullable=True)
     test_cases = Column(JSON, default=[]) # TestCase[]
     persona_id = Column(String, ForeignKey("persona.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_approved = Column(Boolean, default=False)
     golden_script_id = Column(String, ForeignKey("testscript.id"), nullable=True)
+    platform = Column(String, default="WEB") # WEB, APP
+    target = Column(String, nullable=True) # URL or App Package
     tags = Column(JSON, default=[])
     
     project = relationship("Project", back_populates="scenarios")

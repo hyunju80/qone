@@ -15,6 +15,7 @@ class Project(Base):
     environments = Column(JSON, default={}) # Dev, Stage, Prod URLs
     object_repo = Column(JSON, default=[]) # ObjectElement[]
     mobile_config = Column(JSON, default={})
+    categories = Column(JSON, default=["Common"])
     
     customer_account = relationship("CustomerAccount", back_populates="projects")
     scripts = relationship("TestScript", back_populates="project")

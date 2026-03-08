@@ -14,7 +14,8 @@ export const projectsApi = {
             targetDevices: p.target_devices || [],
             environments: p.environments || {},
             objectRepo: p.object_repo || [],
-            mobileConfig: p.mobile_config || {}
+            mobileConfig: p.mobile_config || {},
+            categories: p.categories || []
         } as Project));
     },
 
@@ -37,7 +38,8 @@ export const projectsApi = {
             targetDevices: p.target_devices || [],
             environments: p.environments || {},
             objectRepo: p.object_repo || [],
-            mobileConfig: p.mobile_config || {}
+            mobileConfig: p.mobile_config || {},
+            categories: p.categories || []
         } as Project;
     },
 
@@ -50,6 +52,7 @@ export const projectsApi = {
         if (data.environments) payload.environments = data.environments;
         if (data.objectRepo) payload.object_repo = data.objectRepo;
         if (data.mobileConfig) payload.mobile_config = data.mobileConfig;
+        if (data.categories) payload.categories = data.categories;
 
         const response = await api.put<any>(`/projects/${projectId}`, payload);
         const p = response.data;
@@ -63,7 +66,8 @@ export const projectsApi = {
             targetDevices: p.target_devices || [],
             environments: p.environments || {},
             objectRepo: p.object_repo || [],
-            mobileConfig: p.mobile_config || {}
+            mobileConfig: p.mobile_config || {},
+            categories: p.categories || []
         } as Project;
     }
 };

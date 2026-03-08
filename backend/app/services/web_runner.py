@@ -137,6 +137,8 @@ class WebStepRunner:
                 await self.page.goto(option, timeout=30000)
             elif action == "verify exists":
                 await self.page.wait_for_selector(pw_selector, state="visible", timeout=5000)
+            elif action == "finish":
+                logger.info("WebStepRunner: Test finished (no-op action)")
             else:
                 return {"success": False, "error": f"Unsupported web action: {action}"}
 
@@ -148,9 +150,20 @@ class WebStepRunner:
                 try:
                     # Simple text content check since Playwright exposes raw DOM
                     content = await self.page.content()
-                    if assert_text not in content:
-                        return {"success": False, "error": f"Assertion Failed: Expected text '{assert_text}' not found on screen."}
-                    logger.info("WebStepRunner: Assertion Passed.")
+                    if assert_text in content:
+                        logger.info("WebStepRunner: Exact Assertion Passed.")
+                    else:
+                        # Fuzzy match: remove whitespace/newlines and check
+                        def _normalize(t):
+                            return "".join(t.split())
+                        
+                        clean_page = _normalize(content)
+                        clean_target = _normalize(assert_text)
+                        
+                        if clean_target in clean_page:
+                            logger.info("WebStepRunner: Fuzzy Assertion Passed.")
+                        else:
+                            return {"success": False, "error": f"Assertion Failed: Expected text '{assert_text}' not found on screen."}
                 except Exception as e:
                     return {"success": False, "error": f"Assertion execution failed: {e}"}
 

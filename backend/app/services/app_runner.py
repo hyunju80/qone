@@ -130,7 +130,7 @@ class AppStepRunner:
             # Use xml parser for Android UI Automator dump
             soup = BeautifulSoup(source, 'xml')
             
-            allowed_attrs = ['resource-id', 'text', 'content-desc', 'class', 'clickable', 'scrollable', 'focused', 'checked', 'selected', 'bounds']
+            allowed_attrs = ['resource-id', 'text', 'content-desc', 'hint', 'class', 'clickable', 'scrollable', 'focused', 'checked', 'selected', 'bounds']
             
             for tag in soup.find_all(True):
                 # Remove generic layout wrappers that have no identity and aren't interactive
@@ -604,6 +604,8 @@ class AppStepRunner:
                     return {"success": False, "error": "No appPackage/bundleId provided or found in caps definition to close"}
             elif action == "wait":
                 time.sleep(float(option) if option else 1.0)
+            elif action == "finish":
+                logger.info("Test finished (no-op action)")
             else:
                 return {"success": False, "error": f"Unsupported action: {action}"}
 
@@ -614,10 +616,23 @@ class AppStepRunner:
                 time.sleep(2) # Wait for page transition / UI to settle
                 try:
                     page_text = self.get_clean_source()
-                    if assert_text not in page_text:
-                        return {"success": False, "error": f"Assertion Failed: Expected text '{assert_text}' not found on screen."}
-                    logger.info("Assertion Passed.")
+                    if assert_text in page_text:
+                        logger.info("Exact Assertion Passed.")
+                    else:
+                        # Fuzzy match: remove whitespace/newlines and check
+                        def _normalize(t):
+                            return "".join(t.split())
+                        
+                        clean_page = _normalize(page_text)
+                        clean_target = _normalize(assert_text)
+                        
+                        if clean_target in clean_page:
+                            logger.info(f"Fuzzy Assertion Passed (matched after space normalization).")
+                        else:
+                            return {"success": False, "error": f"Assertion Failed: Expected text '{assert_text}' not found on screen."}
                 except Exception as e:
+                    logger.error(f"Assertion execution crashed: {e}")
+                    return {"success": False, "error": f"Assertion Framework Error: {str(e)}"}
                     return {"success": False, "error": f"Assertion execution failed: {e}"}
 
             logger.info(f"Step {action} executed successfully.")

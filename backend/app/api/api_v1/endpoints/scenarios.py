@@ -18,6 +18,7 @@ crawler = CrawlerService()
 class AnalyzeUrlRequest(BaseModel):
     url: str
     prompt: Optional[str] = None
+    project_id: Optional[str] = None
 
 class TestCase(BaseModel):
     id: Optional[str] = None
@@ -38,8 +39,11 @@ class Scenario(BaseModel):
     persona_id: Optional[str] = None
     is_approved: bool = False
     golden_script_id: Optional[str] = None
+    platform: Optional[str] = "WEB"
+    target: Optional[str] = None
     created_at: Any = None
     tags: List[str] = []
+    category: Optional[str] = None
 
 
 
@@ -56,6 +60,7 @@ class AnalyzeUrlResponse(BaseModel):
 async def analyze_url(
     *,
     request: AnalyzeUrlRequest,
+    db: Any = Depends(deps.get_db),
 ) -> Any:
     """
     Analyze a URL using Playwright and Gemini to DIRECTLY generate Scenarios.
@@ -84,6 +89,17 @@ async def analyze_url(
         from google.genai import types
         client = genai.Client(api_key=settings.GOOGLE_API_KEY)
 
+        categories_context = ""
+        if request.project_id:
+            from app.models.project import Project
+            from app.schemas.project import Project as ProjectSchema
+            proj = db.query(Project).filter(Project.id == request.project_id).first()
+            if proj:
+                pschema = ProjectSchema.model_validate(proj)
+                if pschema.categories:
+                    cats_str = ", ".join([f"'{c.name}'" + (f" (Desc: {c.description})" if c.description else "") for c in pschema.categories])
+                    categories_context = f"\n\n[Project Categories Context]\nThis project uses the following predefined categories for taxonomy: {cats_str}.\nYou MUST carefully assign exactly one of these categories to each generated scenario based on its purpose. If none fit perfectly, pick the closest match. Put this value in the 'category' field."
+
         # 3. Construct Prompt for ONE-STEP Generation
         system_prompt = """You are an Expert QA Automation Engineer.
             Analyze the provided web page context (Screenshot + DOM Structure).
@@ -91,24 +107,28 @@ async def analyze_url(
             First, internally identify critical business flows and functional features.
             Then, DIRECTLY design a comprehensive Test Scenario Suite based on those findings.
 
+            [CRITICAL INSTRUCTION]
+            The generated 'steps' MUST NOT be implementation-specific UI actions (e.g., "Click button X", "Type Y into field").
+            Instead, the 'steps' MUST be high-level User Intents or Business Logic goals (e.g., "Authenticate as an Admin", "Navigate to the billing section").
+            These scenarios will be executed by an Autonomous AI Browser Agent that will figure out the actual UI interactions on its own. Focus strictly on WHAT needs to be done and verified, not HOW to do it.
+
             [Design Rules]
             1. Output must be a valid JSON object with a single key 'scenarios'.
             2. 'scenarios' is a list of objects, each MUST have:
                - "title": (string) Scenario Name
                - "description": (string) Purpose
+               - "category": (string) The specific domain module or division this scenario belongs to (e.g., "Authentication", "Checkout").
                - "testCases": (list of objects)
             3. Each "testCases" item MUST have:
                - "title": (string) Case Name
                - "preCondition": (string)
                - "inputData": (string)
-               - "inputData": (string)
-               - "steps": (list of strings) - Be specific, use clear actions.
+               - "steps": (list of strings) - High-level intents only!
                - "expectedResult": (string)
                - "selectors": (list of objects) List of { "name": "ElementName", "value": "CSS/XPath" }
-                 e.g. [{"name": "LoginButton", "value": "#login-submit"}]
 
             [Selector Strategy]
-            - Analyze the DOM structure deeply to find robust selectors.
+            - Analyze the DOM structure deeply to find robust selectors for Key elements.
             - Prioritize finding SPECIFIC functional elements (e.g. Navigation Links, GNB items, Submit Buttons).
             - Prefer ID > Name > TestId > CSS Classes > XPath.
             - Ensure selectors are unique and precise.
@@ -119,6 +139,8 @@ async def analyze_url(
             
         if request.prompt:
             system_prompt += f"\n\n[Additional User Context]\n{request.prompt}"
+        
+        system_prompt += categories_context
 
         decoded_image = base64.b64decode(crawl_result['screenshot'])
         prompt_contents = [
@@ -143,6 +165,7 @@ async def analyze_url(
                                 "properties": {
                                     "title": {"type": "STRING"},
                                     "description": {"type": "STRING"},
+                                    "category": {"type": "STRING"},
                                     "testCases": {
                                         "type": "ARRAY",
                                         "items": {
@@ -219,11 +242,13 @@ class UploadedFile(BaseModel):
 class AnalyzeUploadRequest(BaseModel):
     files: List[UploadedFile]
     prompt: str = ""
+    project_id: Optional[str] = None
 
 @router.post("/analyze-upload", response_model=AnalyzeUrlResponse)
 async def analyze_upload(
     *,
     request: AnalyzeUploadRequest,
+    db: Any = Depends(deps.get_db),
 ) -> Any:
     """
     Analyze uploaded files and DIRECTLY generate Scenarios.
@@ -242,6 +267,17 @@ async def analyze_upload(
         from google.genai import types
         import base64
         client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+
+        categories_context = ""
+        if request.project_id:
+            from app.models.project import Project
+            from app.schemas.project import Project as ProjectSchema
+            proj = db.query(Project).filter(Project.id == request.project_id).first()
+            if proj:
+                pschema = ProjectSchema.model_validate(proj)
+                if pschema.categories:
+                    cats_str = ", ".join([f"'{c.name}'" + (f" (Desc: {c.description})" if c.description else "") for c in pschema.categories])
+                    categories_context = f"\n\n[Project Categories Context]\nThis project uses the following predefined categories for taxonomy: {cats_str}.\nYou MUST carefully assign exactly one of these categories to each generated scenario based on its purpose. If none fit perfectly, pick the closest match. Put this value in the 'category' field."
         
         # 3. Construct Prompt
         prompt_parts = []
@@ -251,17 +287,23 @@ async def analyze_upload(
             First, internally understand the features and requirements.
             Then, DIRECTLY design a comprehensive Test Scenario Suite.
             
+            [CRITICAL INSTRUCTION]
+            The generated 'steps' MUST NOT be implementation-specific UI actions (e.g., "Click button X", "Type Y into field").
+            Instead, the 'steps' MUST be high-level User Intents or Business Logic goals (e.g., "Authenticate as an Admin", "Navigate to the billing section").
+            These scenarios will be executed by an Autonomous AI Browser Agent that will figure out the actual UI interactions on its own. Focus strictly on WHAT needs to be done and verified, not HOW to do it.
+
             [Design Rules]
-             1. Output must be a valid JSON object with a single key 'scenarios'.
+            1. Output must be a valid JSON object with a single key 'scenarios'.
             2. 'scenarios' is a list of objects, each MUST have:
                - "title": (string) Scenario Name
                - "description": (string) Purpose
+               - "category": (string) The specific domain module or division this scenario belongs to (e.g., "Authentication", "Checkout").
                - "testCases": (list of objects)
             3. Each "testCases" item MUST have:
                - "title": (string) Case Name
                - "preCondition": (string)
                - "inputData": (string)
-               - "steps": (list of strings)
+               - "steps": (list of strings) - High-level intents only!
                - "expectedResult": (string)
 
             Return the result as a JSON object with a 'scenarios' array.
@@ -271,6 +313,8 @@ async def analyze_upload(
         
         if request.prompt:
             prompt_parts.append(f"Additional User Context: {request.prompt}")
+            
+        prompt_parts.append(categories_context)
 
         for idx, file in enumerate(request.files):
             try:
@@ -291,6 +335,12 @@ async def analyze_upload(
             except Exception as fe:
                 print(f"Error processing file {file.name}: {fe}")
 
+        for p in prompt_parts:
+            if isinstance(p, str):
+                print(f"DEBUG_PROMPT_PART (String): {p[:500]}...", flush=True)
+            else:
+                print(f"DEBUG_PROMPT_PART (Part): {type(p)}", flush=True)
+
         # 4. Generate Content
         response = await client.aio.models.generate_content(
             model=settings.GEMINI_MODEL,
@@ -307,6 +357,7 @@ async def analyze_upload(
                                 "properties": {
                                     "title": {"type": "STRING"},
                                     "description": {"type": "STRING"},
+                                    "category": {"type": "STRING"},
                                     "testCases": {
                                         "type": "ARRAY",
                                         "items": {
@@ -338,6 +389,7 @@ async def analyze_upload(
             raw_text = raw_text.replace("```", "", 1).replace("```", "", 1)
 
         result = json.loads(raw_text)
+        print(f"DEBUG_GENERATED_JSON: {json.dumps(result, ensure_ascii=False, indent=2)}", flush=True)
         
         with open(os.path.join(log_dir, "scenarios.json"), "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
@@ -361,6 +413,7 @@ class ScenarioGenerationRequest(BaseModel):
     persona: dict # {name, goal}
     additional_context: str = ""
     dom_context: str = ""
+    project_id: Optional[str] = None
 
 # Definitions moved to top of file
 
@@ -371,6 +424,7 @@ class ScenarioGenerationResponse(BaseModel):
 async def generate_scenarios(
     *,
     request: ScenarioGenerationRequest,
+    db: Any = Depends(deps.get_db),
 ) -> Any:
     """
     Generate detailed test scenarios based on extracted features and persona.
@@ -388,6 +442,17 @@ async def generate_scenarios(
         print(f"2. Using Model: {settings.GEMINI_MODEL}", flush=True)
         # No model instantiation needed, passed to generate_content
 
+        categories_context = ""
+        if request.project_id:
+            from app.models.project import Project
+            from app.schemas.project import Project as ProjectSchema
+            proj = db.query(Project).filter(Project.id == request.project_id).first()
+            if proj:
+                pschema = ProjectSchema.model_validate(proj)
+                if pschema.categories:
+                    cats_str = ", ".join([f"'{c.name}'" + (f" (Desc: {c.description})" if c.description else "") for c in pschema.categories])
+                    categories_context = f"\n[Project Categories Context]\nThis project uses the following predefined categories for taxonomy: {cats_str}.\nYou MUST carefully assign exactly one of these categories to each generated scenario based on its purpose. If none fit perfectly, pick the closest match. Put this value in the 'category' field."
+
         prompt = f"""
         You are an Expert QA Automation Engineer.
         Based on the provided extracted features, design a comprehensive Test Scenario Suite.
@@ -404,18 +469,26 @@ async def generate_scenarios(
 
         SIMPLIFIED DOM STRUCTURE (Use this to find REAL Selectors/IDs):
         {request.dom_context[:50000]} 
+        
+        {categories_context}
+
+        [CRITICAL INSTRUCTION]
+        The generated 'steps' MUST NOT be implementation-specific UI actions (e.g., "Click button X", "Type Y into field").
+        Instead, the 'steps' MUST be high-level User Intents or Business Logic goals (e.g., "Authenticate as an Admin", "Navigate to the billing section").
+        These scenarios will be executed by an Autonomous AI Browser Agent that will figure out the actual UI interactions on its own. Focus strictly on WHAT needs to be done and verified, not HOW to do it.
 
         [Design Rules]
         1. Output must be a valid JSON object with a single key 'scenarios'.
         2. 'scenarios' is a list of objects, each MUST have:
            - "title": (string) Scenario Name
            - "description": (string) Purpose
+           - "category": (string) The specific domain module or division this scenario belongs to.
            - "testCases": (list of objects)
         3. Each "testCases" item MUST have:
            - "title": (string) Case Name
            - "preCondition": (string)
            - "inputData": (string)
-           - "steps": (list of strings)
+           - "steps": (list of strings) - High-level intents only!
            - "expectedResult": (string)
 
         Return a JSON object with a 'scenarios' array.
@@ -438,6 +511,7 @@ async def generate_scenarios(
                                 "properties": {
                                     "title": {"type": "STRING"},
                                     "description": {"type": "STRING"},
+                                    "category": {"type": "STRING"},
                                     "testCases": {
                                         "type": "ARRAY",
                                         "items": {
@@ -521,8 +595,11 @@ def get_scenarios(
                 persona_id=s.persona_id,
                 is_approved=s.is_approved if s.is_approved is not None else False,
                 golden_script_id=s.golden_script_id,
+                platform=s.platform or "WEB",
+                target=s.target,
                 created_at=s.created_at,  # Pydantic should handle DateTime
-                tags=s.tags if s.tags is not None else []
+                tags=s.tags if s.tags is not None else [],
+                category=s.category
             ))
         except Exception as e:
             print(f"Skipping malformed scenario {s.id}: {e}")
@@ -534,9 +611,12 @@ class CreateScenarioRequest(BaseModel):
     project_id: str
     title: str
     description: str
+    category: Optional[str] = None
     testCases: List[TestCase]
     persona_id: str
     is_approved: bool = True
+    platform: Optional[str] = "WEB"
+    target: Optional[str] = None
     created_at: Any = None
     tags: List[str] = []
 
@@ -555,9 +635,13 @@ def create_scenario(
             project_id=scenario_in.project_id,
             title=scenario_in.title,
             description=scenario_in.description,
+            category=scenario_in.category,
             test_cases=[tc.dict() for tc in scenario_in.testCases], # Store as JSON
             persona_id=scenario_in.persona_id,
-            is_approved=scenario_in.is_approved
+            is_approved=scenario_in.is_approved,
+            platform=scenario_in.platform,
+            target=scenario_in.target,
+            tags=scenario_in.tags or []
         )
         db.add(db_obj)
         db.commit()
@@ -567,10 +651,13 @@ def create_scenario(
             id=db_obj.id,
             title=db_obj.title,
             description=db_obj.description,
+            category=db_obj.category,
             testCases=db_obj.test_cases,
             project_id=db_obj.project_id,
             persona_id=db_obj.persona_id,
-            is_approved=db_obj.is_approved
+            is_approved=db_obj.is_approved,
+            platform=db_obj.platform,
+            target=db_obj.target
         )
     except Exception as e:
         import traceback

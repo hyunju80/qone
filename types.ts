@@ -122,6 +122,14 @@ export interface ProjectMobileConfig {
   appVersion?: string;
 }
 
+export interface CategoryNode {
+  id: string;
+  name: string;
+  description?: string;
+  parentId?: string | null;
+  managerId?: string | null; // Top-level manager assignments
+}
+
 export interface Project {
   id: string;
   customerAccountId: string;
@@ -135,6 +143,7 @@ export interface Project {
   appId?: string;
   objectRepo: ObjectElement[];
   mobileConfig?: ProjectMobileConfig;
+  categories?: CategoryNode[];
 }
 
 export interface ProjectAccess {
@@ -211,10 +220,13 @@ export interface Scenario {
   projectId: string;
   title: string;
   description: string;
+  category?: string;
   testCases: TestCase[];
   personaId?: string;
   createdAt: string;
   isApproved: boolean;
+  platform?: string;
+  target?: string;
   tags?: string[];
   goldenScriptId?: string;
 }
@@ -240,6 +252,7 @@ export interface TestScript {
   runCount: number;
   successRate: number;
   code: string;
+  category?: string;
   origin: ScriptOrigin;
   tags?: string[];
   isFavorite?: boolean;

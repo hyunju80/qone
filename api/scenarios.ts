@@ -31,8 +31,11 @@ export interface BackendScenario {
     testCases: BackendTestCase[];
     persona_id?: string;
     is_approved?: boolean;
+    platform?: string;
+    target?: string;
     created_at?: string;
     tags?: string[];
+    category?: string;
 }
 
 export interface GenerateScenariosRequest {
@@ -40,6 +43,7 @@ export interface GenerateScenariosRequest {
     persona: { name: string, goal: string };
     additional_context?: string;
     dom_context?: string;
+    project_id?: string;
 }
 
 export interface GenerateScenariosResponse {
@@ -47,12 +51,12 @@ export interface GenerateScenariosResponse {
 }
 
 export const scenariosApi = {
-    analyzeUrl: async (url: string, prompt?: string, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
-        const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-url', { url, prompt }, { signal });
+    analyzeUrl: async (url: string, prompt?: string, projectId?: string, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
+        const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-url', { url, prompt, project_id: projectId }, { signal });
         return response.data;
     },
-    analyzeUpload: async (files: { name: string, type: string, data: string }[], prompt?: string, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
-        const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-upload', { files, prompt }, { signal });
+    analyzeUpload: async (files: { name: string, type: string, data: string }[], prompt?: string, projectId?: string, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
+        const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-upload', { files, prompt, project_id: projectId }, { signal });
         return response.data;
     },
     generateScenarios: async (data: GenerateScenariosRequest): Promise<GenerateScenariosResponse> => {
@@ -70,8 +74,11 @@ export const scenariosApi = {
             testCases: s.testCases,
             personaId: s.persona_id,
             isApproved: s.is_approved,
+            platform: s.platform,
+            target: s.target,
             createdAt: s.created_at,
             tags: s.tags,
+            category: s.category,
             goldenScriptId: s.golden_script_id
         }));
     },
@@ -85,8 +92,11 @@ export const scenariosApi = {
             testCases: response.data.testCases,
             personaId: response.data.persona_id,
             isApproved: response.data.is_approved,
+            platform: response.data.platform,
+            target: response.data.target,
             createdAt: response.data.created_at,
-            tags: response.data.tags
+            tags: response.data.tags,
+            category: response.data.category
         };
     },
     update: async (id: string, data: { golden_script_id?: string, is_approved?: boolean }): Promise<void> => {

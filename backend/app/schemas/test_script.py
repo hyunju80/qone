@@ -15,9 +15,11 @@ class TestScriptBase(BaseModel):
     dataset: Optional[List[Dict[str, Any]]] = []
     engine: Optional[str] = "Playwright"
     origin: Optional[str] = "MANUAL"
+    category: Optional[str] = "Common"
     steps: Optional[List[Dict[str, Any]]] = []
     platform: Optional[str] = None
     capture_screenshots: Optional[bool] = False
+    persona_id: Optional[str] = None
 
 # Creation
 class TestScriptCreate(TestScriptBase):

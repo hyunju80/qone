@@ -33,16 +33,29 @@ const AiExploration: React.FC<AiExplorationProps> = ({ activeProject, personas, 
     const [isRunning, setIsRunning] = useState(false);
     const [steps, setSteps] = useState<ExplorationStep[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const [isSaved, setIsSaved] = useState(false);
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [isComplete, setIsComplete] = useState(false);
     const [userFeedback, setUserFeedback] = useState('');
     const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
     const [editForm, setEditForm] = useState<{ action_type: string, action_target: string, action_value: string, thought: string }>({ action_type: '', action_target: '', action_value: '', thought: '' });
 
+    const handleReset = () => {
+        setSteps([]);
+        setSessionId(null);
+        setIsComplete(false);
+        setIsSaved(false);
+        setError(null);
+        setUserFeedback('');
+        setGoal('');
+        setTargetUrl('');
+    };
+
     const runExplorationLoop = async (currentSessionId: string, initialSteps: ExplorationStep[], feedback?: string, overrideNextStep?: Partial<ExplorationStep>) => {
         setIsRunning(true);
         setError(null);
         setIsComplete(false);
+        setIsSaved(false);
 
         try {
             let currentSteps = [...initialSteps];
@@ -120,6 +133,7 @@ const AiExploration: React.FC<AiExplorationProps> = ({ activeProject, personas, 
         setSteps([]);
         setSessionId(null);
         setIsComplete(false);
+        setIsSaved(false);
         setUserFeedback('');
         setIsRunning(true);
 
@@ -193,6 +207,7 @@ const AiExploration: React.FC<AiExplorationProps> = ({ activeProject, personas, 
                 capture_screenshots: captureScreenshots
             })
             console.log("Asset saved successfully");
+            setIsSaved(true);
             if (onHistoryUpdate) onHistoryUpdate();
         } catch (saveErr) {
             console.error("Failed to save asset:", saveErr);
@@ -201,7 +216,6 @@ const AiExploration: React.FC<AiExplorationProps> = ({ activeProject, personas, 
             try {
                 await explorationApi.stop(sessionId);
             } catch (ignore) { }
-            setSessionId(null);
             setIsRunning(false);
         }
     };
@@ -452,24 +466,28 @@ const AiExploration: React.FC<AiExplorationProps> = ({ activeProject, personas, 
                                                     </span>
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <button onClick={() => {
-                                                        if (editingStepIndex === step.step_number - 1) {
-                                                            setEditingStepIndex(null);
-                                                        } else {
-                                                            setEditingStepIndex(step.step_number - 1);
-                                                            setEditForm({
-                                                                action_type: step.action_type,
-                                                                action_target: step.action_target,
-                                                                action_value: step.action_value || '',
-                                                                thought: step.thought
-                                                            });
-                                                        }
-                                                    }} className="text-[10px] font-bold text-indigo-500 hover:underline">
+                                                    <button
+                                                        disabled={isSaved}
+                                                        onClick={() => {
+                                                            if (editingStepIndex === step.step_number - 1) {
+                                                                setEditingStepIndex(null);
+                                                            } else {
+                                                                setEditingStepIndex(step.step_number - 1);
+                                                                setEditForm({
+                                                                    action_type: step.action_type,
+                                                                    action_target: step.action_target,
+                                                                    action_value: step.action_value || '',
+                                                                    thought: step.thought
+                                                                });
+                                                            }
+                                                        }} className={`text-[10px] font-bold ${isSaved ? 'text-gray-400 cursor-not-allowed' : 'text-indigo-500 hover:underline'}`}>
                                                         {editingStepIndex === step.step_number - 1 ? 'Cancel Edit' : 'Edit & Retry'}
                                                     </button>
-                                                    <button onClick={() => handleDeleteStep(step.step_number - 1)} className="text-[10px] font-bold text-red-500 hover:underline">
-                                                        Drop Step
-                                                    </button>
+                                                    {!isSaved && (
+                                                        <button onClick={() => handleDeleteStep(step.step_number - 1)} className="text-[10px] font-bold text-red-500 hover:underline">
+                                                            Drop Step
+                                                        </button>
+                                                    )}
                                                     <div className="text-[10px] font-black uppercase text-gray-500 bg-gray-200 dark:bg-gray-900 px-2 py-1 rounded transition-colors ml-2">
                                                         {step.action_type}
                                                     </div>
@@ -488,6 +506,7 @@ const AiExploration: React.FC<AiExplorationProps> = ({ activeProject, personas, 
                                                                 <option value="scroll">Scroll</option>
                                                                 <option value="wait">Wait</option>
                                                                 <option value="navigate">Navigate</option>
+                                                                <option value="finish">Finish</option>
                                                             </select>
                                                         </div>
                                                         <div>
@@ -574,15 +593,31 @@ const AiExploration: React.FC<AiExplorationProps> = ({ activeProject, personas, 
                                     </div>
                                 ))}
 
-                                {isComplete && sessionId && (
+                                {isSaved ? (
+                                    <div className="mt-8 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-8 text-center animate-in zoom-in-95 duration-300">
+                                        <div className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20">
+                                            <CheckCircle2 className="w-8 h-8 text-white" />
+                                        </div>
+                                        <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2 transition-colors">Asset Saved Successfully!</h3>
+                                        <p className="text-gray-600 dark:text-gray-400 text-sm mb-6 max-w-xs mx-auto transition-colors">
+                                            The exploration session has been converted into a TestScript and is now available in the Asset Library.
+                                        </p>
+                                        <button
+                                            onClick={handleReset}
+                                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-3 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 mx-auto"
+                                        >
+                                            <Play className="w-4 h-4" /> Start New Exploration
+                                        </button>
+                                    </div>
+                                ) : (isComplete && sessionId && (
                                     <div className="mt-6 border-t border-gray-200 dark:border-gray-800 pt-6 animate-in fade-in slide-in-from-bottom-2">
-                                        <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Provide Feedback to Continue</h3>
+                                        <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3 transition-colors">Provide Feedback to Continue</h3>
                                         <div className="flex gap-3">
                                             <input
                                                 type="text"
                                                 value={userFeedback}
                                                 onChange={(e) => setUserFeedback(e.target.value)}
-                                                className="flex-1 bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl py-3 px-4 text-sm focus:border-indigo-500 outline-none"
+                                                className="flex-1 bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl py-3 px-4 text-sm focus:border-indigo-500 outline-none transition-colors"
                                                 placeholder="e.g., Use correct password: password12"
                                                 onKeyDown={(e) => e.key === 'Enter' && handleContinue()}
                                                 disabled={isRunning}
@@ -602,12 +637,12 @@ const AiExploration: React.FC<AiExplorationProps> = ({ activeProject, personas, 
                                                 disabled={isRunning}
                                                 className="bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-50 text-gray-900 dark:text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
                                             >
-                                                <CheckCircle2 className="w-4 h-4" />
+                                                <ShieldCheck className="w-4 h-4" />
                                                 Finish & Save Asset
                                             </button>
                                         </div>
                                     </div>
-                                )}
+                                ))}
                             </div>
                         )}
                     </div>

@@ -30,7 +30,7 @@ class SaveRequest(BaseModel):
     capture_screenshots: bool = False
 
 class StartRequest(BaseModel):
-    url: str
+    url: Optional[str] = None
     platform: str = "WEB"
     device_id: Optional[str] = None
     app_package: Optional[str] = None
@@ -198,7 +198,7 @@ async def next_step(req: StepRequest):
     5. **MULTI-STEP GOALS**: If the user provided a numbered list or sequence of tasks, you MUST complete ALL of them. Do not set status to 'Completed' until the final step is done.
     6. **APP SELECTORS (IMPORTANT)**: If platform is APP, prefer using 'accessibility_id' if available. If not, use exact text for 'action_target'. E.g. "Search", "Login", or basic IDs like "com.example:id/button". DO NOT GUESS complex XPaths if you see simple text.
     7. **LANGUAGE**: All 'thought' and 'description' fields in the JSON output MUST be written in Korean (한국어).
-    8. **ASSERTION (expected_text)**: You MUST provide an EXACT, LITERAL string of text that you expect to see on the screen after your action succeeds. This will be used for a strict string-matching assertion by a dumb script runner. Do NOT write natural language like "I should see the login success message." Write EXACTLY "Login Success" or "Welcome, User". If no text is expected, leave it blank.
+    8. **ASSERTION (expected_text)**: You MUST provide an EXACT, LITERAL string of text that you expect to see on the screen after your action succeeds. You MUST find this exact string from the provided "UI Structure" and copy it bit-for-bit (including spaces, symbols, and line breaks). Do NOT normalize or translate it. This will be used for a strict string-matching assertion. Do NOT write natural language. Write EXACTLY what appears in the 'text' or 'content-desc' attribute. If no text is expected, leave it blank.
     
     Safety Instruction:
     - Never hallucinate passwords.
@@ -377,12 +377,13 @@ async def save_history(req: SaveRequest):
             final_score=final_score
         )
         db.add(ai_session)
+        db.flush()
         
-        # 2. Assetize into TestScript immediately
+        # 2. Assetize into Scenario and TestScript immediately
         manager = AssetManager()
-        script = manager.convert_session_to_script(db, ai_session, req.project_id, req.platform, req.capture_screenshots)
+        scenario, script = manager.convert_session_to_scenario(db, ai_session, req.project_id, req.platform, req.capture_screenshots)
         
-        return {"status": "saved", "script_id": script.id, "session_id": session_id}
+        return {"status": "saved", "scenario_id": scenario.id, "script_id": script.id, "session_id": session_id}
     except Exception as e:
         import traceback
         traceback.print_exc()

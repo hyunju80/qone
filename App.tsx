@@ -419,7 +419,11 @@ const AppContent: React.FC = () => {
     // When a scenario is approved (saved to DB by Generator), we just add it to list or re-fetch
     setApprovedScenarios(prev => [...prev, scenario]);
     setDraftScenarios(prev => prev.filter(s => s.id !== scenario.id));
-    setCurrentView(ViewMode.GENERATOR);
+
+    // Only navigate to legacy generator if we are not in the new integrated AI_GENERATOR view
+    if (currentView !== ViewMode.AI_GENERATOR) {
+      setCurrentView(ViewMode.GENERATOR);
+    }
   };
 
   const handleRegisterManualScript = async (script: TestScript) => {
@@ -446,6 +450,15 @@ const AppContent: React.FC = () => {
       console.error("Failed to register manual script", e);
       showAlert("Error", "Failed to save script.", 'error');
     }
+  };
+
+  const handleSyncScriptState = (script: TestScript) => {
+    setScripts(prev => {
+      // Avoid duplicate even in local state if already there
+      if (prev.some(s => s.id === script.id)) return prev;
+      return [script, ...prev];
+    });
+    showAlert("Success", "Asset converted and registered successfully.", 'success');
   };
 
   const handleUpdateScript = async (script: TestScript) => {
@@ -529,6 +542,7 @@ const AppContent: React.FC = () => {
             personas={personas}
             onApproveScenario={handleApproveScenario}
             onRegisterScript={handleRegisterManualScript}
+            onSyncScript={handleSyncScriptState}
             onAlert={showAlert}
             // State Props
             focusedTaskId={focusedDiscoveryId}

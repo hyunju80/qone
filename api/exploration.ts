@@ -18,6 +18,7 @@ export interface ExplorationStep {
     expectation?: string;
     observation?: string;
     expected_text?: string;
+    screenshot?: string;
 }
 
 export interface SaveRequest {
@@ -66,8 +67,8 @@ export const explorationApi = {
         return response.data;
     },
 
-    stop: async (sessionId: string) => {
-        await api.post('/exploration/stop', { session_id: sessionId });
+    stop: async (sessionId: string, platform?: string) => {
+        await api.post('/exploration/stop', { session_id: sessionId, platform });
     },
 
     save: async (payload: SaveRequest) => {
