@@ -2,6 +2,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 from .user import User
+from .persona import Persona
 
 # Shared properties
 class TestScriptBase(BaseModel):
@@ -46,4 +47,4 @@ class TestScriptInDBBase(TestScriptBase):
         from_attributes = True
 
 class TestScript(TestScriptInDBBase):
-    pass
+    persona: Optional[Persona] = None

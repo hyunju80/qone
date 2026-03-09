@@ -66,6 +66,7 @@ class Scenario(Base):
     
     project = relationship("Project", back_populates="scenarios")
     golden_script = relationship("TestScript") # Optional relationship for access
+    persona = relationship("Persona")
 
 class TestHistory(Base):
     id = Column(String, primary_key=True, index=True)

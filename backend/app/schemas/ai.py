@@ -20,6 +20,7 @@ class TestDataRow(BaseModel):
     value: str
     type: str # 'VALID', 'INVALID', 'SECURITY', etc.
     description: str
+    expected_result: Optional[str] = None
 
 class DataGenerationRequest(BaseModel):
     scenarios: List[Dict[str, Any]] # title, description, inputData, etc.

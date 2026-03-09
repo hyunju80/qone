@@ -40,6 +40,7 @@ class RunStepsRequest(BaseModel):
     trigger: str = "manual"
     persona_name: Optional[str] = "Default"
     capture_screenshots: bool = False
+    dataset: Optional[List[Dict[str, Any]]] = None
 
 class DryRunResponse(BaseModel):
     run_id: str
@@ -171,6 +172,43 @@ async def start_active_steps_run(
         overall_status = "passed"
         start_time = asyncio.get_event_loop().time()
 
+        # Group Dataset by Field to support Parallel Index iterations
+        iterations_data = []
+        if request.dataset:
+            field_groups = {}
+            for row in request.dataset:
+                f = row.get("field")
+                if f not in field_groups: field_groups[f] = []
+                field_groups[f].append(row)
+            
+            # Determine max iterations
+            max_iters = max([len(v) for v in field_groups.values()]) if field_groups else 0
+            
+            for idx in range(max_iters):
+                current_iter_data = {}
+                iter_expected_result = None
+                for f, rows in field_groups.items():
+                    # Pick idx-th row, or last row if out of bounds
+                    r_idx = min(idx, len(rows) - 1)
+                    row = rows[r_idx]
+                    # Pass the full row information to the runner for smart mapping (value + expected result)
+                    current_iter_data[f] = {
+                        "value": row.get("value"),
+                        "expected_result": row.get("expected_result")
+                    }
+                    # If this row has an expected result, keep it (last one wins if multiple fields)
+                    if row.get("expected_result"):
+                        iter_expected_result = row.get("expected_result")
+                
+                iterations_data.append({
+                    "data": current_iter_data,
+                    "expected_result": iter_expected_result,
+                    "iteration_index": idx + 1
+                })
+        else:
+            # Single iteration with no data
+            iterations_data = [{"data": None, "expected_result": None, "iteration_index": 1}]
+
         try:
             with open(log_file, "w", encoding="utf-8") as lf:
                 def log(msg, level="INFO"):
@@ -239,55 +277,130 @@ async def start_active_steps_run(
                 await update_screen("initial state")
 
                 try:
-                    for i, step in enumerate(request.steps):
-                        step_name = step.get("stepName") or step.get("name") or step.get("action")
-                        action = step.get("action")
-                        # Support both camelCase (from UI) and snake_case (from DB)
-                        target = step.get("selectorValue") or step.get("selector_value") or step.get("target")
-                        value = step.get("inputValue") or step.get("option") or step.get("value")
-                        description = step.get("description")
+                    for iter_info in iterations_data:
+                        iter_idx = iter_info["iteration_index"]
+                        iter_data = iter_info["data"]
+                        iter_expected = iter_info["expected_result"]
                         
-                        log_msg = f"Step {i+1}: [{action}]"
-                        if target: log_msg += f" target={target}"
-                        if value: log_msg += f" value={value}"
-                        log(log_msg)
+                        if len(iterations_data) > 1:
+                            log(f"--- Starting Iteration {iter_idx}/{len(iterations_data)} ---")
+                            # log(f"[DEBUG] Iteration data: {iter_data}")
                         
-                        step_start = asyncio.get_event_loop().time()
-                        res = await runner.execute_step(step) if request.platform.upper() == "WEB" else runner.execute_step(step, db=db)
-                        step_end = asyncio.get_event_loop().time()
-                        
-                        # Always capture for the live execution stream
-                        current_screen_b64 = await update_screen(f"stream update after Step {i+1}")
-                        
-                        # Record logic: attach to DB history if requested OR failure
-                        should_capture = request.capture_screenshots or step.get("screenshot") is True or not res["success"]
-                        screen_data = current_screen_b64 if should_capture else None
+                        iteration_success = True
 
-                        result_entry = {
-                            "step_number": i + 1,
-                            "name": step_name,
-                            "status": "passed" if res["success"] else "failed",
-                            "duration": f"{round(step_end - step_start, 1)}s",
-                            "error_message": res.get("error"),
-                            "screenshot_data": screen_data,
-                            "metadata": {
-                                "action": action,
-                                "target": target,
-                                "value": value,
-                                "description": description,
-                                "assertText": step.get("assertText")
+                        for i, step_orig in enumerate(request.steps):
+                            # Create a fresh copy for this iteration to avoid in-place modification leakage
+                            step = step_orig.copy()
+                            
+                            orig_val = step.get("inputValue") or step.get("option") or step.get("value")
+                            # log(f"[DEBUG] Step {i+1} FULL (Raw): {step}")
+                            
+                            # Perform Variable Substitution early so logs and results are accurate
+                            if iter_data:
+                                # Use first iteration as a reference for literal value replacement in Smart Mapping
+                                ref_data = iterations_data[0]["data"] if iterations_data else None
+                                step = runner.apply_data_to_step(step, iter_data, reference_data=ref_data)
+
+                            replaced_val = step.get("inputValue") or step.get("option") or step.get("value")
+                            # log(f"[DEBUG] Step {i+1} Result: Value='{replaced_val}', Assertion='{step.get('assertText')}', Desc='{step.get('description')}'")
+                            
+                            step_name = step.get("stepName") or step.get("name") or step.get("action")
+                            action = step.get("action")
+                            # Support both camelCase (from UI) and snake_case (from DB)
+                            target = step.get("selectorValue") or step.get("selector_value") or step.get("target")
+                            value = step.get("inputValue") or step.get("option") or step.get("value")
+                            description = step.get("description")
+                            
+                            log_msg = f"Step {i+1}: [{action}]"
+                            if target: log_msg += f" target={target}"
+                            if value: log_msg += f" value={value}"
+                            log(log_msg)
+                            
+                            step_start = asyncio.get_event_loop().time()
+                            # Pass data=None as we already substituted above
+                            res = await runner.execute_step(step, data=None) if request.platform.upper() == "WEB" else runner.execute_step(step, db=db, data=None)
+                            step_end = asyncio.get_event_loop().time()
+                            
+                            # Always capture for the live execution stream
+                            current_screen_b64 = await update_screen(f"stream update Iter{iter_idx} Step {i+1}")
+                            
+                            # Record logic: attach to DB history if requested OR failure
+                            should_capture = request.capture_screenshots or step.get("screenshot") is True or not res["success"]
+                            screen_data = current_screen_b64 if should_capture else None
+    
+                            result_entry = {
+                                "step_number": i + 1,
+                                "name": f"[Iter{iter_idx}] {step_name}",
+                                "status": "passed" if res["success"] else "failed",
+                                "duration": f"{round(step_end - step_start, 1)}s",
+                                "error_message": res.get("error"),
+                                "screenshot_data": screen_data,
+                                "metadata": {
+                                    "action": action,
+                                    "target": target,
+                                    "value": value,
+                                    "iteration": iter_idx,
+                                    "description": description,
+                                    "assertText": step.get("assertText")
+                                }
                             }
-                        }
-                        step_results.append(result_entry)
+                            step_results.append(result_entry)
+    
+                            if not res["success"]:
+                                log(f"Step {i+1} FAILED: {res.get('error')}", "ERROR")
+                                iteration_success = False
+                                overall_status = "failed"
+                                # with open(exit_code_file, "w") as ef: ef.write("1") <- Removed for race condition
+                                break # Stop execution on failure
+                            
+                            log(f"Step {i+1} PASSED ({round(step_end - step_start, 1)}s)")
+                            await asyncio.sleep(1.0) # Added delay to allow the live view to keep up visually
 
-                        if not res["success"]:
-                            log(f"Step {i+1} FAILED: {res.get('error')}", "ERROR")
-                            overall_status = "failed"
-                            # with open(exit_code_file, "w") as ef: ef.write("1") <- Removed for race condition
-                            break # Stop execution on failure
-                        
-                        log(f"Step {i+1} PASSED ({round(step_end - step_start, 1)}s)")
-                        await asyncio.sleep(1.0) # Added delay to allow the live view to keep up visually
+                        # After all steps in iteration, check row-level expected_result if provided
+                        if iteration_success and iter_expected:
+                            log(f"Verifying row-level expected result: '{iter_expected}'")
+                            await asyncio.sleep(1.5) # Wait for final state reflection
+                            # Simple screen content check
+                            try:
+                                # For web, web_step_runner.page.content() is used. For app, we might need a general text search.
+                                # The individual runners already handle assertText, so we can reuse logic or do a simple screen dump check.
+                                pass # We will implement a verification step here if needed, but the runners already handle variable assertion 
+                                # if the user puts {{...}} in their assertText. 
+                                # However, a row-level 'expected_result' usually means 'this text must BE on the screen NOW'.
+                                
+                                # Use robust verification logic similar to step assertions
+                                content = ""
+                                if request.platform.upper() == "WEB":
+                                    # Get rendered innerText to ignore HTML tags
+                                    content = await runner.page.evaluate("document.body.innerText")
+                                else:
+                                    # Extract all text/description attributes from XML
+                                    import re
+                                    raw_xml = runner.get_page_source() or ""
+                                    text_values = re.findall(r'text="([^"]*)"', raw_xml)
+                                    desc_values = re.findall(r'content-desc="([^"]*)"', raw_xml)
+                                    content = " ".join(text_values + desc_values) + " " + raw_xml
+                                
+                                def _normalize(t):
+                                    import re
+                                    # Remove HTML-like tags and all whitespace
+                                    t = re.sub(r'<[^>]*>', '', str(t or ""))
+                                    return "".join(t.split())
+
+                                clean_content = _normalize(content)
+                                clean_expected = _normalize(iter_expected)
+
+                                if clean_expected in clean_content:
+                                    log(f"Iteration {iter_idx} Expected Result Verified.")
+                                else:
+                                    log(f"Iteration {iter_idx} FAILED: Expected result '{iter_expected}' not found on screen.", "ERROR")
+                                    iteration_success = False
+                                    overall_status = "failed"
+                            except Exception as e:
+                                log(f"Failed to verify iteration expected result: {e}", "WARNING")
+
+                        if not iteration_success:
+                            break # Stop further iterations if one fails
 
                     if overall_status == "passed":
                         log("All steps completed successfully.")

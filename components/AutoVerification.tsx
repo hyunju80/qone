@@ -4,7 +4,7 @@ import {
     ChevronRight, Save, Activity, Globe, Smartphone, ShieldCheck,
     Search, ListChecks, ArrowRight, Loader2, Sparkles, Tablet, Square, XCircle
 } from 'lucide-react';
-import { Project, Persona, Scenario, TestScript, TestCase } from '../types';
+import { Project, Persona, Scenario, TestScript, TestCase, ScriptOrigin } from '../types';
 import { scenariosApi } from '../api/scenarios';
 import { explorationApi, ExplorationStep } from '../api/exploration';
 import { testApi } from '../api/test';
@@ -86,19 +86,19 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
             const MAX_LOOPS = 40;
 
             const persona = personas.find(p => p.id === selectedPersonaId);
-            const personaContext = persona ? `Name: ${persona.name}, Goal: ${persona.goal}` : undefined;
+            const personaContext = persona ? `Name: ${persona.name}, Goal: ${persona.goal} ` : undefined;
 
             // Construct a very specific goal based on scenario steps
             const scenarioGoal = `
         다음 시나리오를 충실히 따라서 테스트를 완료하세요:
         시나리오 명: ${selectedScenario.title}
-        설명: ${selectedScenario.description}
-        
-        [수행 단계]
+설명: ${selectedScenario.description}
+
+[수행 단계]
         ${selectedScenario.testCases.map((tc, idx) => `${idx + 1}. ${tc.title}: ${tc.steps.join(', ')}`).join('\n')}
         
-        가장 중요한 목표는 시나리오에 기술된 흐름대로 실제 UI에서 성공적으로 동작하는지 검증하고, 
-        동작이 완료되면 'finish' 액션으로 종료하는 것입니다.
+        가장 중요한 목표는 시나리오에 기술된 흐름대로 실제 UI에서 성공적으로 동작하는지 검증하고,
+    동작이 완료되면 'finish' 액션으로 종료하는 것입니다.
       `;
 
             while (!loopComplete && loopCount < MAX_LOOPS) {
@@ -161,7 +161,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                 action_type: platform === 'WEB' ? 'navigate' : 'open_app',
                 action_target: targetUrl || "http://example.com",
                 action_value: '',
-                thought: platform === 'WEB' ? `Navigating to target URL: ${targetUrl || 'http://example.com'}` : `Launching App Package: ${targetUrl}`,
+                thought: platform === 'WEB' ? `Navigating to target URL: ${targetUrl || 'http://example.com'} ` : `Launching App Package: ${targetUrl} `,
                 description: `Initialize testing environment`,
                 status: 'Completed',
                 matching_score: 100,
@@ -223,7 +223,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
             }
 
             return {
-                id: `step_auto_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+                id: `step_auto_${Date.now()}_${Math.random().toString(36).substring(2, 9)} `,
                 stepName: `${String(finalAction).toUpperCase()} Target`,
                 action: finalAction,
                 selectorType: selectorType,
@@ -235,12 +235,12 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
         });
 
         const payload = {
-            name: `[Verified] ${selectedScenario.title}`,
+            name: `[Verified] ${selectedScenario.title} `,
             description: selectedScenario.description,
             project_id: activeProject.id,
             code: "/* Rule-based Verified script */",
             engine: platform === 'WEB' ? 'Playwright' : 'Appium',
-            origin: 'AI',
+            origin: ScriptOrigin.AI,
             status: 'CERTIFIED',
             platform,
             steps: scriptSteps,
@@ -283,9 +283,9 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
 
                     {uniqueCategories.length > 0 && (
                         <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1">
-                            <button onClick={() => setSelectedCategory('ALL')} className={`px-2 py-1 rounded text-[9px] font-black uppercase whitespace-nowrap transition-colors ${selectedCategory === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>ALL</button>
+                            <button onClick={() => setSelectedCategory('ALL')} className={`px - 2 py - 1 rounded text - [9px] font - black uppercase whitespace - nowrap transition - colors ${selectedCategory === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'} `}>ALL</button>
                             {uniqueCategories.map(cat => (
-                                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-2 py-1 rounded text-[9px] font-black uppercase whitespace-nowrap transition-colors ${selectedCategory === cat ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px - 2 py - 1 rounded text - [9px] font - black uppercase whitespace - nowrap transition - colors ${selectedCategory === cat ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'} `}>
                                     {cat}
                                 </button>
                             ))}
@@ -309,7 +309,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                             <button
                                 key={s.id}
                                 onClick={() => setSelectedScenarioId(s.id)}
-                                className={`w-full text-left p-4 rounded-2xl border transition-all flex items-start gap-3 ${selectedScenarioId === s.id ? 'bg-indigo-600/10 border-indigo-500 shadow-md' : 'bg-white dark:bg-[#16191f] border-gray-200 dark:border-gray-800 hover:border-gray-300'}`}
+                                className={`w - full text - left p - 4 rounded - 2xl border transition - all flex items - start gap - 3 ${selectedScenarioId === s.id ? 'bg-indigo-600/10 border-indigo-500 shadow-md' : 'bg-white dark:bg-[#16191f] border-gray-200 dark:border-gray-800 hover:border-gray-300'} `}
                             >
                                 <div className="p-2 bg-gray-50 dark:bg-gray-900 rounded-lg shrink-0 transition-colors"><ListChecks className="w-4 h-4 text-gray-400" /></div>
                                 <div className="min-w-0">
@@ -347,7 +347,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                     </div>
                                     <div className="flex flex-col self-end pb-1.5">
                                         <span className="text-[8px] font-black text-gray-400 uppercase tracking-[0.1em] mb-1">Status</span>
-                                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase inline-block ${isRunning ? 'bg-amber-100 text-amber-600 animate-pulse' : isComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'}`}>{isRunning ? 'Running' : isComplete ? 'Finished' : 'Standby'}</span>
+                                        <span className={`px - 2 py - 0.5 rounded text - [9px] font - black uppercase inline - block ${isRunning ? 'bg-amber-100 text-amber-600 animate-pulse' : isComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'} `}>{isRunning ? 'Running' : isComplete ? 'Finished' : 'Standby'}</span>
                                     </div>
                                 </div>
                             </div>
@@ -467,21 +467,21 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                 )}
 
                                 {isComplete && steps.length > 0 && (
-                                    <div className={`p-6 rounded-3xl border-2 mb-8 animate-in slide-in-from-top-4 duration-500 ${steps[steps.length - 1]?.status === 'Failed'
+                                    <div className={`p - 6 rounded - 3xl border - 2 mb - 8 animate -in slide -in -from - top - 4 duration - 500 ${steps[steps.length - 1]?.status === 'Failed'
                                         ? 'bg-red-50 dark:bg-red-500/5 border-red-100 dark:border-red-500/20'
                                         : 'bg-emerald-50 dark:bg-emerald-500/5 border-emerald-100 dark:border-emerald-500/20'
-                                        }`}>
+                                        } `}>
                                         <div className="flex items-start gap-4">
-                                            <div className={`p-3 rounded-2xl ${steps[steps.length - 1]?.status === 'Failed' ? 'bg-red-100 dark:bg-red-500/20 text-red-600' : 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600'}`}>
+                                            <div className={`p - 3 rounded - 2xl ${steps[steps.length - 1]?.status === 'Failed' ? 'bg-red-100 dark:bg-red-500/20 text-red-600' : 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600'} `}>
                                                 {steps[steps.length - 1]?.status === 'Failed' ? <XCircle className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6" />}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <h3 className={`text-sm font-black uppercase tracking-wider mb-1 ${steps[steps.length - 1]?.status === 'Failed' ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                                                <h3 className={`text - sm font - black uppercase tracking - wider mb - 1 ${steps[steps.length - 1]?.status === 'Failed' ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'} `}>
                                                     Verification {steps[steps.length - 1]?.status === 'Failed' ? 'Failed' : 'Success'}
                                                 </h3>
                                                 <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed break-words">
                                                     {steps[steps.length - 1]?.status === 'Failed'
-                                                        ? `검증 중 오류가 발생했습니다: ${steps[steps.length - 1]?.observation}`
+                                                        ? `검증 중 오류가 발생했습니다: ${steps[steps.length - 1]?.observation} `
                                                         : "시나리오의 모든 단계가 성공적으로 완료되었습니다."}
                                                 </p>
                                             </div>
@@ -496,17 +496,17 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                 <div className="space-y-6">
                                     {steps.map((step, idx) => (
                                         <div key={idx} className="relative pl-8 border-l-2 border-gray-200 dark:border-gray-800 last:border-transparent transition-colors">
-                                            <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 ${step.status === 'Completed' ? 'bg-emerald-500 border-emerald-900' :
+                                            <div className={`absolute - left - [9px] top - 0 w - 4 h - 4 rounded - full border - 2 ${step.status === 'Completed' ? 'bg-emerald-500 border-emerald-900' :
                                                 step.status === 'Failed' ? 'bg-red-500 border-red-900' : 'bg-indigo-500 border-indigo-900'
-                                                }`} />
+                                                } `} />
 
                                             <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl p-5 hover:border-indigo-500/30 transition-colors">
                                                 <div className="flex items-center justify-between mb-3">
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest transition-colors">Step {step.step_number || idx + 1}</span>
-                                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${step.matching_score >= 80 ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400' :
+                                                        <span className={`text - [10px] font - bold px - 1.5 py - 0.5 rounded border ${step.matching_score >= 80 ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400' :
                                                             step.matching_score >= 50 ? 'border-yellow-500/30 text-yellow-600 dark:text-yellow-400' : 'border-gray-200 dark:border-gray-700 text-gray-500'
-                                                            } transition-colors`}>
+                                                            } transition - colors`}>
                                                             Score: {step.matching_score ?? 0}
                                                         </span>
                                                     </div>
@@ -526,8 +526,8 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                                             {step.score_breakdown && Object.entries(step.score_breakdown).map(([key, val]) => (
                                                                 <div key={key} className="flex justify-between">
                                                                     <span className="text-gray-600 dark:text-gray-400 capitalize transition-colors">{key.replace('_', ' ')}</span>
-                                                                    <span className={`font-bold transition-colors ${(val as number) >= 80 ? 'text-emerald-600 dark:text-emerald-400' : (val as number) >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'
-                                                                        }`}>{val as number}</span>
+                                                                    <span className={`font - bold transition - colors ${(val as number) >= 80 ? 'text-emerald-600 dark:text-emerald-400' : (val as number) >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'
+                                                                        } `}>{val as number}</span>
                                                                 </div>
                                                             ))}
                                                         </div>
@@ -548,8 +548,8 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                                         <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-200 dark:border-gray-800/30 mt-2 transition-colors">
                                                             {step.observation && (
                                                                 <div className="col-span-2">
-                                                                    <span className={`${step.status === 'Failed' ? 'text-red-600/70 dark:text-red-500/70' : 'text-emerald-600/70 dark:text-emerald-500/70'} font-bold uppercase text-[10px] block mb-1 transition-colors`}>Actual (Observation)</span>
-                                                                    <span className={`${step.status === 'Failed' ? 'text-red-700 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'} not-italic transition-colors`}>{step.observation}</span>
+                                                                    <span className={`${step.status === 'Failed' ? 'text-red-600/70 dark:text-red-500/70' : 'text-emerald-600/70 dark:text-emerald-500/70'} font - bold uppercase text - [10px] block mb - 1 transition - colors`}>Actual (Observation)</span>
+                                                                    <span className={`${step.status === 'Failed' ? 'text-red-700 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'} not - italic transition - colors`}>{step.observation}</span>
                                                                 </div>
                                                             )}
                                                             {step.expectation && (

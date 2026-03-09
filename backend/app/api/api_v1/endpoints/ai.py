@@ -174,19 +174,23 @@ async def generate_test_data(
         
         Required Data Types: {data_types_text}
         
-        Output Format: JSON Array of Objects with keys: 'field', 'value', 'type', 'description'.
+        Output Format: JSON Array of Objects with keys: 'field', 'value', 'type', 'description', 'expected_result'.
         
         Constraints:
         1. 'field' should match the input fields mentioned in the scenarios.
         2. 'type' should be one of the required data types.
         3. 'value' should be realistic and appropriate for the type.
         4. 'description' should explain why this value is chosen (e.g., "Valid email format", "SQL Injection pattern").
-        5. Generate at least {request.count} variations per field/type if applicable, but aim for a comprehensive set.
+        5. 'expected_result' MUST be an **EXACT literal text string** (Landmark) that should appear on the screen at the end of the iteration.
+           - Do NOT write descriptions or sentences (e.g., "Page title is...").
+           - Write ONLY the bit-for-bit text value (e.g., "Welcome", "로그인에 실패하였습니다", "Search Results").
+           - For INVALID/SECURITY data, this is usually the specific error message text.
+        6. Generate exactly {request.count} variations per field/type.
         
         Example Output:
         [
-            {{ "field": "email", "value": "test@example.com", "type": "VALID", "description": "Standard valid email" }},
-            {{ "field": "age", "value": "-1", "type": "INVALID", "description": "Negative age boundary value" }}
+            {{ "field": "email", "value": "test@example.com", "type": "VALID", "description": "Standard valid email", "expected_result": "Welcome" }},
+            {{ "field": "age", "value": "-1", "type": "INVALID", "description": "Negative age boundary value", "expected_result": "Age must be positive" }}
         ]
         
         Return ONLY the JSON array.
@@ -212,7 +216,8 @@ async def generate_test_data(
                 field=item.get('field', 'unknown'),
                 value=str(item.get('value', '')),
                 type=item.get('type', 'VALID'),
-                description=item.get('description', '')
+                description=item.get('description', ''),
+                expected_result=item.get('expected_result')
             ))
             
         return schemas.DataGenerationResponse(data=result_data)

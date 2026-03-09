@@ -1,6 +1,7 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
+from .persona import Persona
 
 class TestCase(BaseModel):
     id: str
@@ -41,4 +42,4 @@ class ScenarioInDBBase(ScenarioBase):
         from_attributes = True
 
 class Scenario(ScenarioInDBBase):
-    pass
+    persona: Optional[Persona] = None

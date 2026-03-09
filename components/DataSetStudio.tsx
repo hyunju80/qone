@@ -17,6 +17,7 @@ interface GeneratedDataRow {
     value: string;
     type: string;
     description: string;
+    expected_result?: string;
 }
 
 const DataSetStudio: React.FC<DataSetStudioProps> = ({ activeProject, onAlert }) => {
@@ -42,7 +43,7 @@ const DataSetStudio: React.FC<DataSetStudioProps> = ({ activeProject, onAlert })
         try {
             const data = await testApi.getScripts(activeProject.id);
             // Filter for AI Generated or Step scripts that might need data
-            setScripts(data.filter(s => s.origin === 'AI' || s.origin === 'STEP'));
+            setScripts(data.filter(s => s.origin === 'AI' || s.origin === 'STEP' || s.origin === 'AI_EXPLORATION'));
         } catch (err) {
             console.error("Failed to fetch scripts", err);
         } finally {
@@ -259,7 +260,6 @@ const DataSetStudio: React.FC<DataSetStudioProps> = ({ activeProject, onAlert })
                                     </div>
                                     <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest transition-colors">Total Rows: {generatedData.length}</div>
                                 </div>
-
                                 <div className="flex-1 overflow-auto custom-scrollbar">
                                     {generatedData.length === 0 ? (
                                         <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4">
@@ -267,26 +267,34 @@ const DataSetStudio: React.FC<DataSetStudioProps> = ({ activeProject, onAlert })
                                             <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-30">No data generated yet. Click 'Generate Data' above.</p>
                                         </div>
                                     ) : (
-                                        <table className="w-full text-left border-collapse transition-colors">
+                                        <table className="w-full text-left border-collapse transition-colors table-fixed">
                                             <thead className="sticky top-0 bg-gray-50 dark:bg-gray-900/50 backdrop-blur-md z-10 transition-colors">
                                                 <tr>
-                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors">Field Name</th>
-                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors">Value</th>
-                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors">Data Type</th>
+                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[150px]">Field Name</th>
+                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[150px]">Value</th>
+                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[100px]">Data Type</th>
+                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[200px]">Expected UI Response</th>
                                                     <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors">Rational/Description</th>
-                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors shrink-0">Action</th>
+                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[80px]">Action</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 transition-colors">
                                                 {generatedData.map((row, idx) => (
                                                     <tr key={idx} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                                                         <td className="px-8 py-4">
-                                                            <div className="text-[11px] font-black text-gray-900 dark:text-gray-200 transition-colors">{row.field}</div>
+                                                            <div className="text-[11px] font-black text-gray-900 dark:text-gray-200 transition-colors truncate">{row.field}</div>
                                                         </td>
                                                         <td className="px-8 py-4">
-                                                            <div className="text-[11px] font-medium font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-1 rounded border border-indigo-100 dark:border-indigo-500/20 inline-block transition-colors">
-                                                                {row.value}
-                                                            </div>
+                                                            <input
+                                                                type="text"
+                                                                value={row.value}
+                                                                onChange={(e) => {
+                                                                    const newData = [...generatedData];
+                                                                    newData[idx].value = e.target.value;
+                                                                    setGeneratedData(newData);
+                                                                }}
+                                                                className="w-full text-[11px] font-medium font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-1 rounded border border-indigo-100 dark:border-indigo-500/20 outline-none focus:border-indigo-500 transition-colors"
+                                                            />
                                                         </td>
                                                         <td className="px-8 py-4 text-[10px]">
                                                             <span className={`px-2 py-0.5 rounded font-black uppercase ${row.type === 'VALID' ? 'bg-green-100 text-green-600' :
@@ -295,6 +303,19 @@ const DataSetStudio: React.FC<DataSetStudioProps> = ({ activeProject, onAlert })
                                                                 }`}>
                                                                 {row.type}
                                                             </span>
+                                                        </td>
+                                                        <td className="px-8 py-4">
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Expected UI Text..."
+                                                                value={row.expected_result || ''}
+                                                                onChange={(e) => {
+                                                                    const newData = [...generatedData];
+                                                                    newData[idx].expected_result = e.target.value;
+                                                                    setGeneratedData(newData);
+                                                                }}
+                                                                className="w-full text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 rounded border border-emerald-100 dark:border-emerald-500/20 outline-none focus:border-emerald-500 transition-colors"
+                                                            />
                                                         </td>
                                                         <td className="px-8 py-4">
                                                             <div className="text-[10px] text-gray-500 dark:text-gray-400 line-clamp-2 transition-colors">{row.description}</div>

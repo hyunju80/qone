@@ -7,7 +7,7 @@ from typing import List, Dict, Any, Optional
 from appium import webdriver
 from appium.options.common import AppiumOptions
 from appium.webdriver.common.appiumby import AppiumBy
-from selenium.common.exceptions import WebDriverException, NoSuchElementException
+from selenium.common.exceptions import WebDriverException, NoSuchElementException, InvalidSessionIdException
 
 logger = logging.getLogger(__name__)
 
@@ -96,12 +96,18 @@ class AppStepRunner:
             return None
         try:
             return self.driver.get_screenshot_as_base64()
+        except InvalidSessionIdException:
+            logger.error("Appium session lost during screenshot capture.")
+            self.driver = None
+            return None
         except:
             return None
 
     def get_page_source(self) -> Optional[str]:
         if not self.driver:
             return None
+        
+        source = None
         
         # Retry up to 3 times if we get a '<loading />' stub
         for i in range(3):
@@ -113,6 +119,10 @@ class AppStepRunner:
                 logger.warning(f"Appium returned loading stub, retrying {i+1}/3...")
                 time.sleep(1) # Wait a bit for the UI to stabilize
             except Exception as e:
+                if isinstance(e, InvalidSessionIdException):
+                    logger.error("Appium session lost during page source capture.")
+                    self.driver = None
+                    return None
                 logger.error(f"Failed to capture page source: {e}")
                 
         return source # Return whatever we have at the end
@@ -156,6 +166,8 @@ class AppStepRunner:
             return clean_xml
             
         except Exception as e:
+            if isinstance(e, InvalidSessionIdException):
+                raise e
             logger.error(f"Error cleaning XML source: {e}")
             return source
 
@@ -209,7 +221,11 @@ class AppStepRunner:
         while time.time() - start_time < timeout:
             try:
                 return self.driver.find_element(by=by, value=actual_value)
-            except Exception:
+            except Exception as e:
+                if isinstance(e, InvalidSessionIdException):
+                    logger.error("Appium session lost during element search.")
+                    self.driver = None
+                    raise e
                 pass
                 
             # 1. If it was ID, try XPath partial match
@@ -311,6 +327,10 @@ class AppStepRunner:
                         
                     time.sleep(1.5) # Wait for WebView to render new items
                 except Exception as e:
+                    if isinstance(e, InvalidSessionIdException):
+                        logger.error("Appium session lost during auto-scroll.")
+                        self.driver = None
+                        raise e
                     logger.warning(f"Auto-scroll fallback failed completely: {e}")
                 scrolled_once = True
                 
@@ -364,7 +384,87 @@ class AppStepRunner:
         logger.error(f"Failed to find element after {timeout}s: {selector_type}={selector_value}")
         raise NoSuchElementException(err_msg)
 
-    def execute_step(self, step: Dict[str, Any], db: Optional[Any] = None) -> Dict[str, Any]:
+    def apply_data_to_step(self, step: Dict[str, Any], data: Dict[str, Any], reference_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Replaces {{key}} in step fields with values from data, using Smart Mapping fallbacks."""
+        import re
+        new_step = step.copy()
+        
+        # 1. Primary: Standard Placeholder Substitution {{key}} and {{key_expected}}
+        look_in = ["selector_value", "selectorValue", "option", "inputValue", "value", "assertText", "description", "stepName", "name"]
+        used_placeholders = False
+        
+        for field in look_in:
+            if field in new_step and isinstance(new_step[field], str):
+                val = new_step[field]
+                placeholders = re.findall(r"\{\{([^}]+)\}\}", val)
+                for ph in placeholders:
+                    clean_ph = ph.strip()
+                    is_expected = clean_ph.endswith("_expected")
+                    key = clean_ph.replace("_expected", "") if is_expected else clean_ph
+                    
+                    if key in data:
+                        data_item = data[key]
+                        if is_expected:
+                            actual_val = data_item.get("expected_result") if isinstance(data_item, dict) else None
+                        else:
+                            actual_val = data_item.get("value") if isinstance(data_item, dict) else data_item
+                        
+                        if actual_val is not None:
+                            val = val.replace(f"{{{{{ph}}}}}", str(actual_val))
+                            used_placeholders = True
+                new_step[field] = val
+        
+        # 2. Secondary: Smart Mapping (Implicit Field Matching via description/name for Input Values)
+        # If the dataset key (e.g., '검색창') is found in the description, override the input value.
+        if not used_placeholders and data:
+            action = str(new_step.get("action", "")).lower()
+            val_field = "inputValue" if "inputValue" in new_step else ("option" if "option" in new_step else "value")
+                
+            desc = str(new_step.get("description", ""))
+            name = str(new_step.get("stepName", "") or new_step.get("name", ""))
+
+            for key, data_item in data.items():
+                if key in desc or key in name:
+                    actual_val = data_item.get("value") if isinstance(data_item, dict) else data_item
+                    
+                    if actual_val is not None:
+                        if action in ["type", "input", "send_keys", "navigate", "wait"]:
+                            # Only override if the value is different (avoid infinite loops/redundant sets)
+                            if new_step.get(val_field) != str(actual_val):
+                                new_step[val_field] = str(actual_val)
+                    break
+        
+        # 3. Tertiary: Value-based Smart Mapping (Literal Replacement based on Row 1)
+        # Identify literal values from the first row of data and replace them in ALL fields.
+        if not used_placeholders and reference_data and data:
+            for key, data_item in data.items():
+                new_val = data_item.get("value") if isinstance(data_item, dict) else data_item
+                new_exp = data_item.get("expected_result") if isinstance(data_item, dict) else None
+                
+                # Get reference value for Row 1
+                ref_item = reference_data.get(key)
+                old_val_ref = ref_item.get("value") if isinstance(ref_item, dict) else ref_item
+                old_exp_ref = ref_item.get("expected_result") if isinstance(ref_item, dict) else ref_item
+                
+                # Replace input/general literal values
+                if old_val_ref and isinstance(old_val_ref, str) and len(old_val_ref) > 1:
+                    if old_val_ref != str(new_val):
+                        for field in look_in:
+                            if field in new_step and isinstance(new_step[field], str):
+                                if old_val_ref in new_step[field]:
+                                    new_step[field] = new_step[field].replace(old_val_ref, str(new_val))
+                                    
+                # Replace literal expected_result if present in Row 1's expected_result
+                if old_exp_ref and isinstance(old_exp_ref, str) and len(old_exp_ref) > 1:
+                    if old_exp_ref != str(new_exp) and new_exp is not None:
+                        for field in look_in:
+                            if field in new_step and isinstance(new_step[field], str):
+                                if old_exp_ref in new_step[field]:
+                                    new_step[field] = new_step[field].replace(old_exp_ref, str(new_exp))
+        
+        return new_step
+
+    def execute_step(self, step: Dict[str, Any], db: Optional[Any] = None, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Executes a single step.
         Step format: {
@@ -377,6 +477,10 @@ class AppStepRunner:
         """
         if not self.driver:
             return {"success": False, "error": "No active session"}
+
+        # Perform Variable Substitution if data is provided
+        if data:
+            step = self.apply_data_to_step(step, data)
 
         action_name = step.get("action", "").lower()
         
@@ -615,18 +719,29 @@ class AppStepRunner:
                 logger.info(f"Verifying step assertion: '{assert_text}'")
                 time.sleep(2) # Wait for page transition / UI to settle
                 try:
-                    page_text = self.get_clean_source()
-                    if assert_text in page_text:
+                    raw_xml = self.get_page_source() or ""
+                    
+                    # Extract all text/content-desc attributes to form a "visible" text buffer
+                    import re
+                    text_values = re.findall(r'text="([^"]*)"', raw_xml)
+                    desc_values = re.findall(r'content-desc="([^"]*)"', raw_xml)
+                    # Join all text to simulate what a human sees as continuous strings
+                    joined_text = " ".join(text_values + desc_values)
+
+                    if assert_text in joined_text or assert_text in raw_xml:
                         logger.info("Exact Assertion Passed.")
                     else:
                         # Fuzzy match: remove whitespace/newlines and check
                         def _normalize(t):
+                            t = str(t or "")
+                            # Standardize spaces and remove all whitespace
                             return "".join(t.split())
                         
-                        clean_page = _normalize(page_text)
+                        clean_joined = _normalize(joined_text)
+                        clean_xml = _normalize(raw_xml)
                         clean_target = _normalize(assert_text)
                         
-                        if clean_target in clean_page:
+                        if clean_target in clean_joined or clean_target in clean_xml:
                             logger.info(f"Fuzzy Assertion Passed (matched after space normalization).")
                         else:
                             return {"success": False, "error": f"Assertion Failed: Expected text '{assert_text}' not found on screen."}
@@ -638,6 +753,10 @@ class AppStepRunner:
             logger.info(f"Step {action} executed successfully.")
             return {"success": True, "error": None}
         except Exception as e:
+            if isinstance(e, InvalidSessionIdException):
+                logger.error("Appium session lost during step execution.")
+                self.driver = None
+                return {"success": False, "error": "Appium session has been terminated or not started. Please restart the session."}
             err_msg = str(e)
             logger.error(f"Step execution failed: {err_msg}")
             return {"success": False, "error": err_msg}
@@ -753,14 +872,5 @@ class AppStepRunner:
             if not result["success"] and not step.get("skip_on_error", False):
                 break
         return results
-
-    def get_screenshot(self) -> Optional[str]:
-        if not self.driver:
-            return None
-        try:
-            return self.driver.get_screenshot_as_base64()
-        except Exception as e:
-            logger.error(f"Failed to capture screenshot: {e}")
-            return None
 
 app_step_runner = AppStepRunner()

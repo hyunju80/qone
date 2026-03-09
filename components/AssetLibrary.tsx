@@ -4,10 +4,10 @@ import {
   ShieldCheck, Clock, Search, Filter, Plus, FileCode, CheckCircle2,
   MoreVertical, Star, Bot, User as UserIcon, X, Play, Loader2, Terminal as TerminalIcon,
   Copy, Check, Users, Database, Zap, Activity, Info, Table, AlertTriangle, ShieldAlert,
-  Code, Tags, Save, Upload, FileUp, Edit3, Trash2, Maximize2, RefreshCw, UserCheck, Settings2, Hash,
+  Code, Tags, Save, Upload, FileUp, Edit3, Edit2, Trash2, Maximize2, RefreshCw, UserCheck, Settings2, Hash,
   ToggleLeft, ToggleRight, Target, UserX, Globe, Smartphone, Laptop, Camera
 } from 'lucide-react';
-import { ScriptStatus, TestScript, ScriptOrigin, DataType, TestHistory, Persona, TestDataRow, TestEngine, Scenario, StepAsset } from '../types';
+import { ScriptStatus, TestScript, ScriptOrigin, DataType, TestHistory, Persona, TestDataRow, TestEngine, Scenario, StepAsset, CategoryNode } from '../types';
 import { testApi } from '../api/test';
 import { scenariosApi } from '../api/scenarios';
 import api from '../api/client';
@@ -21,9 +21,10 @@ interface AssetLibraryProps {
   onRefresh?: () => void;
   onAlert?: (title: string, message: string, type: 'success' | 'error' | 'info') => void;
   initialSearchTerm?: string;
+  categories?: CategoryNode[];
 }
 
-const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, personas, onRecordHistory, onRefresh, onAlert, initialSearchTerm = '' }) => {
+const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, personas, onRecordHistory, onRefresh, onAlert, initialSearchTerm = '', categories = [] }) => {
   const [filter, setFilter] = useState<'ALL' | 'AI' | 'AI_EXPLORATION' | 'MANUAL' | 'FAVORITES' | 'STEP'>('ALL');
   const [platformFilter, setPlatformFilter] = useState<'ALL' | 'WEB' | 'APP'>('ALL');
   const [searchQuery, setSearchQuery] = useState(initialSearchTerm);
@@ -64,6 +65,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
     description: '',
     code: 'test(\'example\', async ({ page }) => {\n  // Implementation here\n});',
     tags: '',
+    category: '',
     engine: 'Playwright' as TestEngine,
     dataset: [] as TestDataRow[]
   });
@@ -99,7 +101,8 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         script_name: asset.name,
         trigger: "manual",
         persona_name: asset.persona?.name || "Default",
-        capture_screenshots: asset.captureScreenshots || false
+        capture_screenshots: asset.captureScreenshots || false,
+        dataset: asset.dataset || []
       });
       setActiveRunId(run_id);
     } catch (e: any) {
@@ -123,7 +126,8 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
           script_name: script.name,
           trigger: "manual",
           persona_name: script.persona?.name || 'Default',
-          capture_screenshots: script.captureScreenshots || false
+          capture_screenshots: script.captureScreenshots || false,
+          dataset: script.dataset || []
         });
         setActiveRunId(run_id);
       } else {
@@ -133,7 +137,8 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
           project_id: script.projectId, // Assuming TestScript extends Project resource
           script_id: script.id,
           script_name: script.name,
-          persona_name: script.persona?.name || 'Default'
+          persona_name: script.persona?.name || 'Default',
+          dataset: script.dataset || []
         });
         setActiveRunId(run_id);
       }
@@ -145,7 +150,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
   };
 
   const filteredScripts = scripts.filter(script => {
-    if (filter === 'STEP') return false;
+    // Only 'STEP' origin assets are excluded from the Scripts list
     if (script.origin === ScriptOrigin.STEP) return false;
 
     // Origin Filter
@@ -163,11 +168,17 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
   );
 
   const filteredSteps = scripts.filter(script => script.origin === ScriptOrigin.STEP).filter(step => {
-    if (filter !== 'STEP' && filter !== 'ALL') return false;
-    if (platformFilter !== 'ALL' && step.platform !== platformFilter) return false;
-    return (step.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+    // Only 'STEP' origin or 'ALL' filter shows these
+    let originMatch = filter === 'ALL' || filter === 'STEP' || (filter === 'FAVORITES' ? step.isFavorite : false);
+
+    // Platform Filter
+    let platformMatch = platformFilter === 'ALL' || step.platform === platformFilter;
+
+    return originMatch && platformMatch && (
+      (step.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
       (step.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-      (step.id?.toLowerCase() || '').includes(searchQuery.toLowerCase());
+      (step.id?.toLowerCase() || '').includes(searchQuery.toLowerCase())
+    );
   });
 
   const handleExecutionComplete = async (status: 'success' | 'error', capturedLogs?: string) => {
@@ -235,6 +246,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const [isEditingSteps, setIsEditingSteps] = useState(false);
+  const [editedSteps, setEditedSteps] = useState<any[]>([]);
+
   // Internal Logic Methods
   const handleRegisterManualScript = async (script: TestScript) => {
     try {
@@ -248,7 +262,8 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         dataset: script.dataset,
         is_active: script.isActive,
         status: ScriptStatus.CERTIFIED,
-        origin: ScriptOrigin.MANUAL
+        origin: ScriptOrigin.MANUAL,
+        category: script.category
       };
 
       await testApi.createScript(payload);
@@ -271,7 +286,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         dataset: script.dataset,
         is_active: script.isActive,
         is_favorite: script.isFavorite,
-        capture_screenshots: script.captureScreenshots
+        capture_screenshots: script.captureScreenshots,
+        category: script.category,
+        steps: script.steps
       };
 
       await testApi.updateScript(script.id, payload);
@@ -313,6 +330,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
       description: script.description,
       code: script.code,
       tags: script.tags?.join(', ') || '',
+      category: script.category || '',
       engine: script.engine || 'Playwright',
       dataset: script.dataset ? [...script.dataset] : []
     });
@@ -347,6 +365,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
           description: newManualScript.description,
           code: newManualScript.code,
           engine: newManualScript.engine,
+          category: newManualScript.category,
           tags: newManualScript.tags.split(',').map(t => t.trim()).filter(t => t !== ''),
           dataset: newManualScript.dataset
         });
@@ -364,6 +383,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         code: newManualScript.code,
         engine: newManualScript.engine,
         origin: ScriptOrigin.MANUAL,
+        category: newManualScript.category,
         tags: newManualScript.tags.split(',').map(t => t.trim()).filter(t => t !== ''),
         isFavorite: false,
         isActive: true,
@@ -423,6 +443,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
               description: '',
               code: 'test(\'example\', async ({ page }) => {\n  // Implementation here\n});',
               tags: '',
+              category: '',
               engine: 'Playwright',
               dataset: []
             });
@@ -540,6 +561,11 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
               <span className="flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-900 border border-indigo-500/20 rounded text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-tighter transition-colors">
                 {script.engine === 'Appium' ? 'Appium' : 'Playwright'}
               </span>
+              {script.category && (
+                <span className="flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-500/20 rounded text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-tighter transition-colors">
+                  <Database className="w-2.5 h-2.5" /> {script.category}
+                </span>
+              )}
               {script.tags?.map((t, idx) => (
                 <span key={idx} className="flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded text-[9px] font-bold text-gray-500 uppercase tracking-tighter transition-colors">
                   <Hash className="w-2.5 h-2.5 text-indigo-500 opacity-50" /> {t}
@@ -598,8 +624,12 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
               </div>
               <div className="flex flex-col items-end gap-2">
                 <div className="flex items-center gap-2">
-                  <div className="px-2 py-1 rounded text-[8px] font-black uppercase flex items-center justify-center gap-1 leading-none bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-300 border border-gray-200 dark:border-transparent">
-                    STEP ASSET
+                  <div className={`px-2 py-1 rounded text-[8px] font-black uppercase flex items-center justify-center gap-1 leading-none ${(step.origin === ScriptOrigin.AI || step.origin === ScriptOrigin.AI_EXPLORATION || step.tags?.some(t => t === 'AI' || t === 'AI_EXPLORATION'))
+                    ? 'bg-indigo-950 text-indigo-400 border border-indigo-500/20'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-300 border border-gray-200 dark:border-transparent'
+                    }`}>
+                    {(step.origin === ScriptOrigin.AI || step.origin === ScriptOrigin.AI_EXPLORATION || step.tags?.some(t => t === 'AI' || t === 'AI_EXPLORATION')) ? <Bot className="w-2.5 h-2.5" /> : <UserIcon className="w-2.5 h-2.5" />}
+                    {(step.origin === ScriptOrigin.AI_EXPLORATION || step.tags?.includes('AI_EXPLORATION')) ? 'AI EXPLORATION' : 'STEP ASSET'}
                   </div>
                   <button
                     onClick={(e) => handleToggleStepActive(e, step)}
@@ -626,6 +656,11 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
               <span className="flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded text-[9px] font-bold text-gray-500 uppercase tracking-tighter transition-colors">
                 {step.steps?.length || 0} STEPS
               </span>
+              {step.category && (
+                <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-500/20 rounded text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-tighter transition-colors">
+                  <Database className="w-2.5 h-2.5" /> {step.category}
+                </span>
+              )}
             </div>
 
             <div className="mb-6 space-y-3 mt-auto relative z-10">
@@ -642,6 +677,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
               <div className="flex items-center justify-between text-[9px] text-gray-500">
                 <div className="flex items-center gap-1.5">
                   <Clock className="w-3 h-3" /> {step.lastRun}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <UserCheck className={`w-3 h-3 ${step.isActive !== false ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-700'}`} /> {step.persona?.name || 'Standard'}
                 </div>
               </div>
             </div>
@@ -765,26 +803,28 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                       <Database className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Bound Dataset (Synthetic)
                     </div>
                     <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden shadow-2xl transition-colors">
-                      <table className="w-full text-left text-[11px]">
+                      <table className="w-full text-left text-[11px] table-fixed">
                         <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800 text-[9px] font-black uppercase text-gray-500 transition-colors">
                           <tr>
-                            <th className="px-5 py-3">Field</th>
+                            <th className="px-5 py-3 w-[140px]">Field</th>
                             <th className="px-5 py-3">Value</th>
-                            <th className="px-5 py-3 text-right">Type</th>
+                            <th className="px-5 py-3 w-[180px]">Expected</th>
+                            <th className="px-5 py-3 text-right w-[80px]">Type</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-800 transition-colors">
                           {viewingScript.dataset && viewingScript.dataset.length > 0 ? viewingScript.dataset.map((row) => (
                             <tr key={row.id} className="hover:bg-indigo-50 dark:hover:bg-indigo-500/5 transition-colors">
-                              <td className="px-5 py-4 font-bold text-gray-700 dark:text-gray-300 mono transition-colors">{row.field}</td>
-                              <td className="px-5 py-4 text-indigo-600 dark:text-blue-300 mono transition-colors">{row.value}</td>
+                              <td className="px-5 py-4 font-bold text-gray-700 dark:text-gray-300 mono transition-colors whitespace-nowrap overflow-hidden text-ellipsis">{row.field}</td>
+                              <td className="px-5 py-4 text-indigo-600 dark:text-blue-300 mono transition-colors break-all">{row.value}</td>
+                              <td className="px-5 py-4 text-emerald-600 dark:text-emerald-400 font-bold transition-colors break-all">{row.expected_result || '-'}</td>
                               <td className="px-5 py-4 text-right">
                                 <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${row.type === DataType.VALID ? 'bg-green-600/10 text-green-500' : 'bg-red-600/10 text-red-500'
                                   }`}>{row.type}</span>
                               </td>
                             </tr>
                           )) : (
-                            <tr><td colSpan={3} className="px-5 py-10 text-center text-gray-600 italic">No dataset mapping found for this asset.</td></tr>
+                            <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-600 italic">No dataset mapping found for this asset.</td></tr>
                           )}
                         </tbody>
                       </table>
@@ -797,52 +837,195 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                     <div>
                       <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center justify-between">
                         <span>Steps ({viewingScript.steps.length})</span>
-                        {viewingScript.platform && (
-                          <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded uppercase border border-indigo-200 dark:border-indigo-800">
-                            {viewingScript.platform}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-3">
+                          {viewingScript.platform && (
+                            <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded uppercase border border-indigo-200 dark:border-indigo-800">
+                              {viewingScript.platform}
+                            </span>
+                          )}
+                          {!isEditingSteps ? (
+                            <button
+                              onClick={() => {
+                                setEditedSteps(JSON.parse(JSON.stringify(viewingScript.steps || [])));
+                                setIsEditingSteps(true);
+                              }}
+                              className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 uppercase tracking-wider flex items-center gap-1 transition-colors bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded"
+                            >
+                              <Edit2 className="w-3 h-3" /> Edit Steps
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setIsEditingSteps(false)}
+                                className="text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 uppercase tracking-wider transition-colors px-2 py-1"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  const updatedScript = { ...viewingScript, steps: editedSteps };
+                                  setViewingScript(updatedScript);
+                                  await handleUpdateScript(updatedScript);
+                                  setIsEditingSteps(false);
+                                }}
+                                className="text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 uppercase tracking-wider flex items-center gap-1 transition-colors px-2 py-1 rounded shadow-sm"
+                              >
+                                <Save className="w-3 h-3" /> Save Changes
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </h4>
                       <div className="space-y-3">
-                        {viewingScript.steps.map((step, idx) => (
-                          <div key={idx} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl p-4 transition-all hover:border-indigo-500/50">
+                        {(isEditingSteps ? editedSteps : viewingScript.steps).map((step, idx) => (
+                          <div key={idx} className={`bg-white dark:bg-[#16191f] border rounded-xl p-4 transition-all ${isEditingSteps ? 'border-indigo-300 dark:border-indigo-700 shadow-sm' : 'border-gray-200 dark:border-gray-800 hover:border-indigo-500/50'}`}>
                             <div className="flex items-start gap-3">
                               <div className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">
                                 {idx + 1}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-500/20">
-                                    {step.action || 'Unknown'}
-                                  </span>
-                                  {step.stepName && <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{step.stepName}</span>}
-                                </div>
-                                <p className="text-[11px] text-gray-600 dark:text-gray-400 mb-2 truncate">
-                                  {step.description || "No description"}
-                                </p>
-                                <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-100 dark:border-gray-800">
-                                  <div>
-                                    <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
-                                    <span className="font-mono text-gray-700 dark:text-gray-300">{step.selectorType || '-'}</span>
+                                {isEditingSteps ? (
+                                  <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                      <select
+                                        value={step.action || ''}
+                                        onChange={(e) => {
+                                          const newSteps = [...editedSteps];
+                                          newSteps[idx].action = e.target.value;
+                                          setEditedSteps(newSteps);
+                                        }}
+                                        className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-1 rounded border border-indigo-200 dark:border-indigo-500/30 outline-none"
+                                      >
+                                        <option value="navigate">NAVIGATE</option>
+                                        <option value="click">CLICK</option>
+                                        <option value="type">TYPE</option>
+                                        <option value="input">INPUT</option>
+                                        <option value="wait">WAIT</option>
+                                        <option value="finish">FINISH</option>
+                                      </select>
+                                      <input
+                                        type="text"
+                                        placeholder="Step Name"
+                                        value={step.stepName || ''}
+                                        onChange={(e) => {
+                                          const newSteps = [...editedSteps];
+                                          newSteps[idx].stepName = e.target.value;
+                                          setEditedSteps(newSteps);
+                                        }}
+                                        className="flex-1 text-xs font-bold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-500 outline-none py-0.5"
+                                      />
+                                    </div>
+                                    <input
+                                      type="text"
+                                      placeholder="Description"
+                                      value={step.description || ''}
+                                      onChange={(e) => {
+                                        const newSteps = [...editedSteps];
+                                        newSteps[idx].description = e.target.value;
+                                        setEditedSteps(newSteps);
+                                      }}
+                                      className="w-full text-[11px] text-gray-600 dark:text-gray-400 bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-500 outline-none py-0.5"
+                                    />
+                                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                      <div>
+                                        <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
+                                        <select
+                                          value={step.selectorType || ''}
+                                          onChange={(e) => {
+                                            const newSteps = [...editedSteps];
+                                            newSteps[idx].selectorType = e.target.value;
+                                            setEditedSteps(newSteps);
+                                          }}
+                                          className="w-full bg-gray-50 dark:bg-gray-900/50 p-1.5 rounded border border-gray-200 dark:border-gray-700 outline-none font-mono text-gray-700 dark:text-gray-300"
+                                        >
+                                          <option value="CSS">CSS</option>
+                                          <option value="XPATH">XPATH</option>
+                                          <option value="ID">ID</option>
+                                          <option value="ACCESSIBILITY_ID">ACCESSIBILITY ID</option>
+                                          <option value="TEXT">TEXT</option>
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
+                                        <input
+                                          type="text"
+                                          value={step.selectorValue || ''}
+                                          onChange={(e) => {
+                                            const newSteps = [...editedSteps];
+                                            newSteps[idx].selectorValue = e.target.value;
+                                            setEditedSteps(newSteps);
+                                          }}
+                                          className="w-full bg-gray-50 dark:bg-gray-900/50 p-1.5 rounded border border-gray-200 dark:border-gray-700 outline-none font-mono text-gray-700 dark:text-gray-300"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="mt-2 text-[10px]">
+                                      <span className="text-indigo-400 uppercase tracking-tighter block text-[8px] mb-0.5">Input Value</span>
+                                      <input
+                                        type="text"
+                                        value={step.inputValue || ''}
+                                        onChange={(e) => {
+                                          const newSteps = [...editedSteps];
+                                          newSteps[idx].inputValue = e.target.value;
+                                          setEditedSteps(newSteps);
+                                        }}
+                                        className="w-full bg-indigo-50/50 dark:bg-indigo-900/10 p-1.5 rounded-lg border border-indigo-100 dark:border-indigo-900/30 outline-none font-mono text-indigo-700 dark:text-indigo-300"
+                                        placeholder="e.g. {{검색어}}"
+                                      />
+                                    </div>
+                                    <div className="mt-2 text-[10px]">
+                                      <span className="text-blue-500 uppercase tracking-tighter text-[8px] mb-0.5 flex items-center gap-1">
+                                        <CheckCircle2 className="w-2.5 h-2.5" /> Rule Assertion
+                                      </span>
+                                      <input
+                                        type="text"
+                                        value={step.assertText || ''}
+                                        onChange={(e) => {
+                                          const newSteps = [...editedSteps];
+                                          newSteps[idx].assertText = e.target.value;
+                                          setEditedSteps(newSteps);
+                                        }}
+                                        className="w-full bg-blue-50/50 dark:bg-blue-500/10 p-1.5 rounded-lg border border-blue-200 dark:border-blue-500/30 outline-none font-mono text-gray-900 dark:text-white"
+                                        placeholder="e.g. {{검색어_expected}}"
+                                      />
+                                    </div>
                                   </div>
-                                  <div>
-                                    <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
-                                    <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue}>{step.selectorValue || '-'}</span>
-                                  </div>
-                                </div>
-                                {step.inputValue && (
-                                  <div className="mt-2 text-[10px] bg-indigo-50 dark:bg-indigo-900/10 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/30 transition-colors">
-                                    <span className="text-indigo-400 uppercase tracking-tighter block text-[8px] mb-0.5">Input Value</span>
-                                    <span className="font-mono text-indigo-700 dark:text-indigo-300">{step.inputValue}</span>
-                                  </div>
-                                )}
-                                {step.assertText && (
-                                  <div className="mt-2 text-[10px] bg-blue-50 dark:bg-blue-500/10 p-2 rounded-lg border border-blue-200 dark:border-blue-500/30 transition-colors flex flex-col">
-                                    <span className="text-blue-500 uppercase tracking-tighter text-[8px] mb-0.5 flex items-center gap-1">
-                                      <CheckCircle2 className="w-2.5 h-2.5" /> Rule Assertion
-                                    </span>
-                                    <span className="font-mono text-gray-900 dark:text-white">"{step.assertText}"</span>
-                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-500/20">
+                                        {step.action || 'Unknown'}
+                                      </span>
+                                      {step.stepName && <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{step.stepName}</span>}
+                                    </div>
+                                    <p className="text-[11px] text-gray-600 dark:text-gray-400 mb-2 truncate">
+                                      {step.description || "No description"}
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-100 dark:border-gray-800">
+                                      <div>
+                                        <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
+                                        <span className="font-mono text-gray-700 dark:text-gray-300">{step.selectorType || '-'}</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
+                                        <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue}>{step.selectorValue || '-'}</span>
+                                      </div>
+                                    </div>
+                                    {step.inputValue && (
+                                      <div className="mt-2 text-[10px] bg-indigo-50 dark:bg-indigo-900/10 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/30 transition-colors">
+                                        <span className="text-indigo-400 uppercase tracking-tighter block text-[8px] mb-0.5">Input Value</span>
+                                        <span className="font-mono text-indigo-700 dark:text-indigo-300">{step.inputValue}</span>
+                                      </div>
+                                    )}
+                                    {step.assertText && (
+                                      <div className="mt-2 text-[10px] bg-blue-50 dark:bg-blue-500/10 p-2 rounded-lg border border-blue-200 dark:border-blue-500/30 transition-colors flex flex-col">
+                                        <span className="text-blue-500 uppercase tracking-tighter text-[8px] mb-0.5 flex items-center gap-1">
+                                          <CheckCircle2 className="w-2.5 h-2.5" /> Rule Assertion
+                                        </span>
+                                        <span className="font-mono text-gray-900 dark:text-white">"{step.assertText}"</span>
+                                      </div>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             </div>
@@ -876,7 +1059,23 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Step Asset Details</h3>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{viewingStep.name}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{viewingStep.name}</p>
+                    <select
+                      value={viewingStep.category || ''}
+                      onChange={async (e) => {
+                        const newCategory = e.target.value;
+                        setViewingStep({ ...viewingStep, category: newCategory });
+                        await handleUpdateScript({ ...viewingStep, category: newCategory }, true);
+                      }}
+                      className="text-[9px] font-black bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded px-1.5 py-0.5 uppercase outline-none cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-800/50 transition-colors"
+                    >
+                      <option value="">No Category</option>
+                      {categories.map(cat => (
+                        <option key={cat.id} value={cat.name}>{cat.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
               <button onClick={() => setViewingStep(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 transition-colors">
@@ -891,6 +1090,28 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                   {viewingStep.description || "No description provided."}
                 </p>
               </div>
+
+              {viewingStep.persona && (
+                <div className="mb-6">
+                  <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                    <UserCheck className="w-3.5 h-3.5" />
+                    Persona Context
+                  </h4>
+                  <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl p-5 relative overflow-hidden transition-colors">
+                    <div className="absolute top-0 right-0 p-4 opacity-5"><Bot className="w-16 h-16" /></div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm font-bold text-gray-900 dark:text-white">{viewingStep.persona.name}</span>
+                      <span className="px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase rounded border border-indigo-100 dark:border-indigo-500/20">{viewingStep.persona.skillLevel}</span>
+                    </div>
+                    <p className="text-[11px] text-gray-600 dark:text-gray-400 mb-3">{viewingStep.persona.description}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {viewingStep.persona.traits?.map((t, idx) => (
+                        <span key={idx} className="px-1.5 py-0.5 bg-gray-50 dark:bg-gray-800 text-[8px] font-bold text-gray-500 rounded uppercase border border-gray-100 dark:border-gray-700">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 flex items-center justify-between">
@@ -933,240 +1154,85 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
             </div>
           </div>
         </div>
-      )}
+      )
+      }
 
       {/* STEP DETAIL VIEWER OVERLAY */}
-      {viewingStep && (
-        <div className="fixed inset-0 z-[100] flex justify-end animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-sm" onClick={() => setViewingStep(null)} />
-          <div className="relative w-full max-w-2xl bg-white dark:bg-[#16191f] border-l border-gray-200 dark:border-gray-800 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 transition-colors">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-gray-900/20 transition-colors">
-              <div className="flex items-center gap-4">
-                <div className="p-2.5 bg-emerald-600 rounded-xl text-white">
-                  <Tags className="w-5 h-5" />
+      {
+        viewingStep && (
+          <div className="fixed inset-0 z-[100] flex justify-end animate-in fade-in duration-300">
+            <div className="absolute inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-sm" onClick={() => setViewingStep(null)} />
+            <div className="relative w-full max-w-2xl bg-white dark:bg-[#16191f] border-l border-gray-200 dark:border-gray-800 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 transition-colors">
+              <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-gray-900/20 transition-colors">
+                <div className="flex items-center gap-4">
+                  <div className="p-2.5 bg-emerald-600 rounded-xl text-white">
+                    <Tags className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Step Asset Details</h3>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{viewingStep.name}</p>
+                  </div>
                 </div>
+                <button onClick={() => setViewingStep(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-auto bg-gray-50 dark:bg-[#0c0e12] relative custom-scrollbar transition-colors p-6">
+                <div className="mb-6">
+                  <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Description</h4>
+                  <p className="text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-[#16191f] p-4 rounded-xl border border-gray-200 dark:border-gray-800">
+                    {viewingStep.description || "No description provided."}
+                  </p>
+                </div>
+
                 <div>
-                  <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Step Asset Details</h3>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{viewingStep.name}</p>
-                </div>
-              </div>
-              <button onClick={() => setViewingStep(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-auto bg-gray-50 dark:bg-[#0c0e12] relative custom-scrollbar transition-colors p-6">
-              <div className="mb-6">
-                <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Description</h4>
-                <p className="text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-[#16191f] p-4 rounded-xl border border-gray-200 dark:border-gray-800">
-                  {viewingStep.description || "No description provided."}
-                </p>
-              </div>
-
-              <div>
-                <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 flex items-center justify-between">
-                  <span>Steps ({viewingStep.steps.length})</span>
-                  <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded uppercase">{viewingStep.platform}</span>
-                </h4>
-                <div className="space-y-3">
-                  {viewingStep.steps.map((step, idx) => (
-                    <div key={idx} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl p-4 transition-all hover:border-indigo-500/50">
-                      <div className="flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">
-                          {idx + 1}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-500/20">
-                              {step.action || 'Unknown'}
-                            </span>
-                            {step.stepName && <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{step.stepName}</span>}
+                  <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 flex items-center justify-between">
+                    <span>Steps ({viewingStep.steps.length})</span>
+                    <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded uppercase">{viewingStep.platform}</span>
+                  </h4>
+                  <div className="space-y-3">
+                    {viewingStep.steps.map((step, idx) => (
+                      <div key={idx} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl p-4 transition-all hover:border-indigo-500/50">
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">
+                            {idx + 1}
                           </div>
-                          <p className="text-[11px] text-gray-600 dark:text-gray-400 mb-2 truncate">
-                            {step.description || "No description"}
-                          </p>
-                          <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-100 dark:border-gray-800">
-                            <div>
-                              <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
-                              <span className="font-mono text-gray-700 dark:text-gray-300">{step.selectorType}</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
-                              <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue}>{step.selectorValue}</span>
-                            </div>
-                          </div>
-                          {step.inputValue && (
-                            <div className="mt-2 text-[10px] bg-indigo-50 dark:bg-indigo-900/10 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/30 transition-colors">
-                              <span className="text-indigo-400 uppercase tracking-tighter block text-[8px] mb-0.5">Input Value</span>
-                              <span className="font-mono text-indigo-700 dark:text-indigo-300">{step.inputValue}</span>
-                            </div>
-                          )}
-                          {step.assertText && (
-                            <div className="mt-2 text-[10px] bg-blue-50 dark:bg-blue-500/10 p-2 rounded-lg border border-blue-200 dark:border-blue-500/30 transition-colors flex flex-col">
-                              <span className="text-blue-500 uppercase tracking-tighter text-[8px] mb-0.5 flex items-center gap-1">
-                                <CheckCircle2 className="w-2.5 h-2.5" /> Rule Assertion
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-500/20">
+                                {step.action || 'Unknown'}
                               </span>
-                              <span className="font-mono text-gray-900 dark:text-white">"{step.assertText}"</span>
+                              {step.stepName && <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{step.stepName}</span>}
                             </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* REGISTRATION / EDIT MODAL */}
-      {showRegisterModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-8 bg-black/50 dark:bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative w-full max-w-5xl bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden max-h-[95vh] animate-in zoom-in-95 duration-200 transition-colors">
-            <div className="p-8 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/20 flex items-center justify-between transition-colors">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-indigo-600 rounded-2xl text-white">
-                  {editingScriptId ? <Edit3 className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-gray-900 dark:text-white tracking-tight transition-colors">{editingScriptId ? 'Modify Asset Strategy' : 'Register Manual Asset'}</h3>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Define logic, tags, and testing vectors</p>
-                </div>
-              </div>
-              <button onClick={() => setShowRegisterModal(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-500 transition-colors">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-10 grid grid-cols-1 lg:grid-cols-2 gap-10 custom-scrollbar">
-              <div className="space-y-8">
-                <div className="space-y-4">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Engine & Logic Type</label>
-                  <div className="flex bg-gray-100 dark:bg-[#0c0e12] p-1.5 rounded-2xl border border-gray-200 dark:border-gray-800 gap-1 transition-colors">
-                    <button
-                      onClick={() => setNewManualScript({ ...newManualScript, engine: 'Playwright' })}
-                      className={`flex-1 py-4 px-2 rounded-xl text-[10px] font-black uppercase transition-all flex flex-col items-center gap-2 ${newManualScript.engine === 'Playwright' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-lg border border-gray-200 dark:border-gray-700' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}
-                    >
-                      <Globe className="w-5 h-5" /> Web (Playwright)
-                    </button>
-                    <button
-                      onClick={() => setNewManualScript({ ...newManualScript, engine: 'Appium' })}
-                      className={`flex-1 py-4 px-2 rounded-xl text-[10px] font-black uppercase transition-all flex flex-col items-center gap-2 ${newManualScript.engine === 'Appium' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}
-                    >
-                      <Smartphone className="w-5 h-5" /> App (Appium)
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Basic Definition</label>
-                  <div className="grid grid-cols-1 gap-4">
-                    <input
-                      type="text"
-                      value={newManualScript.name}
-                      onChange={e => setNewManualScript({ ...newManualScript, name: e.target.value })}
-                      className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-gray-900 dark:text-white focus:border-indigo-500 outline-none transition-all"
-                      placeholder="Script Name"
-                    />
-                    <input
-                      type="text"
-                      value={newManualScript.tags}
-                      onChange={e => setNewManualScript({ ...newManualScript, tags: e.target.value })}
-                      className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-indigo-600 dark:text-indigo-400 focus:border-indigo-500 outline-none transition-all"
-                      placeholder="Tags (comma separated, e.g. Login, Mobile, Security)"
-                    />
-                    <textarea
-                      value={newManualScript.description}
-                      onChange={e => setNewManualScript({ ...newManualScript, description: e.target.value })}
-                      className="w-full h-24 bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-gray-700 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all resize-none"
-                      placeholder="Describe the logic flow..."
-                    />
-                  </div>
-                </div>
-
-                {/* Assigned Persona Information (Read-only) */}
-                {editingScript?.persona && (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <Target className="w-4 h-4 text-indigo-400" />
-                      <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Assigned Persona Context</label>
-                    </div>
-                    <div className="p-6 bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-2xl relative overflow-hidden group transition-colors">
-                      <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Bot className="w-16 h-16 text-indigo-500 dark:text-indigo-400" /></div>
-                      <div className="flex items-center gap-3 mb-2">
-                        <h4 className="text-sm font-bold text-gray-900 dark:text-white transition-colors">{editingScript.persona.name}</h4>
-                        <span className="px-2 py-0.5 bg-indigo-600/10 border border-indigo-500/20 text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase rounded tracking-widest transition-colors">{editingScript.persona.skillLevel}</span>
-                      </div>
-                      <p className="text-[10px] text-gray-600 dark:text-gray-500 leading-relaxed italic mb-4 transition-colors">"{editingScript.persona.goal}"</p>
-                      <div className="flex flex-wrap gap-1">
-                        {editingScript.persona.traits.map((t, idx) => (
-                          <span key={idx} className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-900 border border-gray-300 dark:border-gray-800 text-[8px] font-bold text-gray-600 dark:text-gray-600 rounded uppercase transition-colors">{t}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <p className="text-[9px] text-gray-600 italic px-2">"이 페르소나는 Test Generator에서 생성 시 지정된 불변 컨텍스트입니다."</p>
-                  </div>
-                )}
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Implementation Source</label>
-                    <button onClick={() => fileInputRef.current?.click()} className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 transition-colors"><FileUp className="w-3.5 h-3.5" /> Import</button>
-                    <input type="file" ref={fileInputRef} className="hidden" accept=".js,.ts" onChange={handleFileUpload} />
-                  </div>
-                  <div className="bg-gray-50 dark:bg-black rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden focus-within:border-indigo-500 transition-all">
-                    <textarea
-                      value={newManualScript.code}
-                      onChange={e => setNewManualScript({ ...newManualScript, code: e.target.value })}
-                      className="w-full h-64 bg-transparent p-5 mono text-[11px] text-gray-800 dark:text-green-400 outline-none resize-none transition-colors"
-                      spellCheck={false}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Dataset Configuration</label>
-                  <button onClick={addDatasetRow} className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-indigo-600 hover:text-white text-gray-500 dark:text-white rounded-lg text-[10px] font-black uppercase flex items-center gap-1.5 transition-all">
-                    <Plus className="w-3.5 h-3.5" /> Add Field
-                  </button>
-                </div>
-                <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden min-h-[400px] flex flex-col shadow-inner transition-colors">
-                  <div className="p-4 grid grid-cols-3 gap-4 border-b border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/50 text-[9px] font-black text-gray-500 dark:text-gray-600 uppercase tracking-widest transition-colors">
-                    <span>Field (ID)</span>
-                    <span>Synthetic Value</span>
-                    <span className="text-right">Actions</span>
-                  </div>
-                  <div className="flex-1 overflow-y-auto max-h-[500px] custom-scrollbar">
-                    {newManualScript.dataset.map((row, idx) => (
-                      <div key={row.id} className="p-4 grid grid-cols-3 gap-4 border-b border-gray-200 dark:border-gray-900 items-center group transition-colors">
-                        <input
-                          type="text"
-                          value={row.field}
-                          onChange={e => updateDatasetItem(idx, 'field', e.target.value)}
-                          className="bg-transparent border-b border-transparent focus:border-indigo-500 outline-none text-[11px] font-bold text-indigo-600 dark:text-indigo-400 mono placeholder:text-gray-400 dark:placeholder:text-gray-800 transition-colors"
-                          placeholder="FIELD_ID"
-                        />
-                        <input
-                          type="text"
-                          value={row.value}
-                          onChange={e => updateDatasetItem(idx, 'value', e.target.value)}
-                          className="bg-transparent border-b border-transparent focus:border-indigo-500 outline-none text-[11px] text-gray-900 dark:text-blue-300 mono placeholder:text-gray-400 dark:placeholder:text-gray-800 transition-colors"
-                          placeholder="value"
-                        />
-                        <div className="flex justify-end gap-2">
-                          <select
-                            value={row.type}
-                            onChange={e => updateDatasetItem(idx, 'type', e.target.value as any)}
-                            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase outline-none transition-colors"
-                          >
-                            <option value={DataType.VALID}>Valid</option>
-                            <option value={DataType.INVALID}>Invalid</option>
-                            <option value={DataType.SECURITY}>Security</option>
-                          </select>
-                          <button onClick={() => removeDatasetRow(idx)} className="p-1.5 text-gray-700 hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
+                            <p className="text-[11px] text-gray-600 dark:text-gray-400 mb-2 truncate">
+                              {step.description || "No description"}
+                            </p>
+                            <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-100 dark:border-gray-800">
+                              <div>
+                                <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
+                                <span className="font-mono text-gray-700 dark:text-gray-300">{step.selectorType}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
+                                <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue}>{step.selectorValue}</span>
+                              </div>
+                            </div>
+                            {step.inputValue && (
+                              <div className="mt-2 text-[10px] bg-indigo-50 dark:bg-indigo-900/10 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/30 transition-colors">
+                                <span className="text-indigo-400 uppercase tracking-tighter block text-[8px] mb-0.5">Input Value</span>
+                                <span className="font-mono text-indigo-700 dark:text-indigo-300">{step.inputValue}</span>
+                              </div>
+                            )}
+                            {step.assertText && (
+                              <div className="mt-2 text-[10px] bg-blue-50 dark:bg-blue-500/10 p-2 rounded-lg border border-blue-200 dark:border-blue-500/30 transition-colors flex flex-col">
+                                <span className="text-blue-500 uppercase tracking-tighter text-[8px] mb-0.5 flex items-center gap-1">
+                                  <CheckCircle2 className="w-2.5 h-2.5" /> Rule Assertion
+                                </span>
+                                <span className="font-mono text-gray-900 dark:text-white">"{step.assertText}"</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1174,78 +1240,258 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                 </div>
               </div>
             </div>
-
-            <div className="p-8 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/20 flex justify-end gap-4 transition-colors">
-              <button onClick={() => setShowRegisterModal(false)} className="px-8 py-4 text-[10px] font-black text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 uppercase tracking-widest transition-colors">CANCEL</button>
-              <button
-                onClick={handleSaveManual}
-                disabled={!newManualScript.name || !newManualScript.code}
-                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white text-[10px] font-black px-12 py-4 rounded-2xl uppercase tracking-widest shadow-xl shadow-indigo-600/20 transition-all flex items-center gap-2"
-              >
-                <Save className="w-4 h-4" />
-                {editingScriptId ? 'Update Asset' : 'Register Golden Script'}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
-      {/* SCENARIO VIEWER MODAL */}
-      {viewingScenario && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-8 bg-black/50 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-4xl bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden max-h-[90vh] animate-in zoom-in-95 duration-200 transition-colors">
-            <div className="p-8 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/20 flex items-center justify-between transition-colors">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-indigo-600 rounded-2xl text-white">
-                  <FileCode className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight transition-colors">Linked Scenario Context</h3>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Foundational Logic for Asset</p>
-                </div>
-              </div>
-              <button onClick={() => setViewingScenario(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-500 transition-colors">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
+        )
+      }
 
-            <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Scenario Title</label>
-                <div className="text-lg font-bold text-gray-900 dark:text-white transition-colors">{viewingScenario.title}</div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors">{viewingScenario.description}</p>
+      {/* REGISTRATION / EDIT MODAL */}
+      {
+        showRegisterModal && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-8 bg-black/50 dark:bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="relative w-full max-w-5xl bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden max-h-[95vh] animate-in zoom-in-95 duration-200 transition-colors">
+              <div className="p-8 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/20 flex items-center justify-between transition-colors">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-indigo-600 rounded-2xl text-white">
+                    {editingScriptId ? <Edit3 className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-gray-900 dark:text-white tracking-tight transition-colors">{editingScriptId ? 'Modify Asset Strategy' : 'Register Manual Asset'}</h3>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Define logic, tags, and testing vectors</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowRegisterModal(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-500 transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
               </div>
 
-              <div className="space-y-4">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Test Cases / Steps</label>
-                <div className="space-y-4">
-                  {viewingScenario.testCases.map((tc, idx) => (
-                    <div key={tc.id || idx} className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-2xl p-6 transition-colors">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-bold text-gray-900 dark:text-white text-sm transition-colors">{tc.title}</h4>
-                        <span className="text-[10px] bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-gray-500 dark:text-gray-400 uppercase transition-colors">{tc.status}</span>
-                      </div>
-                      <div className="space-y-3">
-                        {tc.steps.map((step, sIdx) => (
-                          <div key={sIdx} className="flex gap-3 text-sm text-gray-600 dark:text-gray-300 transition-colors">
-                            <span className="text-gray-500 dark:text-gray-600 font-mono text-xs w-4 transition-colors">{sIdx + 1}.</span>
-                            <span>{step}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800 transition-colors">
-                        <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block mb-1 transition-colors">Expected Result</span>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors">{tc.expectedResult}</p>
-                      </div>
+              <div className="flex-1 overflow-y-auto p-10 grid grid-cols-1 lg:grid-cols-2 gap-10 custom-scrollbar">
+                <div className="space-y-8">
+                  <div className="space-y-4">
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Engine & Logic Type</label>
+                    <div className="flex bg-gray-100 dark:bg-[#0c0e12] p-1.5 rounded-2xl border border-gray-200 dark:border-gray-800 gap-1 transition-colors">
+                      <button
+                        onClick={() => setNewManualScript({ ...newManualScript, engine: 'Playwright' })}
+                        className={`flex-1 py-4 px-2 rounded-xl text-[10px] font-black uppercase transition-all flex flex-col items-center gap-2 ${newManualScript.engine === 'Playwright' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-lg border border-gray-200 dark:border-gray-700' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}
+                      >
+                        <Globe className="w-5 h-5" /> Web (Playwright)
+                      </button>
+                      <button
+                        onClick={() => setNewManualScript({ ...newManualScript, engine: 'Appium' })}
+                        className={`flex-1 py-4 px-2 rounded-xl text-[10px] font-black uppercase transition-all flex flex-col items-center gap-2 ${newManualScript.engine === 'Appium' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}
+                      >
+                        <Smartphone className="w-5 h-5" /> App (Appium)
+                      </button>
                     </div>
-                  ))}
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Basic Definition</label>
+                    <div className="grid grid-cols-1 gap-4">
+                      <input
+                        type="text"
+                        value={newManualScript.name}
+                        onChange={e => setNewManualScript({ ...newManualScript, name: e.target.value })}
+                        className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-gray-900 dark:text-white focus:border-indigo-500 outline-none transition-all"
+                        placeholder="Script Name"
+                      />
+                      <input
+                        type="text"
+                        value={newManualScript.tags}
+                        onChange={e => setNewManualScript({ ...newManualScript, tags: e.target.value })}
+                        className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-indigo-600 dark:text-indigo-400 focus:border-indigo-500 outline-none transition-all"
+                        placeholder="Tags (comma separated, e.g. Login, Mobile, Security)"
+                      />
+                      <textarea
+                        value={newManualScript.description}
+                        onChange={e => setNewManualScript({ ...newManualScript, description: e.target.value })}
+                        className="w-full h-24 bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-gray-700 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all resize-none"
+                        placeholder="Describe the logic flow..."
+                      />
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <Database className="w-4 h-4 text-indigo-400" />
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Asset Category</label>
+                      </div>
+                      <select
+                        value={newManualScript.category}
+                        onChange={e => setNewManualScript({ ...newManualScript, category: e.target.value })}
+                        className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-gray-700 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all appearance-none cursor-pointer"
+                      >
+                        <option value="">Select Category</option>
+                        {categories.map(cat => (
+                          <option key={cat.id} value={cat.name}>{cat.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                  </div>
+
+                  {/* Assigned Persona Information (Read-only) */}
+                  {editingScript?.persona && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <Target className="w-4 h-4 text-indigo-400" />
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Assigned Persona Context</label>
+                      </div>
+                      <div className="p-6 bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-2xl relative overflow-hidden group transition-colors">
+                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Bot className="w-16 h-16 text-indigo-500 dark:text-indigo-400" /></div>
+                        <div className="flex items-center gap-3 mb-2">
+                          <h4 className="text-sm font-bold text-gray-900 dark:text-white transition-colors">{editingScript.persona.name}</h4>
+                          <span className="px-2 py-0.5 bg-indigo-600/10 border border-indigo-500/20 text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase rounded tracking-widest transition-colors">{editingScript.persona.skillLevel}</span>
+                        </div>
+                        <p className="text-[10px] text-gray-600 dark:text-gray-500 leading-relaxed italic mb-4 transition-colors">"{editingScript.persona.goal}"</p>
+                        <div className="flex flex-wrap gap-1">
+                          {editingScript.persona.traits.map((t, idx) => (
+                            <span key={idx} className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-900 border border-gray-300 dark:border-gray-800 text-[8px] font-bold text-gray-600 dark:text-gray-600 rounded uppercase transition-colors">{t}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-[9px] text-gray-600 italic px-2">"이 페르소나는 Test Generator에서 생성 시 지정된 불변 컨텍스트입니다."</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Implementation Source</label>
+                      <button onClick={() => fileInputRef.current?.click()} className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 transition-colors"><FileUp className="w-3.5 h-3.5" /> Import</button>
+                      <input type="file" ref={fileInputRef} className="hidden" accept=".js,.ts" onChange={handleFileUpload} />
+                    </div>
+                    <div className="bg-gray-50 dark:bg-black rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden focus-within:border-indigo-500 transition-all">
+                      <textarea
+                        value={newManualScript.code}
+                        onChange={e => setNewManualScript({ ...newManualScript, code: e.target.value })}
+                        className="w-full h-64 bg-transparent p-5 mono text-[11px] text-gray-800 dark:text-green-400 outline-none resize-none transition-colors"
+                        spellCheck={false}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Dataset Configuration</label>
+                    <button onClick={addDatasetRow} className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-indigo-600 hover:text-white text-gray-500 dark:text-white rounded-lg text-[10px] font-black uppercase flex items-center gap-1.5 transition-all">
+                      <Plus className="w-3.5 h-3.5" /> Add Field
+                    </button>
+                  </div>
+                  <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden min-h-[400px] flex flex-col shadow-inner transition-colors">
+                    <div className="p-4 grid grid-cols-3 gap-4 border-b border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/50 text-[9px] font-black text-gray-500 dark:text-gray-600 uppercase tracking-widest transition-colors">
+                      <span>Field (ID)</span>
+                      <span>Synthetic Value</span>
+                      <span className="text-right">Actions</span>
+                    </div>
+                    <div className="flex-1 overflow-y-auto max-h-[500px] custom-scrollbar">
+                      {newManualScript.dataset.map((row, idx) => (
+                        <div key={row.id} className="p-4 grid grid-cols-3 gap-4 border-b border-gray-200 dark:border-gray-900 items-center group transition-colors">
+                          <input
+                            type="text"
+                            value={row.field}
+                            onChange={e => updateDatasetItem(idx, 'field', e.target.value)}
+                            className="bg-transparent border-b border-transparent focus:border-indigo-500 outline-none text-[11px] font-bold text-indigo-600 dark:text-indigo-400 mono placeholder:text-gray-400 dark:placeholder:text-gray-800 transition-colors"
+                            placeholder="FIELD_ID"
+                          />
+                          <input
+                            type="text"
+                            value={row.value}
+                            onChange={e => updateDatasetItem(idx, 'value', e.target.value)}
+                            className="bg-transparent border-b border-transparent focus:border-indigo-500 outline-none text-[11px] text-gray-900 dark:text-blue-300 mono placeholder:text-gray-400 dark:placeholder:text-gray-800 transition-colors"
+                            placeholder="value"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <select
+                              value={row.type}
+                              onChange={e => updateDatasetItem(idx, 'type', e.target.value as any)}
+                              className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase outline-none transition-colors"
+                            >
+                              <option value={DataType.VALID}>Valid</option>
+                              <option value={DataType.INVALID}>Invalid</option>
+                              <option value={DataType.SECURITY}>Security</option>
+                            </select>
+                            <button onClick={() => removeDatasetRow(idx)} className="p-1.5 text-gray-700 hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/20 flex justify-end gap-4 transition-colors">
+                <button onClick={() => setShowRegisterModal(false)} className="px-8 py-4 text-[10px] font-black text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 uppercase tracking-widest transition-colors">CANCEL</button>
+                <button
+                  onClick={handleSaveManual}
+                  disabled={!newManualScript.name || !newManualScript.code}
+                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white text-[10px] font-black px-12 py-4 rounded-2xl uppercase tracking-widest shadow-xl shadow-indigo-600/20 transition-all flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  {editingScriptId ? 'Update Asset' : 'Register Golden Script'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+      {/* SCENARIO VIEWER MODAL */}
+      {
+        viewingScenario && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-8 bg-black/50 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="relative w-full max-w-4xl bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden max-h-[90vh] animate-in zoom-in-95 duration-200 transition-colors">
+              <div className="p-8 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/20 flex items-center justify-between transition-colors">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-indigo-600 rounded-2xl text-white">
+                    <FileCode className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight transition-colors">Linked Scenario Context</h3>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Foundational Logic for Asset</p>
+                  </div>
+                </div>
+                <button onClick={() => setViewingScenario(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-500 transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Scenario Title</label>
+                  <div className="text-lg font-bold text-gray-900 dark:text-white transition-colors">{viewingScenario.title}</div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors">{viewingScenario.description}</p>
+                </div>
+
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Test Cases / Steps</label>
+                  <div className="space-y-4">
+                    {viewingScenario.testCases.map((tc, idx) => (
+                      <div key={tc.id || idx} className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-2xl p-6 transition-colors">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="font-bold text-gray-900 dark:text-white text-sm transition-colors">{tc.title}</h4>
+                          <span className="text-[10px] bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-gray-500 dark:text-gray-400 uppercase transition-colors">{tc.status}</span>
+                        </div>
+                        <div className="space-y-3">
+                          {tc.steps.map((step, sIdx) => (
+                            <div key={sIdx} className="flex gap-3 text-sm text-gray-600 dark:text-gray-300 transition-colors">
+                              <span className="text-gray-500 dark:text-gray-600 font-mono text-xs w-4 transition-colors">{sIdx + 1}.</span>
+                              <span>{step}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800 transition-colors">
+                          <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block mb-1 transition-colors">Expected Result</span>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors">{tc.expectedResult}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-    </div>
+    </div >
   );
 };
 

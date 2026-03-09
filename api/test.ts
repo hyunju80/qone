@@ -1,6 +1,18 @@
 import api from './client';
 import { TestScript, Scenario, TestHistory, TestSchedule } from '../types';
 
+// Helper to map persona
+const mapPersona = (p: any) => {
+    if (!p) return undefined;
+    return {
+        ...p,
+        projectId: p.project_id || p.projectId,
+        skillLevel: p.skill_level || p.skillLevel,
+        advancedLogic: p.advanced_logic || p.advancedLogic,
+        isActive: p.is_active !== undefined ? p.is_active : p.isActive
+    };
+};
+
 // Helper to map snake_case backend response to camelCase frontend interface
 const mapScript = (s: any): TestScript => {
     console.log(`[testApi] Mapping script ${s.id}: run_count=${s.run_count}, success_rate=${s.success_rate}`);
@@ -13,8 +25,7 @@ const mapScript = (s: any): TestScript => {
         isFavorite: s.is_favorite !== undefined ? s.is_favorite : s.isFavorite,
         lastRun: s.last_run || s.lastRun,
         captureScreenshots: s.capture_screenshots !== undefined ? s.capture_screenshots : false,
-        // Ensure persona relation is preserved if returned
-        persona: s.persona
+        persona: mapPersona(s.persona)
     };
 };
 
@@ -25,7 +36,8 @@ const mapScenario = (s: any): Scenario => ({
     isApproved: s.is_approved !== undefined ? s.is_approved : s.isApproved,
     personaId: s.persona_id || s.personaId,
     testCases: s.test_cases || s.testCases || [],
-    goldenScriptId: s.golden_script_id || s.goldenScriptId
+    goldenScriptId: s.golden_script_id || s.goldenScriptId,
+    persona: mapPersona(s.persona)
 });
 
 // Helper to map snake_case history to camelCase

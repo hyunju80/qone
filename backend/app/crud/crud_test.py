@@ -1,5 +1,5 @@
 from typing import List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from fastapi.encoders import jsonable_encoder
 
 from app.crud.base import CRUDBase
@@ -11,7 +11,7 @@ from app.schemas.test_schedule import TestScheduleCreate, TestScheduleUpdate
 
 class CRUDTestScript(CRUDBase[TestScript, TestScriptCreate, TestScriptUpdate]):
     def get_by_project(self, db: Session, project_id: str, skip: int = 0, limit: int = 100) -> List[TestScript]:
-        return db.query(self.model).filter(self.model.project_id == project_id).offset(skip).limit(limit).all()
+        return db.query(self.model).options(joinedload(self.model.persona)).filter(self.model.project_id == project_id).offset(skip).limit(limit).all()
 
     def create(self, db: Session, *, obj_in: TestScriptCreate) -> TestScript:
         import time
@@ -26,7 +26,7 @@ class CRUDTestScript(CRUDBase[TestScript, TestScriptCreate, TestScriptUpdate]):
 
 class CRUDScenario(CRUDBase[Scenario, ScenarioCreate, ScenarioUpdate]):
     def get_by_project(self, db: Session, project_id: str, skip: int = 0, limit: int = 100) -> List[Scenario]:
-        return db.query(self.model).filter(self.model.project_id == project_id).offset(skip).limit(limit).all()
+        return db.query(self.model).options(joinedload(self.model.persona)).filter(self.model.project_id == project_id).offset(skip).limit(limit).all()
 
     def create(self, db: Session, *, obj_in: ScenarioCreate) -> Scenario:
         import time

@@ -11,6 +11,9 @@ from app.services.crawler import CrawlerService
 from app.services.app_runner import app_step_runner
 from app.services.device_service import device_service
 from app.core.config import settings
+from selenium.common.exceptions import InvalidSessionIdException
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 crawler_service = CrawlerService()
@@ -70,6 +73,7 @@ class ExplorationStep(BaseModel):
     expectation: str = "" 
     observation: str = ""
     expected_text: str = ""
+    actual_observed_text: str = ""
     screenshot_data: Optional[str] = None
 
 # --- API Endpoints ---
@@ -155,8 +159,11 @@ async def next_step(req: StepRequest):
             state = await crawler_service.get_state(req.session_id)
             if not req.capture_screenshots and "screenshot" in state:
                 state["screenshot"] = "" # Clear if not requested to save bandwidth
-    except ValueError:
-         raise HTTPException(status_code=404, detail="Session expired or not found")
+    except (ValueError, InvalidSessionIdException):
+         raise HTTPException(status_code=404, detail="Mobile session expired or Appium connection lost. Please restart the session.")
+    except Exception as e:
+        logger.error(f"Error captured in exploration step: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
     # 2. Build Prompt
     # Sanitize credentials
@@ -198,7 +205,8 @@ async def next_step(req: StepRequest):
     5. **MULTI-STEP GOALS**: If the user provided a numbered list or sequence of tasks, you MUST complete ALL of them. Do not set status to 'Completed' until the final step is done.
     6. **APP SELECTORS (IMPORTANT)**: If platform is APP, prefer using 'accessibility_id' if available. If not, use exact text for 'action_target'. E.g. "Search", "Login", or basic IDs like "com.example:id/button". DO NOT GUESS complex XPaths if you see simple text.
     7. **LANGUAGE**: All 'thought' and 'description' fields in the JSON output MUST be written in Korean (한국어).
-    8. **ASSERTION (expected_text)**: You MUST provide an EXACT, LITERAL string of text that you expect to see on the screen after your action succeeds. You MUST find this exact string from the provided "UI Structure" and copy it bit-for-bit (including spaces, symbols, and line breaks). Do NOT normalize or translate it. This will be used for a strict string-matching assertion. Do NOT write natural language. Write EXACTLY what appears in the 'text' or 'content-desc' attribute. If no text is expected, leave it blank.
+    8. **ASSERTION PREDICTION (expected_text)**: Predict an EXACT text string that you *expect* to see on the NEXT screen after your action (Step N) succeeds. (e.g., 'Search Results' or 'My Page'). This is a forecast.
+    9. **ASSERTION VERIFICATION (actual_observed_text)**: You MUST identify a DIFFERENT, UNIQUE literal text string that you ACTUALLY SEE on the **CURRENT** screen (Turn N) which confirms that the **PREVIOUS** action (Turn N-1) was successful. Extract this bit-for-bit from the "UI Structure" or "Current Page". Output this in `actual_observed_text`. (For Turn 1, identify a landmark on the landing page). **THIS IS THE MOST IMPORTANT FIELD FOR ACCURACY.**
     
     Safety Instruction:
     - Never hallucinate passwords.
@@ -220,7 +228,8 @@ async def next_step(req: StepRequest):
         "action_target": "{'xpath, element_id, accessibility_id or EXACT text' if req.platform.upper() == 'APP' else 'css_selector'}",
         "action_value": "text_to_type_or_placeholder",
         "expectation": "What should happen after this action? (Expected Outcome)",
-        "expected_text": "EXACT literal text string expected on the next screen for assertion (e.g. 'Payment Complete')",
+        "expected_text": "PREDICTED literal text string expected on the next screen (Next State Assertion)",
+        "actual_observed_text": "ACTUAL literal text string found on the current screen (Landmark verifying Previous Step)",
         "description": "Short description for UI",
         "status": "In-Progress/Completed/Failed"
     }}
@@ -381,7 +390,14 @@ async def save_history(req: SaveRequest):
         
         # 2. Assetize into Scenario and TestScript immediately
         manager = AssetManager()
-        scenario, script = manager.convert_session_to_scenario(db, ai_session, req.project_id, req.platform, req.capture_screenshots)
+        
+        # Determine category automatically
+        category = manager.determine_category(db, req.project_id, req.goal, req.history)
+        print(f"[DEBUG] AI Exploration Auto-categorized as: {category}")
+        
+        scenario, script = manager.convert_session_to_scenario(
+            db, ai_session, req.project_id, req.platform, req.capture_screenshots, category=category
+        )
         
         return {"status": "saved", "scenario_id": scenario.id, "script_id": script.id, "session_id": session_id}
     except Exception as e:

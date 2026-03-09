@@ -592,6 +592,7 @@ const AppContent: React.FC = () => {
         return <AssetLibrary
           scripts={filteredScripts}
           activeProjectId={activeProject.id}
+          categories={activeProject.categories}
           personas={personas.filter(p => p.projectId === activeProject.id || p.projectId === 'global' || !p.projectId)}
           onRecordHistory={(h) => setHistory(prev => [h, ...prev])}
           onRefresh={() => {

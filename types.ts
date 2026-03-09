@@ -212,6 +212,7 @@ export interface TestDataRow {
   value: string;
   type: DataType;
   description: string;
+  expected_result?: string;
 }
 
 // 시나리오 기반 관리를 위한 인터페이스
@@ -223,6 +224,7 @@ export interface Scenario {
   category?: string;
   testCases: TestCase[];
   personaId?: string;
+  persona?: Persona;
   createdAt: string;
   isApproved: boolean;
   platform?: string;

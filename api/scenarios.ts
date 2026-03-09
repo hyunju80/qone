@@ -79,7 +79,14 @@ export const scenariosApi = {
             createdAt: s.created_at,
             tags: s.tags,
             category: s.category,
-            goldenScriptId: s.golden_script_id
+            goldenScriptId: s.golden_script_id,
+            persona: s.persona ? {
+                ...s.persona,
+                projectId: s.persona.project_id,
+                skillLevel: s.persona.skill_level,
+                advancedLogic: s.persona.advanced_logic,
+                isActive: s.persona.is_active
+            } : undefined
         }));
     },
     create: async (data: any): Promise<Scenario> => {
