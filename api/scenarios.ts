@@ -63,6 +63,38 @@ export const scenariosApi = {
         const response = await api.post<GenerateScenariosResponse>('/scenarios/generate-scenarios', data);
         return response.data;
     },
+    // New Map-Based Generation Methods
+    mapActionFlow: async (url: string, maxDepth: number = 1, excludeSelectors?: string[], includeSelector?: string): Promise<{ status: string, map: any }> => {
+        const response = await api.post<{ status: string, map: any }>('/scenarios/map-action-flow', {
+            url,
+            max_depth: maxDepth,
+            exclude_selectors: excludeSelectors,
+            include_selector: includeSelector
+        });
+        return response.data;
+    },
+    generateFromMap: async (actionMap: any, prompt?: string, projectId?: string): Promise<AnalyzeUrlResponse> => {
+        const response = await api.post<AnalyzeUrlResponse>('/scenarios/generate-from-map', { action_map: actionMap, prompt, project_id: projectId });
+        return response.data;
+    },
+
+    // Map Persistence
+    saveActionMap: async (payload: { project_id: string, url: string, title: string, map_json: any }) => {
+        const response = await api.post('/scenarios/maps', payload);
+        return response.data;
+    },
+    listActionMaps: async (projectId: string) => {
+        const response = await api.get(`/scenarios/maps?project_id=${projectId}`);
+        return response.data;
+    },
+    deleteActionMap: async (mapId: string) => {
+        const response = await api.delete(`/scenarios/maps/${mapId}`);
+        return response.data;
+    },
+    updateActionMap: async (mapId: string, payload: { title?: string, map_json?: any }) => {
+        const response = await api.put(`/scenarios/maps/${mapId}`, payload);
+        return response.data;
+    },
     // New Persistence Methods
     getAll: async (projectId: string, pendingAsset: boolean = false): Promise<Scenario[]> => {
         const response = await api.get<any[]>('/scenarios/', { params: { project_id: projectId, pending_asset: pendingAsset } });

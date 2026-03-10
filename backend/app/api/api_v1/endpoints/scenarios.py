@@ -4,11 +4,16 @@ from pydantic import BaseModel
 import json
 from app.api import deps
 from app.services.crawler import CrawlerService
+from app.services.action_mapper import action_mapper
 from app.core.config import settings
 import json
 import os
 from datetime import datetime
 import traceback
+from app.models.test import Scenario as ScenarioModel, ActionMap as ActionMapModel
+from app.schemas.scenario import ActionMap as ActionMapSchema, ActionMapCreate, ActionMapUpdate
+from app.db.session import SessionLocal
+import uuid
 
 router = APIRouter()
 crawler = CrawlerService()
@@ -223,13 +228,66 @@ async def analyze_url(
         )
 
     except Exception as e:
-        import traceback
-        trace_str = traceback.format_exc()
-        print(f"Analysis Error: {e}")
-        os.makedirs("logs/scenarios", exist_ok=True)
-        with open("logs/scenarios/last_error.log", "w", encoding="utf-8") as f:
-            f.write(trace_str)
-        raise HTTPException(500, f"Error: {str(e)}")
+        raise HTTPException(500, f"Generation Error: {str(e)}")
+
+# --- Action Map Persistence ---
+
+@router.post("/maps", response_model=ActionMapSchema)
+def save_action_map(
+    *,
+    db: Any = Depends(deps.get_db),
+    map_in: ActionMapCreate
+):
+    db_obj = ActionMapModel(
+        id=f"map_{uuid.uuid4().hex[:8]}",
+        project_id=map_in.project_id,
+        url=map_in.url,
+        title=map_in.title,
+        map_json=map_in.map_json
+    )
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
+
+@router.get("/maps", response_model=List[ActionMapSchema])
+def list_action_maps(
+    project_id: str,
+    db: Any = Depends(deps.get_db)
+):
+    return db.query(ActionMapModel).filter(ActionMapModel.project_id == project_id).all()
+
+@router.delete("/maps/{map_id}")
+def delete_action_map(
+    map_id: str,
+    db: Any = Depends(deps.get_db)
+):
+    db_obj = db.query(ActionMapModel).filter(ActionMapModel.id == map_id).first()
+    if not db_obj:
+        raise HTTPException(404, "Map not found")
+    db.delete(db_obj)
+    db.commit()
+    return {"status": "success"}
+
+@router.put("/maps/{map_id}", response_model=ActionMapSchema)
+def update_action_map(
+    *,
+    db: Any = Depends(deps.get_db),
+    map_id: str,
+    map_in: ActionMapUpdate
+):
+    db_obj = db.query(ActionMapModel).filter(ActionMapModel.id == map_id).first()
+    if not db_obj:
+        raise HTTPException(404, "Map not found")
+    
+    update_data = map_in.dict(exclude_unset=True)
+    for field in update_data:
+        setattr(db_obj, field, update_data[field])
+    
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
 
 
 # --- UPLOAD ANALYSIS ENDPOINT (ONE-STEP) ---
@@ -693,3 +751,171 @@ def update_scenario(
         
     db.commit()
     return {"status": "success", "id": s.id}
+
+class MapActionFlowRequest(BaseModel):
+    url: str
+    max_depth: int = 1
+    max_siblings: int = 15
+    exclude_selectors: Optional[List[str]] = None
+    include_selector: Optional[str] = None
+
+class GenerateFromMapRequest(BaseModel):
+    action_map: Dict[str, Any]
+    prompt: Optional[str] = None
+    project_id: Optional[str] = None
+
+@router.post("/map-action-flow")
+async def map_action_flow(req: MapActionFlowRequest):
+    try:
+        result = await action_mapper.map_url(
+            url=req.url, 
+            max_depth=req.max_depth, 
+            max_siblings=req.max_siblings, 
+            exclude_selectors=req.exclude_selectors, 
+            include_selector=req.include_selector
+        )
+        return {"status": "success", "map": result}
+    except Exception as e:
+        raise HTTPException(500, f"Mapping Error: {str(e)}")
+
+@router.post("/generate-from-map", response_model=AnalyzeUrlResponse)
+async def generate_from_map(
+    *,
+    request: GenerateFromMapRequest,
+    db: Any = Depends(deps.get_db),
+):
+    if not settings.GOOGLE_API_KEY:
+        raise HTTPException(500, "Server Configuration Error: GOOGLE_API_KEY is missing.")
+
+    try:
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+
+        categories_context = ""
+        if request.project_id:
+            from app.models.project import Project
+            from app.schemas.project import Project as ProjectSchema
+            proj = db.query(Project).filter(Project.id == request.project_id).first()
+            if proj:
+                pschema = ProjectSchema.model_validate(proj)
+                if pschema.categories:
+                    cats_str = ", ".join([f"'{c.name}'" + (f" (Desc: {c.description})" if c.description else "") for c in pschema.categories])
+                    categories_context = f"\n\n[Project Categories Context]\nThis project uses the following predefined categories for taxonomy: {cats_str}.\nYou MUST carefully assign exactly one of these categories to each generated scenario based on its purpose. If none fit perfectly, pick the closest match. Put this value in the 'category' field."
+
+        system_prompt = """You are an Expert QA Automation Engineer.
+            Analyze the provided JSON 'Action Flow Map' which details the interactable elements of a Web Application up to a certain depth.
+            
+            Based on the User's Intent (if provided) and the Map, directly design a comprehensive Test Scenario Suite.
+
+            [CRITICAL INSTRUCTION - LOCATORS]
+            You MUST ONLY use the 'selector' strings exactly as they appear in the Action Flow Map for your test cases. Do not invent or hallucinate CSS locators like '.login-btn' if they aren't in the map.
+            If you need to click an element from the map, find its 'selector' in the JSON and place it in the 'selectors' array of the TestCase.
+            
+            [CRITICAL INSTRUCTION - INTENTS]
+            The generated 'steps' MUST NOT be low-level UI actions. The 'steps' MUST be high-level User Intents or Business Logic goals (e.g., "Authenticate as an Admin").
+            The AI Runner will use the selectors you provide along with its own context.
+
+            [Design Rules]
+            1. Output must be a valid JSON object with a single key 'scenarios'.
+            2. 'scenarios' is a list of objects, each MUST have:
+               - "title": (string) Scenario Name
+               - "description": (string) Purpose
+               - "category": (string) Category name
+               - "testCases": (list of objects)
+            3. Each "testCases" item MUST have:
+               - "title": (string) Case Name
+               - "preCondition": (string)
+               - "inputData": (string) Dataset requirements
+               - "steps": (list of strings) - High-level intents only!
+               - "expectedResult": (string)
+               - "selectors": (list of objects) List of { "name": "Element Purpose", "value": "Exact CSS Selector from JSON Map" }
+
+            Return the result as a JSON object with a 'scenarios' array.
+            Language: Korean.
+            """
+            
+        if request.prompt:
+            system_prompt += f"\n\n[Additional User Context]\n{request.prompt}"
+            
+        system_prompt += categories_context
+
+        map_json_str = json.dumps(request.action_map, ensure_ascii=False)
+        prompt_contents = [
+            system_prompt,
+            f"Action Flow Map (JSON):\n{map_json_str}"
+        ]
+
+        response = await client.aio.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt_contents,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "OBJECT",
+                    "properties": {
+                        "scenarios": {
+                            "type": "ARRAY",
+                            "items": {
+                                "type": "OBJECT",
+                                "properties": {
+                                    "title": {"type": "STRING"},
+                                    "description": {"type": "STRING"},
+                                    "category": {"type": "STRING"},
+                                    "testCases": {
+                                        "type": "ARRAY",
+                                        "items": {
+                                            "type": "OBJECT",
+                                            "properties": {
+                                                "title": {"type": "STRING"},
+                                                "preCondition": {"type": "STRING"},
+                                                "inputData": {"type": "STRING"},
+                                                "steps": {"type": "ARRAY", "items": {"type": "STRING"}},
+                                                "expectedResult": {"type": "STRING"},
+                                                "selectors": {
+                                                    "type": "ARRAY",
+                                                    "items": {
+                                                        "type": "OBJECT",
+                                                        "properties": {
+                                                            "name": {"type": "STRING"},
+                                                            "value": {"type": "STRING"}
+                                                        },
+                                                        "required": ["name", "value"]
+                                                    },
+                                                    "nullable": True
+                                                }
+                                            },
+                                            "required": ["title", "preCondition", "inputData", "steps", "expectedResult"]
+                                        }
+                                    }
+                                },
+                                "required": ["title", "description", "testCases"]
+                            }
+                        }
+                    },
+                    "required": ["scenarios"]
+                }
+            )
+        )
+        
+        raw_text = response.text
+        if raw_text.startswith("```json"):
+            raw_text = raw_text.replace("```json", "", 1).replace("```", "", 1)
+        elif raw_text.startswith("```"):
+            raw_text = raw_text.replace("```", "", 1).replace("```", "", 1)
+            
+        result = json.loads(raw_text)
+        
+        for scenario in result.get('scenarios', []):
+            for tc in scenario.get('testCases', []):
+                if 'selectors' in tc and isinstance(tc['selectors'], list):
+                    tc['selectors'] = {item['name']: item['value'] for item in tc['selectors'] if 'name' in item and 'value' in item}
+
+        return AnalyzeUrlResponse(
+            scenarios=result.get('scenarios', []),
+            dom_context="[Action Map Used instead of DOM]"
+        )
+
+    except Exception as e:
+        print(f"Map Generate Error: {e}")
+        raise HTTPException(500, f"Error: {str(e)}")
