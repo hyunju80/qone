@@ -242,6 +242,7 @@ export interface TestCase {
   inputData: string;      // 신규: 입력 데이터
   steps: string[];        // 기존: 수행 절차
   expectedResult: string; // 기존: 기대 결과
+  selectors?: Record<string, string>; // 신규: 셀렉터 정보
 }
 
 export interface TestScript {

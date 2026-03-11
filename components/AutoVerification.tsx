@@ -283,9 +283,9 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
 
                     {uniqueCategories.length > 0 && (
                         <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1">
-                            <button onClick={() => setSelectedCategory('ALL')} className={`px - 2 py - 1 rounded text - [9px] font - black uppercase whitespace - nowrap transition - colors ${selectedCategory === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'} `}>ALL</button>
+                            <button onClick={() => setSelectedCategory('ALL')} className={`px-2 py-1 rounded-full text-[9px] font-black uppercase whitespace-nowrap transition-all ${selectedCategory === 'ALL' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'} `}>ALL</button>
                             {uniqueCategories.map(cat => (
-                                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px - 2 py - 1 rounded text - [9px] font - black uppercase whitespace - nowrap transition - colors ${selectedCategory === cat ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'} `}>
+                                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-2 py-1 rounded-full text-[9px] font-black uppercase whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'} `}>
                                     {cat}
                                 </button>
                             ))}
@@ -309,13 +309,17 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                             <button
                                 key={s.id}
                                 onClick={() => setSelectedScenarioId(s.id)}
-                                className={`w - full text - left p - 4 rounded - 2xl border transition - all flex items - start gap - 3 ${selectedScenarioId === s.id ? 'bg-indigo-600/10 border-indigo-500 shadow-md' : 'bg-white dark:bg-[#16191f] border-gray-200 dark:border-gray-800 hover:border-gray-300'} `}
+                                className={`w-full text-left p-4 rounded-2xl border transition-all flex items-start gap-4 ${selectedScenarioId === s.id ? 'bg-indigo-600/10 border-indigo-500 shadow-md transform scale-[1.02]' : 'bg-white dark:bg-[#16191f] border-gray-200 dark:border-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700'} `}
                             >
-                                <div className="p-2 bg-gray-50 dark:bg-gray-900 rounded-lg shrink-0 transition-colors"><ListChecks className="w-4 h-4 text-gray-400" /></div>
-                                <div className="min-w-0">
-                                    {s.category && <div className="mb-1"><span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[8px] font-bold rounded uppercase tracking-wider">{s.category}</span></div>}
-                                    <div className="text-xs font-black text-gray-900 dark:text-gray-200 truncate">{s.title}</div>
-                                    <div className="text-[9px] text-gray-500 line-clamp-1 mt-0.5">{s.description}</div>
+                                <div className={`p-2 rounded-xl shrink-0 transition-colors ${selectedScenarioId === s.id ? 'bg-indigo-600 text-white' : 'bg-gray-50 dark:bg-gray-900 text-gray-400'} `}><ListChecks className="w-5 h-5" /></div>
+                                <div className="min-w-0 flex-1">
+                                    {s.category && (
+                                        <div className="mb-1.5 flex items-center gap-2">
+                                            <span className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[8px] font-black rounded uppercase tracking-widest border border-indigo-100 dark:border-indigo-500/20">{s.category}</span>
+                                        </div>
+                                    )}
+                                    <div className="text-xs font-black text-gray-900 dark:text-gray-200 truncate group-hover:text-indigo-600 transition-colors">{s.title}</div>
+                                    <div className="text-[10px] text-gray-500 dark:text-gray-400 line-clamp-2 mt-1 leading-relaxed">{s.description}</div>
                                 </div>
                             </button>
                         ))
@@ -346,8 +350,11 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                         </div>
                                     </div>
                                     <div className="flex flex-col self-end pb-1.5">
-                                        <span className="text-[8px] font-black text-gray-400 uppercase tracking-[0.1em] mb-1">Status</span>
-                                        <span className={`px - 2 py - 0.5 rounded text - [9px] font - black uppercase inline - block ${isRunning ? 'bg-amber-100 text-amber-600 animate-pulse' : isComplete ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'} `}>{isRunning ? 'Running' : isComplete ? 'Finished' : 'Standby'}</span>
+                                        <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Verification Status</span>
+                                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-2 shadow-sm border ${isRunning ? 'bg-amber-100 border-amber-200 text-amber-600' : isComplete ? 'bg-emerald-100 border-emerald-200 text-emerald-600' : 'bg-gray-100 border-gray-200 text-gray-500'} `}>
+                                            <div className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-amber-500 animate-pulse' : isComplete ? 'bg-emerald-500' : 'bg-gray-400'} `} />
+                                            {isRunning ? 'Running' : isComplete ? 'Finished' : 'Standby'}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -467,12 +474,12 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                 )}
 
                                 {isComplete && steps.length > 0 && (
-                                    <div className={`p - 6 rounded - 3xl border - 2 mb - 8 animate -in slide -in -from - top - 4 duration - 500 ${steps[steps.length - 1]?.status === 'Failed'
+                                    <div className={`p-6 rounded-3xl border-2 mb-8 animate-in slide-in-from-top-4 duration-500 ${steps[steps.length - 1]?.status === 'Failed'
                                         ? 'bg-red-50 dark:bg-red-500/5 border-red-100 dark:border-red-500/20'
                                         : 'bg-emerald-50 dark:bg-emerald-500/5 border-emerald-100 dark:border-emerald-500/20'
                                         } `}>
                                         <div className="flex items-start gap-4">
-                                            <div className={`p - 3 rounded - 2xl ${steps[steps.length - 1]?.status === 'Failed' ? 'bg-red-100 dark:bg-red-500/20 text-red-600' : 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600'} `}>
+                                            <div className={`p-3 rounded-2xl ${steps[steps.length - 1]?.status === 'Failed' ? 'bg-red-100 dark:bg-red-500/20 text-red-600' : 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600'} `}>
                                                 {steps[steps.length - 1]?.status === 'Failed' ? <XCircle className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6" />}
                                             </div>
                                             <div className="flex-1 min-w-0">
@@ -496,7 +503,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                 <div className="space-y-6">
                                     {steps.map((step, idx) => (
                                         <div key={idx} className="relative pl-8 border-l-2 border-gray-200 dark:border-gray-800 last:border-transparent transition-colors">
-                                            <div className={`absolute - left - [9px] top - 0 w - 4 h - 4 rounded - full border - 2 ${step.status === 'Completed' ? 'bg-emerald-500 border-emerald-900' :
+                                            <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 ${step.status === 'Completed' ? 'bg-emerald-500 border-emerald-900' :
                                                 step.status === 'Failed' ? 'bg-red-500 border-red-900' : 'bg-indigo-500 border-indigo-900'
                                                 } `} />
 
@@ -504,9 +511,9 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                                 <div className="flex items-center justify-between mb-3">
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest transition-colors">Step {step.step_number || idx + 1}</span>
-                                                        <span className={`text - [10px] font - bold px - 1.5 py - 0.5 rounded border ${step.matching_score >= 80 ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400' :
+                                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${step.matching_score >= 80 ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400' :
                                                             step.matching_score >= 50 ? 'border-yellow-500/30 text-yellow-600 dark:text-yellow-400' : 'border-gray-200 dark:border-gray-700 text-gray-500'
-                                                            } transition - colors`}>
+                                                            } transition-colors`}>
                                                             Score: {step.matching_score ?? 0}
                                                         </span>
                                                     </div>
@@ -526,7 +533,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                                             {step.score_breakdown && Object.entries(step.score_breakdown).map(([key, val]) => (
                                                                 <div key={key} className="flex justify-between">
                                                                     <span className="text-gray-600 dark:text-gray-400 capitalize transition-colors">{key.replace('_', ' ')}</span>
-                                                                    <span className={`font - bold transition - colors ${(val as number) >= 80 ? 'text-emerald-600 dark:text-emerald-400' : (val as number) >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'
+                                                                    <span className={`font-bold transition-colors ${(val as number) >= 80 ? 'text-emerald-600 dark:text-emerald-400' : (val as number) >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'
                                                                         } `}>{val as number}</span>
                                                                 </div>
                                                             ))}
@@ -548,8 +555,8 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                                         <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-200 dark:border-gray-800/30 mt-2 transition-colors">
                                                             {step.observation && (
                                                                 <div className="col-span-2">
-                                                                    <span className={`${step.status === 'Failed' ? 'text-red-600/70 dark:text-red-500/70' : 'text-emerald-600/70 dark:text-emerald-500/70'} font - bold uppercase text - [10px] block mb - 1 transition - colors`}>Actual (Observation)</span>
-                                                                    <span className={`${step.status === 'Failed' ? 'text-red-700 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'} not - italic transition - colors`}>{step.observation}</span>
+                                                                    <span className={`${step.status === 'Failed' ? 'text-red-600/70 dark:text-red-500/70' : 'text-emerald-600/70 dark:text-emerald-500/70'} font-bold uppercase text-[10px] block mb-1 transition-colors`}>Actual (Observation)</span>
+                                                                    <span className={`${step.status === 'Failed' ? 'text-red-700 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'} not-italic transition-colors`}>{step.observation}</span>
                                                                 </div>
                                                             )}
                                                             {step.expectation && (

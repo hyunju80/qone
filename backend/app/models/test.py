@@ -180,3 +180,17 @@ class TestDataset(Base):
     generation_source = Column(String) # MANUAL, LLM
     
     project = relationship("Project")
+
+class ActionMap(Base):
+    """
+    Persisted Action Flow Map for AI Generator
+    """
+    __tablename__ = "actionmap"
+    id = Column(String, primary_key=True, index=True)
+    project_id = Column(String, ForeignKey("project.id"))
+    url = Column(String)
+    title = Column(String)
+    map_json = Column(JSON) # Full Action Flow Map JSON
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    project = relationship("Project")

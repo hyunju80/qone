@@ -108,6 +108,7 @@ const AIGeneratorView: React.FC<AIGeneratorViewProps> = ({
                             onUpdatePersistedScenarios={onUpdateDraftScenarios}
                             persistedEditingId={lastEditingScenarioId}
                             onUpdatePersistedEditingId={onUpdateLastEditingScenarioId}
+                            onAlert={onAlert}
                         />
                     </div>
                 )}

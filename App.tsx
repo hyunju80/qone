@@ -534,7 +534,22 @@ const AppContent: React.FC = () => {
       case ViewMode.STEP_RUNNER:
         return <StepRunnerView activeProject={activeProject} />;
       case ViewMode.SCENARIO_GENERATOR:
-        return <ScenarioGenerator activeProject={activeProject} personas={personas.filter(p => (p.projectId === activeProject.id || p.projectId === 'global' || !p.projectId) && p.isActive)} onApproveScenario={handleApproveScenario} focusedTaskId={focusedDiscoveryId} onClearFocus={() => setFocusedDiscoveryId(null)} persistedFeatures={draftFeatures} onUpdatePersistedFeatures={setDraftFeatures} persistedScenarios={draftScenarios} onUpdatePersistedScenarios={setDraftScenarios} persistedEditingId={lastEditingScenarioId} onUpdatePersistedEditingId={setLastEditingScenarioId} />;
+        return (
+          <ScenarioGenerator
+            activeProject={activeProject}
+            personas={personas.filter(p => (p.projectId === activeProject.id || p.projectId === 'global' || !p.projectId) && p.isActive)}
+            onApproveScenario={handleApproveScenario}
+            focusedTaskId={focusedDiscoveryId}
+            onClearFocus={() => setFocusedDiscoveryId(null)}
+            persistedFeatures={draftFeatures}
+            onUpdatePersistedFeatures={setDraftFeatures}
+            persistedScenarios={draftScenarios}
+            onUpdatePersistedScenarios={setDraftScenarios}
+            persistedEditingId={lastEditingScenarioId}
+            onUpdatePersistedEditingId={setLastEditingScenarioId}
+            onAlert={showAlert}
+          />
+        );
       case ViewMode.AI_GENERATOR:
         return (
           <AIGeneratorView

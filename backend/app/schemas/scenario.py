@@ -43,3 +43,25 @@ class ScenarioInDBBase(ScenarioBase):
 
 class Scenario(ScenarioInDBBase):
     persona: Optional[Persona] = None
+
+class ActionMapBase(BaseModel):
+    url: Optional[str] = None
+    title: Optional[str] = None
+    map_json: Optional[Dict[str, Any]] = None
+
+class ActionMapCreate(ActionMapBase):
+    project_id: str
+    url: str
+    title: str
+    map_json: Dict[str, Any]
+
+class ActionMapUpdate(ActionMapBase):
+    pass
+
+class ActionMap(ActionMapBase):
+    id: str
+    project_id: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
