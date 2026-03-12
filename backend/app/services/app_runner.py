@@ -194,27 +194,30 @@ class AppStepRunner:
         start_time = time.time()
         logged_3s = False
         logged_6s = False
-        scrolled_once = False
-        
+        scrolled_once = False  
+        webview_stabilized = False
+
         # [WEBVIEW ACCESSIBILITY BRIDGE DEFIBRILLATOR]
         # Android's Native UIAutomator often drops WebView nodes after navigation.
         # By briefly attaching ChromeDriver (switching context) and switching back, 
         # we force the OS to rebuild the accessibility tree including the HTML DOM.
+        
         try:
             contexts = self.driver.contexts
             webview = next((c for c in contexts if "WEBVIEW" in c), None)
             if webview:
-                self.driver.switch_to.context(webview)
+
+                self.driver.switch_to.context(webview)              
                 # Forcing a read of the page source here acts as a defibrillator, 
                 # making Chrome actually evaluate the DOM and pass it to Android Accessibility.
                 _ = self.driver.page_source 
-                self.driver.switch_to.context("NATIVE_APP")
                 logger.info("Woke up Chromium Accessibility Bridge via context evaluate.")
         except Exception as e:
             logger.debug(f"Failed to pulse WebView bridge: {e}")
             # Ensure we are back in NATIVE
             try:
                 self.driver.switch_to.context("NATIVE_APP")
+                
             except:
                 pass
         
@@ -291,48 +294,55 @@ class AppStepRunner:
                                 return self.driver.find_element(by=AppiumBy.ANDROID_UIAUTOMATOR, value=uiauto_fuzzy_desc)
                             except Exception:
                                 pass
-            
+                                
             time.sleep(0.5)
+
             elapsed = time.time() - start_time
             
+            print("****현재 컨텍스트:", self.driver.current_context)
+            print("****전체 컨텍스트 목록:", self.driver.contexts)
+
+
+
+
             # Auto-scroll fallback if halfway through timeout and not found
-            if elapsed > timeout / 2 and not scrolled_once:
-                logger.info(f"Element {selector_value} not found after {timeout/2}s. Attempting auto-scroll to trigger lazy loading...")
-                try:
-                    # Switch to native to perform swipe reliably
-                    contexts = self.driver.contexts
-                    if any("WEBVIEW" in c for c in contexts):
-                        self.driver.switch_to.context('NATIVE_APP')
-                    size = self.driver.get_window_size()
-                    start_x = size['width'] // 2
-                    start_y = int(size['height'] * 0.2)
-                    end_y = int(size['height'] * 0.8)
+            # if elapsed > timeout / 2 and not scrolled_once:
+            #     logger.info(f"Element {selector_value} not found after {timeout/2}s. Attempting auto-scroll to trigger lazy loading...")
+            #     try:
+            #         # Switch to native to perform swipe reliably
+            #         contexts = self.driver.contexts
+            #         if any("WEBVIEW" in c for c in contexts):
+            #             self.driver.switch_to.context('NATIVE_APP')
+            #         size = self.driver.get_window_size()
+            #         start_x = size['width'] // 2
+            #         start_y = int(size['height'] * 0.2)
+            #         end_y = int(size['height'] * 0.8)
                     
-                    try:
-                        from selenium.webdriver.common.actions.action_builder import ActionBuilder
-                        from selenium.webdriver.common.actions.pointer_input import PointerInput
-                        from selenium.webdriver.common.actions import interaction
+            #         try:
+            #             from selenium.webdriver.common.actions.action_builder import ActionBuilder
+            #             from selenium.webdriver.common.actions.pointer_input import PointerInput
+            #             from selenium.webdriver.common.actions import interaction
                         
-                        pointer = PointerInput(interaction.POINTER_TOUCH, "touch")
-                        actions = ActionBuilder(self.driver, mouse=pointer)
-                        actions.pointer_action.move_to_location(start_x, start_y)
-                        actions.pointer_action.pointer_down()
-                        actions.pointer_action.pause(0.2)
-                        # Drag down to scroll page UP
-                        actions.pointer_action.move_to_location(start_x, end_y)
-                        actions.pointer_action.release()
-                        actions.perform()
-                    except Exception as inner_e:
-                        logger.warning(f"W3C SwipeDown failed: {inner_e}")
+            #             pointer = PointerInput(interaction.POINTER_TOUCH, "touch")
+            #             actions = ActionBuilder(self.driver, mouse=pointer)
+            #             actions.pointer_action.move_to_location(start_x, start_y)
+            #             actions.pointer_action.pointer_down()
+            #             actions.pointer_action.pause(0.2)
+            #             # Drag down to scroll page UP
+            #             actions.pointer_action.move_to_location(start_x, end_y)
+            #             actions.pointer_action.release()
+            #             actions.perform()
+            #         except Exception as inner_e:
+            #             logger.warning(f"W3C SwipeDown failed: {inner_e}")
                         
-                    time.sleep(1.5) # Wait for WebView to render new items
-                except Exception as e:
-                    if isinstance(e, InvalidSessionIdException):
-                        logger.error("Appium session lost during auto-scroll.")
-                        self.driver = None
-                        raise e
-                    logger.warning(f"Auto-scroll fallback failed completely: {e}")
-                scrolled_once = True
+            #         time.sleep(1.5) # Wait for WebView to render new items
+            #     except Exception as e:
+            #         if isinstance(e, InvalidSessionIdException):
+            #             logger.error("Appium session lost during auto-scroll.")
+            #             self.driver = None
+            #             raise e
+            #         logger.warning(f"Auto-scroll fallback failed completely: {e}")
+            #     scrolled_once = True
                 
             # Diagnostic periodic logging
             if elapsed > 3.0 and not logged_3s:
@@ -485,7 +495,7 @@ class AppStepRunner:
         action_name = step.get("action", "").lower()
         
         # 1. Check for Custom Action in DB
-        if db and action_name not in ["click", "tap", "send_keys", "type", "swipe", "scroll", "app_start", "activateapp", "app_close", "close_app", "wait"]:
+        if db and action_name not in ["click", "tap", "send_keys", "type", "swipe", "scroll", "app_start", "activateapp", "app_close", "close_app", "wait", "swipe(하)", "swipe(상)", "back"]:
             from app.models.test import TestAction
             custom_action = db.query(TestAction).filter(TestAction.name == action_name, TestAction.platform == "APP").first()
             if custom_action:
@@ -526,8 +536,14 @@ class AppStepRunner:
                     except Exception:
                         center_x, center_y = None, None
                         
-                    # Try standard click first
+                    # Try standard click first                    
                     element.click()
+                    time.sleep(0.8)  # 페이지 전환 최소 대기
+                    
+                    if selector_value == "com.tms:id/mBackButton":
+                        print("##scroll_to_top//selector_value:", selector_value)
+                        self._scroll_to_top()                    
+
                 except Exception as e:
                     err_str = str(e).lower()
                     logger.warning(f"Standard click failed: {err_str}")
@@ -671,6 +687,71 @@ class AppStepRunner:
                 # Expecting option as "start_x,start_y,end_x,end_y,duration"
                 coords = [int(x) for x in option.split(",")]
                 self.driver.swipe(*coords)
+            elif action == "swipe(하)":
+                logger.info(f"Executing swipe(하) to find {selector_type}={selector_value}")
+                max_swipes = 10
+                element_found = False
+                size = self.driver.get_window_size()
+                start_x = size['width'] // 2
+                start_y = int(size['height'] * 0.8)
+                end_y = int(size['height'] * 0.2)
+                
+                for attempt in range(max_swipes):
+                    try:
+                        # Use a very short timeout to check if element is on current screen
+                        element = self.find_element(selector_type, selector_value, timeout=2)
+                        if element:
+                            try:
+                                location = element.location
+                                e_size = element.size
+                                center_y = location['y'] + (e_size['height'] / 2)
+                                
+                                # Check if element is in a very comfortable clickable zone (30% - 70% of viewport)
+                                if (size['height'] * 0.30) <= center_y <= (size['height'] * 0.70):
+                                    logger.info(f"Element found in safe zone at center_y={center_y} on swipe attempt {attempt + 1}")
+                                    element_found = True
+                                    break
+                                else:
+                                    logger.info(f"Element in DOM but near edge (center_y={center_y}). Centering... ({attempt + 1}/{max_swipes})")
+                                    # Calculate swipe to bring it to center (50%)
+                                    target_y = size['height'] // 2
+                                    offset = center_y - target_y
+                                    
+                                    # Smoothly drag the screen by exactly 'offset'.
+                                    # If the element is technically off-screen but registered in DOM,
+                                    # center_y might be huge (e.g. 2500) making offset huge.
+                                    # If offset is too large, cap it to a normal full-page swipe to avoid crashes
+                                    max_swipe_dist = size['height'] * 0.6
+                                    if abs(offset) > max_swipe_dist:
+                                        logger.info(f"Offset {offset} is too large. Falling back to default swipe.")
+                                        self.driver.swipe(start_x, start_y, start_x, end_y, 1500)
+                                        time.sleep(1.0)
+                                        continue
+                                        
+                                    s_y = size['height'] * 0.7 if offset > 0 else size['height'] * 0.3
+                                    e_y = s_y - offset
+                                    
+                                    # Clamp e_y to safe screen bounds (10% to 90%)
+                                    max_y = size['height'] * 0.9
+                                    min_y = size['height'] * 0.1
+                                    if e_y > max_y: e_y = max_y
+                                    if e_y < min_y: e_y = min_y
+                                    
+                                    self.driver.swipe(start_x, int(s_y), start_x, int(e_y), 1500)
+                                    time.sleep(1.5)
+                                    continue # Skip the default swipe below
+                            except Exception as loc_err:
+                                logger.warning(f"Could not check element location: {loc_err}. Swiping down to try to reveal it.")
+                                # DO NOT BREAK. It might be totally hidden. Fall through to default swipe.
+                    except Exception:
+                        logger.info(f"Element not found in DOM, scrolling down... ({attempt + 1}/{max_swipes})")
+                        
+                    # Default slow swipe down (moves screen up) to search
+                    self.driver.swipe(start_x, start_y, start_x, end_y, 1500)
+                    time.sleep(1.0) # Wait for page to settle
+
+                if not element_found:
+                    return {"success": False, "error": f"Failed to find element after {max_swipes} swipes: {selector_value}"}
             elif action == "app_start" or action == "activateapp":
                 app_id = option or selector_value
                 if app_id:
@@ -706,6 +787,10 @@ class AppStepRunner:
                         logger.warning(f"Standard terminate_app failed for {app_id}: {e}")
                 else:
                     return {"success": False, "error": "No appPackage/bundleId provided or found in caps definition to close"}
+            elif action == "back":
+                logger.info("Executing device BACK action")
+                self.driver.back()
+                time.sleep(1) # wait for page transition
             elif action == "wait":
                 time.sleep(float(option) if option else 1.0)
             elif action == "finish":
@@ -872,5 +957,123 @@ class AppStepRunner:
             if not result["success"] and not step.get("skip_on_error", False):
                 break
         return results
+
+    def scroll(self, delta_y: int) -> Dict[str, Any]:
+        """
+        Native scroll/swipe down or up based on delta_y.
+        Positive delta_y (scroll wheel down) means view lower content -> requires swipe UP.
+        """
+        if not self.driver:
+            return {"success": False, "error": "No active session"}
+            
+        try:
+            size = self.driver.get_window_size()
+            start_x = size['width'] // 2
+            
+            if delta_y > 0:
+                start_y = int(size['height'] * 0.8)
+                end_y = int(size['height'] * 0.2)
+            else:
+                start_y = int(size['height'] * 0.2)
+                end_y = int(size['height'] * 0.8)
+
+            self.driver.swipe(start_x, start_y, start_x, end_y, 300)
+            logger.info(f"Scrolled app with delta_y={delta_y}")
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Failed to scroll app: {e}")
+            return {"success": False, "error": str(e)}
+
+    # def _scroll_to_top(self):
+    #     """NATIVE 스와이프로 최상단 이동"""
+    #     try:
+    #         size = self.driver.get_window_size()
+    #         start_x = size['width'] // 2
+            
+    #         for i in range(10):
+    #             self.driver.swipe(
+    #                 start_x, int(size['height'] * 0.3),
+    #                 start_x, int(size['height'] * 0.9),
+    #                 200
+    #             )
+    #             time.sleep(0.1)
+                
+    #         logger.info("✅ NATIVE 스와이프 최상단 이동 완료")
+    #         return True
+            
+    #     except Exception as e:
+    #         logger.debug(f"_scroll_to_top 실패: {e}")
+    #         return False  
+
+    def _scroll_to_top(self):
+        try:
+            size = self.driver.get_window_size()
+            start_x = size['width'] // 2
+            screen_height = size['height']
+
+            for i in range(10):
+                # ✅ 매 스와이프 후 최상단 도달 확인
+                src = self.driver.page_source
+                import re
+                bounds_list = re.findall(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', src)
+                
+                if bounds_list:
+                    min_y = min(int(b[1]) for b in bounds_list)
+                    logger.info(f"스와이프 {i+1}회 | min_y={min_y}")
+                    
+                    # 최상단 근처면 조기 종료
+                    if min_y < screen_height * 0.1:
+                        logger.warning(f"✅ 최상단 도달 ({i+1}회 스와이프)")
+                        return True
+
+                self.driver.swipe(
+                    start_x, int(screen_height * 0.3),
+                    start_x, int(screen_height * 0.9),
+                    200
+                )
+                time.sleep(0.1)
+
+            logger.info("✅ 스와이프 완료")
+            return True
+
+        except Exception as e:
+            logger.debug(f"_scroll_to_top 실패: {e}")
+            return False
+
+
+    # def _scroll_to_top(self):
+    #     """UIAutomator로 즉시 최상단 스크롤"""
+    #     try:
+    #         # ✅ UIAutomator 스크롤 최상단 (스와이프 없이 즉시)
+    #         self.driver.find_element(
+    #             AppiumBy.ANDROID_UIAUTOMATOR,
+    #             "new UiScrollable(new UiSelector().scrollable(true))"
+    #             ".scrollToBeginning(10)"
+    #         )
+    #         logger.info("✅ UIAutomator scrollToBeginning 완료")
+    #         return True
+            
+    #     except Exception as e:
+    #         logger.warning(f"UIAutomator scroll 실패: {e}, 스와이프 fallback 시도")
+            
+    #         # fallback: 스와이프 횟수 줄여서 빠르게
+    #         try:
+    #             size = self.driver.get_window_size()
+    #             start_x = size['width'] // 2
+                
+    #             for i in range(3):  # 10회 → 3회로 축소
+    #                 self.driver.swipe(
+    #                     start_x, int(size['height'] * 0.2),
+    #                     start_x, int(size['height'] * 0.9),
+    #                     100  # 200ms → 100ms로 단축
+    #                 )
+    #                 # time.sleep 제거
+                    
+    #             logger.info("✅ 스와이프 fallback 완료")
+    #             return True
+                
+    #         except Exception as e2:
+    #             logger.warning(f"스와이프 fallback 실패: {e2}")
+    #             return False
 
 app_step_runner = AppStepRunner()

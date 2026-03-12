@@ -40,6 +40,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
     const [showSaveModal, setShowSaveModal] = useState(false);
     const [assetName, setAssetName] = useState('');
     const [assetDescription, setAssetDescription] = useState('');
+    const [assetCategory, setAssetCategory] = useState<string>('');
     const [refreshTrigger, setRefreshTrigger] = useState(0); // To reload list after save
     const [viewingAsset, setViewingAsset] = useState<any>(null); // For detail view
     const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
@@ -135,6 +136,32 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                             };
                             setSwipeStart(null);
                         }
+                    } else if (recordMode === 'SWIPE(하)') {
+                        newStep = {
+                            id: String(steps.length + stagedSteps.length + 1),
+                            stepName: `Swipe Down to Find: ${res.name || 'Element'}`,
+                            description: `Recorded swipe down to find ${res.name || 'element'}`,
+                            action: 'swipe(하)',
+                            selectorType: activeTab === 'WEB' ? res.selector_type.toLowerCase() : res.selector_type.toUpperCase(),
+                            selectorValue: res.selector_value,
+                            mandatory: true,
+                            screenshot: true,
+                            sleep: 1,
+                            platform: activeTab
+                        };
+                    } else if (recordMode === 'BACK') {
+                        newStep = {
+                            id: String(steps.length + stagedSteps.length + 1),
+                            stepName: `Hardware Back`,
+                            description: `Recorded Hardware Back Action`,
+                            action: 'back',
+                            selectorType: 'xpath',
+                            selectorValue: '//body',
+                            mandatory: true,
+                            screenshot: false,
+                            sleep: 1,
+                            platform: activeTab
+                        };
                     } else if (recordMode === 'INPUT') {
                         setInspectorInputPendingRes(res);
                         setInspectorInputText('');
@@ -219,7 +246,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
     const [xmlSource, setXmlSource] = useState<string>('');
     const [stagedSteps, setStagedSteps] = useState<any[]>([]);
     const [inspectorTab, setInspectorTab] = useState<'VIEW' | 'SOURCE'>('VIEW');
-    const [recordMode, setRecordMode] = useState<'CLICK' | 'TAP' | 'SWIPE' | 'INPUT'>('CLICK');
+    const [recordMode, setRecordMode] = useState<'CLICK' | 'TAP' | 'SWIPE' | 'SWIPE(하)' | 'BACK' | 'INPUT'>('CLICK');
     const [swipeStart, setSwipeStart] = useState<{ x: number, y: number } | null>(null);
     const [highlightBounds, setHighlightBounds] = useState<{ x1: number, y1: number, x2: number, y2: number } | null>(null);
     const [lastIdentifiedElement, setLastIdentifiedElement] = useState<any>(null);
@@ -231,11 +258,34 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
     const [imageAspectRatio, setImageAspectRatio] = useState<number>(9 / 16);
     const [imageDimensions, setImageDimensions] = useState<{ width: number, height: number } | null>(null);
     const [currentLine, setCurrentLine] = useState<number | null>(null);
+    const [isScrollingTarget, setIsScrollingTarget] = useState(false);
 
     // Custom Input Modal State for Inspector
     const [showInspectorInputModal, setShowInspectorInputModal] = useState(false);
     const [inspectorInputText, setInspectorInputText] = useState('');
     const [inspectorInputPendingRes, setInspectorInputPendingRes] = useState<any>(null);
+
+    const handleDeviceWheel = async (e: React.WheelEvent<HTMLDivElement>) => {
+        if (!isConnected || !screenshot || isRefreshingScreenshot) return;
+        if (isScrollingTarget) return;
+
+        // Need reasonable delta to trigger a full screen swipe
+        if (Math.abs(e.deltaY) < 30) return;
+
+        setIsScrollingTarget(true);
+        setNotification({ type: 'info', message: e.deltaY > 0 ? 'Scrolling down...' : 'Scrolling up...' });
+        try {
+            const res = await inspectorApi.scroll(e.deltaY, activeTab);
+            if (!res.success) {
+                setNotification({ type: 'error', message: res.error || 'Scroll failed' });
+            }
+            setTimeout(refreshScreenshot, 800);
+        } catch (err) {
+            console.error("Scroll failed", err);
+        } finally {
+            setTimeout(() => setIsScrollingTarget(false), 1500);
+        }
+    };
 
     const handleInspectorInputConfirm = async () => {
         if (!inspectorInputPendingRes) return;
@@ -601,10 +651,10 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
         };
         reader.readAsBinaryString(file);
     };
-
     const getPayload = () => ({
         name: assetName,
         description: assetDescription,
+        category: assetCategory || undefined,
         platform: activeTab,
         origin: 'STEP',
         project_id: activeProject.id,
@@ -690,6 +740,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
         setActiveAssetId(null);
         setAssetName('');
         setAssetDescription('');
+        setAssetCategory('');
         setRefreshTrigger(prev => prev + 1);
     };
 
@@ -728,6 +779,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
             // Load metadata for potential update
             setAssetName(asset.name);
             setAssetDescription(asset.description || '');
+            setAssetCategory(asset.category || '');
 
         } catch (err) {
             console.error("Load failed", err);
@@ -1231,6 +1283,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                                     <div
                                                         className="relative group/device bg-black rounded-[2rem] border-4 border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-gray-800 flex-shrink-0"
                                                         style={{ aspectRatio: imageAspectRatio, width: '100%', height: 'auto' }}
+                                                        onWheel={handleDeviceWheel}
                                                     >
                                                         {screenshot ? (
                                                             <div className="w-full h-full relative cursor-crosshair" onClick={handleInspectorClick}>
@@ -1284,7 +1337,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                                                 <span className="flex h-1.5 w-1.5 rounded-full bg-red-500 animate-ping" />
                                                             </div>
                                                             <div className="grid grid-cols-2 gap-2">
-                                                                {(['CLICK', 'TAP', 'SWIPE', 'INPUT'] as const).map(mode => (
+                                                                {(['CLICK', 'TAP', 'SWIPE', 'SWIPE(하)', 'BACK', 'INPUT'] as const).map(mode => (
                                                                     <button
                                                                         key={mode}
                                                                         onClick={() => {
@@ -1855,6 +1908,24 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                             autoFocus
                                         />
                                     </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Category (Optional)</label>
+                                        <div className="relative">
+                                            <FolderPlus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                            <select
+                                                value={assetCategory}
+                                                onChange={(e) => setAssetCategory(e.target.value)}
+                                                className="w-full bg-gray-50 dark:bg-[#0f1115] border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white rounded-xl py-3 pl-11 pr-4 outline-none focus:border-indigo-500 transition-all text-sm appearance-none font-bold"
+                                            >
+                                                <option value="">Uncategorized</option>
+                                                {activeProject.categories?.map(c => (
+                                                    <option key={c.id} value={c.name}>{c.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Description (Optional)</label>
                                         <textarea
