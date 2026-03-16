@@ -40,6 +40,8 @@ class TestScript(Base):
     platform = Column(String) # WEB, APP (New for Step Runner)
     capture_screenshots = Column(Boolean, default=False)
     steps = Column(JSON, default=[]) # Native Step representation for Step scripts
+    try_count = Column(Integer, default=1)
+    enable_ai_test = Column(Boolean, default=False)
 
     project = relationship("Project", back_populates="scripts")
     persona = relationship("Persona", back_populates="scripts")
@@ -63,6 +65,9 @@ class Scenario(Base):
     platform = Column(String, default="WEB") # WEB, APP
     target = Column(String, nullable=True) # URL or App Package
     tags = Column(JSON, default=[])
+    try_count = Column(Integer, default=1)
+    enable_ai_test = Column(Boolean, default=False)
+
     
     project = relationship("Project", back_populates="scenarios")
     golden_script = relationship("TestScript") # Optional relationship for access
@@ -86,11 +91,10 @@ class TestHistory(Base):
     schedule_id = Column(String, ForeignKey("testschedule.id"), nullable=True)
     schedule_name = Column(String)
     step_results = Column(JSON, default=[]) # Universal step-by-step results
-    
     script = relationship("TestScript", 
-                          primaryjoin="foreign(TestHistory.script_id) == TestScript.id",
-                          back_populates="history",
-                          viewonly=True)
+                          primaryjoin="TestHistory.script_id == TestScript.id",
+                          foreign_keys=[script_id],
+                          back_populates="history")
     schedule = relationship("TestSchedule", back_populates="history_entries")
     ai_session = relationship("AiExplorationSession", uselist=False, back_populates="history")
 

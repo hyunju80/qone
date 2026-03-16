@@ -67,7 +67,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
     tags: '',
     category: '',
     engine: 'Playwright' as TestEngine,
-    dataset: [] as TestDataRow[]
+    dataset: [] as TestDataRow[],
+    try_count: 1,
+    enable_ai_test: false
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -102,7 +104,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         trigger: "manual",
         persona_name: asset.persona?.name || "Default",
         capture_screenshots: asset.captureScreenshots || false,
-        dataset: asset.dataset || []
+        dataset: asset.dataset || [],
+        try_count: asset.try_count || 1,
+        enable_ai_test: asset.enable_ai_test || false
       });
       setActiveRunId(run_id);
     } catch (e: any) {
@@ -127,7 +131,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
           trigger: "manual",
           persona_name: script.persona?.name || 'Default',
           capture_screenshots: script.captureScreenshots || false,
-          dataset: script.dataset || []
+          dataset: script.dataset || [],
+          try_count: script.try_count || 1,
+          enable_ai_test: script.enable_ai_test || false
         });
         setActiveRunId(run_id);
       } else {
@@ -138,7 +144,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
           script_id: script.id,
           script_name: script.name,
           persona_name: script.persona?.name || 'Default',
-          dataset: script.dataset || []
+          dataset: script.dataset || [],
+          try_count: script.try_count || 1,
+          enable_ai_test: script.enable_ai_test || false
         });
         setActiveRunId(run_id);
       }
@@ -263,7 +271,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         is_active: script.isActive,
         status: ScriptStatus.CERTIFIED,
         origin: ScriptOrigin.MANUAL,
-        category: script.category
+        category: script.category,
+        try_count: script.try_count,
+        enable_ai_test: script.enable_ai_test
       };
 
       await testApi.createScript(payload);
@@ -288,7 +298,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         is_favorite: script.isFavorite,
         capture_screenshots: script.captureScreenshots,
         category: script.category,
-        steps: script.steps
+        steps: script.steps,
+        try_count: script.try_count,
+        enable_ai_test: script.enable_ai_test
       };
 
       await testApi.updateScript(script.id, payload);
@@ -332,7 +344,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
       tags: script.tags?.join(', ') || '',
       category: script.category || '',
       engine: script.engine || 'Playwright',
-      dataset: script.dataset ? [...script.dataset] : []
+      dataset: script.dataset ? [...script.dataset] : [],
+      try_count: script.try_count || 1,
+      enable_ai_test: script.enable_ai_test || false
     });
     setShowRegisterModal(true);
   };
@@ -367,7 +381,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
           engine: newManualScript.engine,
           category: newManualScript.category,
           tags: newManualScript.tags.split(',').map(t => t.trim()).filter(t => t !== ''),
-          dataset: newManualScript.dataset
+          dataset: newManualScript.dataset,
+          try_count: newManualScript.try_count,
+          enable_ai_test: newManualScript.enable_ai_test
         });
       }
     } else {
@@ -387,7 +403,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         tags: newManualScript.tags.split(',').map(t => t.trim()).filter(t => t !== ''),
         isFavorite: false,
         isActive: true,
-        dataset: newManualScript.dataset
+        dataset: newManualScript.dataset,
+        try_count: newManualScript.try_count,
+        enable_ai_test: newManualScript.enable_ai_test
       };
 
       handleRegisterManualScript(manualScript);
@@ -445,7 +463,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
               tags: '',
               category: '',
               engine: 'Playwright',
-              dataset: []
+              dataset: [],
+              try_count: 1,
+              enable_ai_test: false
             });
             setShowRegisterModal(true);
           }}
@@ -639,6 +659,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                   </button>
                 </div>
                 <div className="flex gap-1">
+                  <button onClick={() => handleModifyScript(step)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500" title="Modify Asset"><Edit3 className="w-4 h-4" /></button>
                   <button onClick={() => setViewingStep(step)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500" title="Asset Intelligence"><Maximize2 className="w-4 h-4" /></button>
                 </div>
               </div>
@@ -1138,11 +1159,11 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                           <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-100 dark:border-gray-800">
                             <div>
                               <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
-                              <span className="font-mono text-gray-700 dark:text-gray-300">{step.selectorType}</span>
+                              <span className="font-mono text-gray-700 dark:text-gray-300">{step.selectorType || (step as any).selector_type || '-'}</span>
                             </div>
                             <div>
                               <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
-                              <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue}>{step.selectorValue}</span>
+                              <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue || (step as any).selector_value}>{step.selectorValue || (step as any).selector_value || '-'}</span>
                             </div>
                           </div>
                         </div>
@@ -1211,11 +1232,11 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                             <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-100 dark:border-gray-800">
                               <div>
                                 <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
-                                <span className="font-mono text-gray-700 dark:text-gray-300">{step.selectorType}</span>
+                                <span className="font-mono text-gray-700 dark:text-gray-300">{step.selectorType || (step as any).selector_type || '-'}</span>
                               </div>
                               <div>
                                 <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
-                                <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue}>{step.selectorValue}</span>
+                                <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue || (step as any).selector_value}>{step.selectorValue || (step as any).selector_value || '-'}</span>
                               </div>
                             </div>
                             {step.inputValue && (
@@ -1326,6 +1347,46 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                       </select>
                     </div>
 
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <RefreshCw className="w-4 h-4 text-indigo-400" />
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Retry Policy</label>
+                      </div>
+                      <div className="flex items-center gap-4 bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-3">
+                        <input
+                          type="range"
+                          min="1"
+                          max="10"
+                          value={newManualScript.try_count}
+                          onChange={e => setNewManualScript({ ...newManualScript, try_count: parseInt(e.target.value) })}
+                          className="flex-1 accent-indigo-600"
+                        />
+                        <div className="flex flex-col items-center">
+                          <span className="text-[14px] font-black text-indigo-600 dark:text-indigo-400">{newManualScript.try_count}</span>
+                          <span className="text-[8px] font-bold text-gray-400 uppercase">Tries</span>
+                        </div>
+                      </div>
+                      <p className="text-[9px] text-gray-500 italic px-1">"Indicates how many times to retry on failure (stops on first success)."</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <Bot className="w-4 h-4 text-indigo-400" />
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">AI Autonomous Testing (Fallback Mode)</label>
+                      </div>
+                      <div className="flex items-center justify-between bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4">
+                        <div className="flex flex-col">
+                          <span className="text-[11px] font-bold text-gray-900 dark:text-gray-200">AI Fallback Enabled</span>
+                          <span className="text-[9px] text-gray-500">Run autonomous exploration if all retries fail.</span>
+                        </div>
+                        <button
+                          onClick={() => setNewManualScript({ ...newManualScript, enable_ai_test: !newManualScript.enable_ai_test })}
+                          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                        >
+                          {newManualScript.enable_ai_test ? <ToggleRight className="w-6 h-6 text-indigo-600 dark:text-indigo-500" /> : <ToggleLeft className="w-6 h-6 text-gray-400 dark:text-gray-700" />}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Assigned Persona Information (Read-only) */}

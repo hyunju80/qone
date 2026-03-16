@@ -44,6 +44,7 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
   const [platform, setPlatform] = useState<PlatformType>('WEB');
   const [targetInput, setTargetInput] = useState('');
   const [selectedPersonaId, setSelectedPersonaId] = useState<string>(personas[0]?.id || '');
+  const [enableAiTestAll, setEnableAiTestAll] = useState(false);
 
   // Sync persona selection when personas are loaded/change
   React.useEffect(() => {
@@ -324,7 +325,8 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
         personaId: selectedPersonaId,
         createdAt: new Date().toISOString(),
         isApproved: false,
-        tags: ["AI"]
+        tags: ["AI"],
+        enable_ai_test: enableAiTestAll
       }));
 
       onUpdatePersistedScenarios([...persistedScenarios, ...newScenarios]);
@@ -358,7 +360,8 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
         category: sc.category,
         platform: platform,
         target: targetInput,
-        is_approved: true, tags: [...(sc.tags || []), "AI"].filter((v, i, a) => a.indexOf(v) === i)
+        is_approved: true, tags: [...(sc.tags || []), "AI"].filter((v, i, a) => a.indexOf(v) === i),
+        enable_ai_test: sc.enable_ai_test ?? enableAiTestAll
       };
       try {
         const saved = await scenariosApi.create(payload);

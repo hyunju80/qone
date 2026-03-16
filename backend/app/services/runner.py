@@ -163,14 +163,118 @@ except Exception as outer_e:
     def run_script(self, script) -> dict:
         """
         Synchronously run a script and return the report.
-        Used by the Scheduler.
+        Used by the Scheduler and manual runs.
         """
-        import time
-        import asyncio
-        import base64
+        try_count = getattr(script, "try_count", 1) or 1
+        enable_ai_test = getattr(script, "enable_ai_test", False)
         
-        if getattr(script, 'origin', '') == 'STEP' and getattr(script, 'steps', []):
-            return self._run_steps_headless(script)
+        all_logs = []
+        last_report = None
+
+        script_name = getattr(script, "name", "Unnamed Script")
+        
+        for attempt in range(try_count):
+            prefix = f"[Attempt {attempt + 1}] "
+            if try_count > 1:
+                all_logs.append({"msg": f"--- Starting Attempt {attempt + 1}/{try_count} for '{script_name}' ---", "type": "info"})
+
+            if getattr(script, 'origin', '') == 'STEP' and getattr(script, 'steps', []):
+                report = self._run_steps_headless(script)
+            else:
+                report = self._run_python_script(script)
+            
+            # Merge logs
+            if "logs" in report:
+                for log_entry in report["logs"]:
+                    all_logs.append({
+                        "msg": prefix + log_entry["msg"],
+                        "type": log_entry["type"]
+                    })
+
+            last_report = report
+            if report.get("passed"):
+                if try_count > 1 and attempt > 0:
+                    all_logs.append({"msg": f"Success achieved on attempt {attempt + 1}!", "type": "info"})
+                report["logs"] = all_logs
+                return report
+        
+        # 3. AI Fallback (Final Attempt)
+        if enable_ai_test:
+            all_logs.append({"msg": f"--- All {try_count} attempts failed. Initiating AI Autonomous Testing (Fallback) ---", "type": "info"})
+            
+            from app.services.fallback_service import fallback_service
+            
+            # Determine Goal
+            goal = getattr(script, "goal", "") or getattr(script, "description", "")
+            if not goal:
+                goal = f"Execute and achieve the goal of test script: {script_name}"
+            
+            # Get App context if needed
+            app_package = None
+            if script.platform.upper() == "APP":
+                from app.db.session import SessionLocal
+                db = SessionLocal()
+                try:
+                    from app.models.project import Project
+                    proj = db.query(Project).filter(Project.id == script.project_id).first()
+                    if proj and proj.mobile_config:
+                        app_package = proj.mobile_config.get("appPackage") or proj.mobile_config.get("appium:appPackage")
+                finally:
+                    db.close()
+
+            try:
+                # Persona
+                persona_desc = None
+                if hasattr(script, "persona") and script.persona:
+                    persona_desc = script.persona.description
+
+                # Run AI fallback loop (Awaited with asyncio.run as this method is sync for scheduler/manual runs)
+                ai_history = asyncio.run(fallback_service.run_ai_fallback(
+                    platform=script.platform,
+                    goal=goal,
+                    initial_url=getattr(script, "target", None),
+                    app_package=app_package,
+                    persona_context=persona_desc
+                ))
+                
+                # Process AI logs
+                ai_passed = False
+                for step in ai_history:
+                    step_num = step.get("step_number", "?")
+                    all_logs.append({
+                        "msg": f"[AI Test Step {step_num}] {step.get('description', '')} -> {step.get('thought', '')}",
+                        "type": "info"
+                    })
+                    if step.get("status") == "Completed":
+                        ai_passed = True
+                
+                if ai_passed:
+                    all_logs.append({"msg": "--- AI Autonomous Testing SUCCEEDED. Goal achieved via Vision Fallback. ---", "type": "info"})
+                    return {
+                        "passed": True,
+                        "duration": "AI Fallback", # Or sum durations
+                        "logs": all_logs,
+                        "error": None,
+                        "step_results": last_report.get("step_results", [])
+                    }
+                else:
+                    all_logs.append({"msg": "--- AI Autonomous Testing FAILED. Could not reach goal. ---", "type": "error"})
+                    last_report["logs"] = all_logs
+                    return last_report
+
+            except Exception as ai_e:
+                all_logs.append({"msg": f"AI Fallback Engine Error: {str(ai_e)}", "type": "error"})
+                last_report["logs"] = all_logs
+                return last_report
+
+        last_report["logs"] = all_logs
+        return last_report
+
+    def _run_python_script(self, script) -> dict:
+        import time
+        import subprocess
+        import uuid
+        import os
         
         run_id = str(uuid.uuid4())
         run_dir = RUNS_DIR / run_id

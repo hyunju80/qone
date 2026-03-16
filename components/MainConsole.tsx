@@ -67,8 +67,9 @@ const MainConsole: React.FC<MainConsoleProps> = ({
       return;
     }
 
-    const host = '127.0.0.1:8001'; // Should be dynamic based on env, but hardcoded for local logic match
-    const wsUrl = `ws://${host}/api/v1/run/ws/${activeRunId}`;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const wsUrl = `${protocol}//${host}/api/v1/run/ws/${activeRunId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -115,12 +116,40 @@ const MainConsole: React.FC<MainConsoleProps> = ({
     setCurrentStep(1);
 
     try {
-      // Trigger Real Dry Run
-      const { run_id } = await testApi.dryRun(targetScript.code);
+      let run_id;
+      const isStepAsset = targetScript.steps && targetScript.steps.length > 0;
+      const isAppium = targetScript.engine === 'Appium';
+
+      if (isStepAsset) {
+        // Step-by-Step execution (AI Assets with Native Steps)
+        const response = await testApi.runActiveSteps({
+          steps: targetScript.steps,
+          project_id: targetScript.projectId || activeProject.id,
+          platform: targetScript.platform || 'WEB',
+          script_id: targetScript.id,
+          script_name: targetScript.name,
+          trigger: "manual",
+          persona_name: targetScript.persona?.name || 'Default',
+          capture_screenshots: targetScript.captureScreenshots || false,
+          dataset: targetScript.dataset || []
+        });
+        run_id = response.run_id;
+      } else {
+        // Standard String-based script execution
+        const response = await testApi.dryRun({
+          code: targetScript.code,
+          project_id: targetScript.projectId || activeProject.id,
+          script_id: targetScript.id,
+          script_name: targetScript.name,
+          persona_name: targetScript.persona?.name || 'Default',
+          dataset: targetScript.dataset || []
+        });
+        run_id = response.run_id;
+      }
       setActiveRunId(run_id);
 
       // Record history locally for immediate feedback (though backend also records it)
-      if (onRecordHistory) {
+      if (onRecordHistory && !isStepAsset && !isAppium) {
         onRecordHistory({
           id: `h_chat_${Date.now()}`,
           scriptId: targetScript.id,

@@ -35,6 +35,8 @@ export interface StepAsset {
   isActive?: boolean;
   successRate?: number;
   runCount?: number;
+  try_count?: number;
+  enable_ai_test?: boolean;
 }
 
 export interface TestObject {
@@ -231,6 +233,8 @@ export interface Scenario {
   target?: string;
   tags?: string[];
   goldenScriptId?: string;
+  try_count?: number;
+  enable_ai_test?: boolean;
 }
 
 export interface TestCase {
@@ -266,6 +270,8 @@ export interface TestScript {
   steps?: TestStep[];
   platform?: 'WEB' | 'APP';
   captureScreenshots?: boolean;
+  try_count?: number;
+  enable_ai_test?: boolean;
 }
 
 export interface LogEntry {
@@ -399,18 +405,3 @@ export interface TestStep {
   assertText?: string;
 }
 
-export interface StepAsset {
-  id: string;
-  projectId: string; // Assuming backend returns this
-  name: string;
-  description: string;
-  platform: 'WEB' | 'APP';
-  steps: TestStep[];
-  createdAt?: string;
-  updatedAt?: string;
-  // New fields for card parity
-  isFavorite?: boolean;
-  isActive?: boolean;
-  successRate?: number;
-  runCount?: number;
-}

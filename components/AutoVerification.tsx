@@ -35,6 +35,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
     const [platform, setPlatform] = useState<'WEB' | 'APP'>('WEB');
     const [targetUrl, setTargetUrl] = useState(''); // Shared target
     const [selectedPersonaId, setSelectedPersonaId] = useState<string>(personas[0]?.id || '');
+    const [enableAiTest, setEnableAiTest] = useState(false);
 
     const selectedScenario = scenarios.find(s => s.id === selectedScenarioId);
 
@@ -48,6 +49,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
             if (selectedScenario.platform) setPlatform(selectedScenario.platform as 'WEB' | 'APP');
             if (selectedScenario.target) setTargetUrl(selectedScenario.target);
             if (selectedScenario.personaId) setSelectedPersonaId(selectedScenario.personaId);
+            setEnableAiTest(selectedScenario.enable_ai_test || false);
         }
     }, [selectedScenario]);
 
@@ -246,7 +248,8 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
             steps: scriptSteps,
             persona_id: selectedPersonaId,
             category: selectedScenario.category || 'Common',
-            tags: ['AI']
+            tags: ['AI'],
+            enable_ai_test: enableAiTest
         };
 
         try {
@@ -349,6 +352,17 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                             </div>
                                         </div>
                                     </div>
+                                    <div className="flex flex-col self-end pb-1.5">
+                                        <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1.5">AI Fallback</span>
+                                        <button
+                                            onClick={() => setEnableAiTest(!enableAiTest)}
+                                            className={`px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-2 shadow-sm border transition-all ${enableAiTest ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-gray-100 border-gray-200 text-gray-500'} `}
+                                        >
+                                            <Bot className={`w-3.5 h-3.5 ${enableAiTest ? 'text-white' : 'text-gray-400'} `} />
+                                            {enableAiTest ? 'AI Autonomous ENABLED' : 'Standard Only'}
+                                        </button>
+                                    </div>
+
                                     <div className="flex flex-col self-end pb-1.5">
                                         <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Verification Status</span>
                                         <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-2 shadow-sm border ${isRunning ? 'bg-amber-100 border-amber-200 text-amber-600' : isComplete ? 'bg-emerald-100 border-emerald-200 text-emerald-600' : 'bg-gray-100 border-gray-200 text-gray-500'} `}>

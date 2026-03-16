@@ -453,9 +453,7 @@ async def scroll_page(payload: Dict[str, Any]) -> Dict[str, Any]:
     if platform == "WEB":
         return await web_inspector_service.scroll(delta_y)
     else:
-        # App scroll logic could be added here if needed, 
-        # but for now we focus on Web Inspector
-        return {"success": False, "error": "Scroll not implemented for APP platform via this endpoint"}
+        return app_step_runner.scroll(delta_y)
 
 @router.post("/disconnect")
 async def disconnect_device() -> Dict[str, Any]:

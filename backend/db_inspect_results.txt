@@ -1,0 +1,8 @@
+
+Checking table: testscript
+Existing columns: ['id', 'project_id', 'name', 'description', 'status', 'last_run', 'run_count', 'success_rate', 'code', 'origin', 'tags', 'is_favorite', 'is_active', 'persona_id', 'dataset', 'engine', 'platform', 'steps', 'capture_screenshots', 'category', 'try_count', 'enable_ai_test']
+All required columns present in testscript.
+
+Checking table: scenario
+Existing columns: ['id', 'project_id', 'title', 'description', 'test_cases', 'persona_id', 'created_at', 'is_approved', 'tags', 'golden_script_id', 'platform', 'target', 'category', 'try_count', 'enable_ai_test']
+All required columns present in scenario.

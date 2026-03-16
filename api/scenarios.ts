@@ -138,7 +138,16 @@ export const scenariosApi = {
             category: response.data.category
         };
     },
-    update: async (id: string, data: { golden_script_id?: string, is_approved?: boolean }): Promise<void> => {
+    update: async (id: string, data: {
+        golden_script_id?: string,
+        is_approved?: boolean,
+        try_count?: number,
+        enable_ai_test?: boolean,
+        category?: string,
+        title?: string,
+        description?: string,
+        tags?: string[]
+    }): Promise<void> => {
         await api.put(`/scenarios/${id}`, data);
     }
 };

@@ -1,48 +1,40 @@
 import { Persona } from '../types';
-
-const API_URL = 'http://localhost:8001/api/v1';
+import api from './client';
 
 export const personaApi = {
     getPersonas: async (projectId: string): Promise<Persona[]> => {
         console.log(`[PersonaAPI] Fetching personas for project: ${projectId}`);
-        const response = await fetch(`${API_URL}/personas/?project_id=${projectId}&include_global=true`);
-        console.log(`[PersonaAPI] Response status: ${response.status}`);
-        if (!response.ok) {
-            console.error('[PersonaAPI] Fetch failed');
-            throw new Error('Failed to fetch personas');
-        }
+        const response = await api.get<any[]>('/personas/', {
+            params: {
+                project_id: projectId,
+                include_global: true
+            }
+        });
 
-        // Convert snake_case from backend to camelCase for frontend
-        const data = await response.json();
+        const data = response.data;
         console.log('[PersonaAPI] Raw Data:', data);
+
         return data.map((p: any) => ({
             ...p,
             skillLevel: p.skill_level,
             advancedLogic: p.advanced_logic,
             projectId: p.project_id || 'global',
-            isActive: p.is_active // Map backend is_active to frontend isActive
+            isActive: p.is_active
         }));
     },
 
     createPersona: async (persona: Partial<Persona>): Promise<Persona> => {
-        // Map camelCase to snake_case for backend
         const payload = {
             ...persona,
             skill_level: persona.skillLevel,
             advanced_logic: persona.advancedLogic,
-            project_id: persona.projectId === 'global' ? 'global' : persona.projectId, // explicit check
-            is_active: persona.isActive // Map frontend isActive to backend is_active
+            project_id: persona.projectId === 'global' ? 'global' : persona.projectId,
+            is_active: persona.isActive
         };
 
-        const response = await fetch(`${API_URL}/personas/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-        if (!response.ok) throw new Error('Failed to create persona');
+        const response = await api.post<any>('/personas/', payload);
+        const p = response.data;
 
-        // Map back response
-        const p = await response.json();
         return {
             ...p,
             skillLevel: p.skill_level,
@@ -62,15 +54,9 @@ export const personaApi = {
         };
 
         console.log("[PersonaAPI] Updating persona payload:", payload);
+        const response = await api.put<any>(`/personas/${persona.id}`, payload);
+        const p = response.data;
 
-        const response = await fetch(`${API_URL}/personas/${persona.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-        if (!response.ok) throw new Error('Failed to update persona');
-
-        const p = await response.json();
         console.log("[PersonaAPI] Update response:", p);
         return {
             ...p,
@@ -82,9 +68,6 @@ export const personaApi = {
     },
 
     deletePersona: async (personaId: string): Promise<void> => {
-        const response = await fetch(`${API_URL}/personas/${personaId}`, {
-            method: 'DELETE',
-        });
-        if (!response.ok) throw new Error('Failed to delete persona');
+        await api.delete(`/personas/${personaId}`);
     }
 };

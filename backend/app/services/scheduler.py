@@ -93,7 +93,9 @@ class SchedulerService:
                              "code": script.code,
                              "origin": script.origin,
                              "platform": getattr(script, 'platform', 'WEB'),
-                             "steps": getattr(script, 'steps', [])
+                             "steps": getattr(script, 'steps', []),
+                             "try_count": getattr(script, 'try_count', 1),
+                             "enable_ai_test": getattr(script, 'enable_ai_test', False)
                          })
             finally:
                 db.close() # Release DB connection immediately
@@ -115,6 +117,8 @@ class SchedulerService:
                          self.platform = data.get('platform', 'WEB')
                          self.steps = data.get('steps', [])
                          self.project_id = data.get('project_id')
+                         self.try_count = data.get('try_count', 1)
+                         self.enable_ai_test = data.get('enable_ai_test', False)
                  
                  script_obj = ScriptObj(script_data)
                  

@@ -29,6 +29,7 @@ class DryRunRequest(BaseModel):
     script_id: Optional[str] = None
     script_name: Optional[str] = None
     persona_name: Optional[str] = "Default"
+    try_count: int = 1
 
 class RunStepsRequest(BaseModel):
     steps: List[Dict[str, Any]]
@@ -41,6 +42,8 @@ class RunStepsRequest(BaseModel):
     persona_name: Optional[str] = "Default"
     capture_screenshots: bool = False
     dataset: Optional[List[Dict[str, Any]]] = None
+    try_count: int = 1
+    enable_ai_test: bool = False
 
 class DryRunResponse(BaseModel):
     run_id: str
@@ -217,217 +220,276 @@ async def start_active_steps_run(
                     lf.flush()
                     execution_logs.append({"msg": msg, "type": level.lower()})
 
-                if request.platform.upper() != "WEB":
-                    log(f"Starting execution for project {request.project_id} on {device_id}...")
+                for attempt in range(request.try_count):
+                    if request.try_count > 1:
+                        log(f"--- ATTEMPT {attempt + 1} / {request.try_count} ---")
                     
-                    # Setup capabilities
-                    platform_name = "Android" if request.platform.upper() in ["APP", "ANDROID"] else "iOS"
-                    caps = {
-                        "platformName": platform_name,
-                        "automationName": "UiAutomator2" if platform_name == "Android" else "XCUITest",
-                        "deviceName": device_id,
-                        "udid": device_id,
-                    }
-                    # Merge mobile_config
-                    if mobile_config:
-                        for k, v in mobile_config.items():
-                            if not k.startswith("appium:"):
-                                caps[f"appium:{k}"] = v
-                            else:
-                                caps[k] = v
+                    # Reset status and results for each attempt
+                    step_results = []
+                    overall_status = "passed"
                     
-                    log(f"Connecting to Appium with caps: {platform_name} / {device_id}")
-                    success, err = app_step_runner.start_session(caps)
-                    if not success:
-                        log(f"Failed to start session: {err}", "ERROR")
-                        overall_status = "failed"
-                        _save_history_record(overall_status, "Setup Failure: " + str(err), step_results, execution_logs=execution_logs)
-                        with open(exit_code_file, "w") as ef: ef.write("1")
-                        return
-                    log("Appium session established successfully.")
-                else:
-                    log(f"Starting WEB execution for project {request.project_id}...")
-                    success, err = await web_step_runner.start_session()
-                    if not success:
-                        log(f"Failed to start Playwright session: {err}", "ERROR")
-                        overall_status = "failed"
-                        _save_history_record(overall_status, "Setup Failure: " + str(err), step_results, execution_logs=execution_logs)
-                        with open(exit_code_file, "w") as ef: ef.write("1")
-                        return
-                    log("Playwright session established successfully.")
-                
-                log("Session established successfully.")
-                                
-                runner = web_step_runner if request.platform.upper() == "WEB" else app_step_runner
-
-                # Initial screenshot
-                async def update_screen(label="screenshot"):
                     try:
-                        log(f"Capturing {label}...")
-                        screenshot_b64 = await runner.get_screenshot() if request.platform.upper() == "WEB" else runner.get_screenshot()
-                        if screenshot_b64:
-                            with open(img_file, "wb") as f:
-                                f.write(base64.b64decode(screenshot_b64))
-                            log(f"Successfully updated image stream ({label})")
-                            return screenshot_b64 # Return for history
-                    except Exception as e:
-                        log(f"Failed to capture {label}: {str(e)}", "WARNING")
-                    return None
-
-                await update_screen("initial state")
-
-                try:
-                    for iter_info in iterations_data:
-                        iter_idx = iter_info["iteration_index"]
-                        iter_data = iter_info["data"]
-                        iter_expected = iter_info["expected_result"]
-                        
-                        if len(iterations_data) > 1:
-                            log(f"--- Starting Iteration {iter_idx}/{len(iterations_data)} ---")
-                            # log(f"[DEBUG] Iteration data: {iter_data}")
-                        
-                        iteration_success = True
-
-                        for i, step_orig in enumerate(request.steps):
-                            # Create a fresh copy for this iteration to avoid in-place modification leakage
-                            step = step_orig.copy()
+                        if request.platform.upper() != "WEB":
+                            log(f"Starting execution for project {request.project_id} on {device_id}...")
                             
-                            orig_val = step.get("inputValue") or step.get("option") or step.get("value")
-                            # log(f"[DEBUG] Step {i+1} FULL (Raw): {step}")
-                            
-                            # Perform Variable Substitution early so logs and results are accurate
-                            if iter_data:
-                                # Use first iteration as a reference for literal value replacement in Smart Mapping
-                                ref_data = iterations_data[0]["data"] if iterations_data else None
-                                step = runner.apply_data_to_step(step, iter_data, reference_data=ref_data)
-
-                            replaced_val = step.get("inputValue") or step.get("option") or step.get("value")
-                            # log(f"[DEBUG] Step {i+1} Result: Value='{replaced_val}', Assertion='{step.get('assertText')}', Desc='{step.get('description')}'")
-                            
-                            step_name = step.get("stepName") or step.get("name") or step.get("action")
-                            action = step.get("action")
-                            # Support both camelCase (from UI) and snake_case (from DB)
-                            target = step.get("selectorValue") or step.get("selector_value") or step.get("target")
-                            value = step.get("inputValue") or step.get("option") or step.get("value")
-                            description = step.get("description")
-                            
-                            log_msg = f"Step {i+1}: [{action}]"
-                            if target: log_msg += f" target={target}"
-                            if value: log_msg += f" value={value}"
-                            log(log_msg)
-                            
-                            step_start = asyncio.get_event_loop().time()
-                            # Pass data=None as we already substituted above
-                            res = await runner.execute_step(step, data=None) if request.platform.upper() == "WEB" else runner.execute_step(step, db=db, data=None)
-                            step_end = asyncio.get_event_loop().time()
-                            
-                            # Always capture for the live execution stream
-                            current_screen_b64 = await update_screen(f"stream update Iter{iter_idx} Step {i+1}")
-                            
-                            # Record logic: attach to DB history if requested OR failure
-                            should_capture = request.capture_screenshots or step.get("screenshot") is True or not res["success"]
-                            screen_data = current_screen_b64 if should_capture else None
-    
-                            result_entry = {
-                                "step_number": i + 1,
-                                "name": f"[Iter{iter_idx}] {step_name}",
-                                "status": "passed" if res["success"] else "failed",
-                                "duration": f"{round(step_end - step_start, 1)}s",
-                                "error_message": res.get("error"),
-                                "screenshot_data": screen_data,
-                                "metadata": {
-                                    "action": action,
-                                    "target": target,
-                                    "value": value,
-                                    "iteration": iter_idx,
-                                    "description": description,
-                                    "assertText": step.get("assertText")
-                                }
+                            # Setup capabilities
+                            platform_name = "Android" if request.platform.upper() in ["APP", "ANDROID"] else "iOS"
+                            caps = {
+                                "platformName": platform_name,
+                                "automationName": "UiAutomator2" if platform_name == "Android" else "XCUITest",
+                                "deviceName": device_id,
+                                "udid": device_id,
                             }
-                            step_results.append(result_entry)
-    
-                            if not res["success"]:
-                                log(f"Step {i+1} FAILED: {res.get('error')}", "ERROR")
-                                iteration_success = False
-                                overall_status = "failed"
-                                # with open(exit_code_file, "w") as ef: ef.write("1") <- Removed for race condition
-                                break # Stop execution on failure
+                            # Merge mobile_config
+                            if mobile_config:
+                                for k, v in mobile_config.items():
+                                    if not k.startswith("appium:"):
+                                        caps[f"appium:{k}"] = v
+                                    else:
+                                        caps[k] = v
                             
-                            log(f"Step {i+1} PASSED ({round(step_end - step_start, 1)}s)")
-                            await asyncio.sleep(1.0) # Added delay to allow the live view to keep up visually
+                            log(f"Connecting to Appium with caps: {platform_name} / {device_id}")
+                            success, err = app_step_runner.start_session(caps)
+                            if not success:
+                                log(f"Failed to start session: {err}", "ERROR")
+                                overall_status = "failed"
+                                _save_history_record(overall_status, "Setup Failure: " + str(err), step_results, execution_logs=execution_logs)
+                                with open(exit_code_file, "w") as ef: ef.write("1")
+                                return
+                            log("Appium session established successfully.")
+                        else:
+                            log(f"Starting WEB execution for project {request.project_id}...")
+                            success, err = await web_step_runner.start_session()
+                            if not success:
+                                log(f"Failed to start Playwright session: {err}", "ERROR")
+                                overall_status = "failed"
+                                _save_history_record(overall_status, "Setup Failure: " + str(err), step_results, execution_logs=execution_logs)
+                                with open(exit_code_file, "w") as ef: ef.write("1")
+                                return
+                            log("Playwright session established successfully.")
+                        
+                        log("Session established successfully.")
+                                        
+                        runner = web_step_runner if request.platform.upper() == "WEB" else app_step_runner
 
-                        # After all steps in iteration, check row-level expected_result if provided
-                        if iteration_success and iter_expected:
-                            log(f"Verifying row-level expected result: '{iter_expected}'")
-                            await asyncio.sleep(1.5) # Wait for final state reflection
-                            # Simple screen content check
+                        # Initial screenshot
+                        async def update_screen(label="screenshot"):
                             try:
-                                # For web, web_step_runner.page.content() is used. For app, we might need a general text search.
-                                # The individual runners already handle assertText, so we can reuse logic or do a simple screen dump check.
-                                pass # We will implement a verification step here if needed, but the runners already handle variable assertion 
-                                # if the user puts {{...}} in their assertText. 
-                                # However, a row-level 'expected_result' usually means 'this text must BE on the screen NOW'.
-                                
-                                # Use robust verification logic similar to step assertions
-                                content = ""
-                                if request.platform.upper() == "WEB":
-                                    # Get rendered innerText to ignore HTML tags
-                                    content = await runner.page.evaluate("document.body.innerText")
-                                else:
-                                    # Extract all text/description attributes from XML
-                                    import re
-                                    raw_xml = runner.get_page_source() or ""
-                                    text_values = re.findall(r'text="([^"]*)"', raw_xml)
-                                    desc_values = re.findall(r'content-desc="([^"]*)"', raw_xml)
-                                    content = " ".join(text_values + desc_values) + " " + raw_xml
-                                
-                                def _normalize(t):
-                                    import re
-                                    # Remove HTML-like tags and all whitespace
-                                    t = re.sub(r'<[^>]*>', '', str(t or ""))
-                                    return "".join(t.split())
-
-                                clean_content = _normalize(content)
-                                clean_expected = _normalize(iter_expected)
-
-                                if clean_expected in clean_content:
-                                    log(f"Iteration {iter_idx} Expected Result Verified.")
-                                else:
-                                    log(f"Iteration {iter_idx} FAILED: Expected result '{iter_expected}' not found on screen.", "ERROR")
-                                    iteration_success = False
-                                    overall_status = "failed"
+                                log(f"Capturing {label}...")
+                                screenshot_b64 = await runner.get_screenshot() if request.platform.upper() == "WEB" else runner.get_screenshot()
+                                if screenshot_b64:
+                                    with open(img_file, "wb") as f:
+                                        f.write(base64.b64decode(screenshot_b64))
+                                    log(f"Successfully updated image stream ({label})")
+                                    return screenshot_b64 # Return for history
                             except Exception as e:
-                                log(f"Failed to verify iteration expected result: {e}", "WARNING")
+                                log(f"Failed to capture {label}: {str(e)}", "WARNING")
+                            return None
 
-                        if not iteration_success:
-                            break # Stop further iterations if one fails
+                        await update_screen("initial state")
 
+                        try:
+                            for iter_info in iterations_data:
+                                iter_idx = iter_info["iteration_index"]
+                                iter_data = iter_info["data"]
+                                iter_expected = iter_info["expected_result"]
+                                
+                                if len(iterations_data) > 1:
+                                    log(f"--- Starting Iteration {iter_idx}/{len(iterations_data)} ---")
+                                    # log(f"[DEBUG] Iteration data: {iter_data}")
+                                
+                                iteration_success = True
+
+                                for i, step_orig in enumerate(request.steps):
+                                    # Create a fresh copy for this iteration to avoid in-place modification leakage
+                                    step = step_orig.copy()
+                                    
+                                    orig_val = step.get("inputValue") or step.get("option") or step.get("value")
+                                    # log(f"[DEBUG] Step {i+1} FULL (Raw): {step}")
+                                    
+                                    # Perform Variable Substitution early so logs and results are accurate
+                                    if iter_data:
+                                        # Use first iteration as a reference for literal value replacement in Smart Mapping
+                                        ref_data = iterations_data[0]["data"] if iterations_data else None
+                                        step = runner.apply_data_to_step(step, iter_data, reference_data=ref_data)
+
+                                    replaced_val = step.get("inputValue") or step.get("option") or step.get("value")
+                                    # log(f"[DEBUG] Step {i+1} Result: Value='{replaced_val}', Assertion='{step.get('assertText')}', Desc='{step.get('description')}'")
+                                    
+                                    step_name = step.get("stepName") or step.get("name") or step.get("action")
+                                    action = step.get("action")
+                                    # Support both camelCase (from UI) and snake_case (from DB)
+                                    target = step.get("selectorValue") or step.get("selector_value") or step.get("target")
+                                    value = step.get("inputValue") or step.get("option") or step.get("value")
+                                    description = step.get("description")
+                                    
+                                    log_msg = f"Step {i+1}: [{action}]"
+                                    if target: log_msg += f" target={target}"
+                                    if value: log_msg += f" value={value}"
+                                    log(log_msg)
+                                    
+                                    step_start = asyncio.get_event_loop().time()
+                                    # Pass data=None as we already substituted above
+                                    res = await runner.execute_step(step, data=None) if request.platform.upper() == "WEB" else runner.execute_step(step, db=db, data=None)
+                                    step_end = asyncio.get_event_loop().time()
+                                    
+                                    # Always capture for the live execution stream
+                                    current_screen_b64 = await update_screen(f"stream update Iter{iter_idx} Step {i+1}")
+                                    
+                                    # Record logic: attach to DB history if requested OR failure
+                                    should_capture = request.capture_screenshots or step.get("screenshot") is True or not res["success"]
+                                    screen_data = current_screen_b64 if should_capture else None
+            
+                                    result_entry = {
+                                        "step_number": i + 1,
+                                        "name": f"[Iter{iter_idx}] {step_name}",
+                                        "status": "passed" if res["success"] else "failed",
+                                        "duration": f"{round(step_end - step_start, 1)}s",
+                                        "error_message": res.get("error"),
+                                        "screenshot_data": screen_data,
+                                        "metadata": {
+                                            "action": action,
+                                            "target": target,
+                                            "value": value,
+                                            "iteration": iter_idx,
+                                            "description": description,
+                                            "assertText": step.get("assertText")
+                                        }
+                                    }
+                                    step_results.append(result_entry)
+            
+                                    if not res["success"]:
+                                        log(f"Step {i+1} FAILED: {res.get('error')}", "ERROR")
+                                        iteration_success = False
+                                        overall_status = "failed"
+                                        # with open(exit_code_file, "w") as ef: ef.write("1") <- Removed for race condition
+                                        break # Stop execution on failure
+                                    
+                                    log(f"Step {i+1} PASSED ({round(step_end - step_start, 1)}s)")
+                                    await asyncio.sleep(1.0) # Added delay to allow the live view to keep up visually
+
+                                # After all steps in iteration, check row-level expected_result if provided
+                                if iteration_success and iter_expected:
+                                    log(f"Verifying row-level expected result: '{iter_expected}'")
+                                    await asyncio.sleep(1.5) # Wait for final state reflection
+                                    # Simple screen content check
+                                    try:
+                                        # Use robust verification logic similar to step assertions
+                                        content = ""
+                                        if request.platform.upper() == "WEB":
+                                            # Get rendered innerText to ignore HTML tags
+                                            content = await runner.page.evaluate("document.body.innerText")
+                                        else:
+                                            # Extract all text/description attributes from XML
+                                            import re
+                                            raw_xml = runner.get_page_source() or ""
+                                            text_values = re.findall(r'text="([^"]*)"', raw_xml)
+                                            desc_values = re.findall(r'content-desc="([^"]*)"', raw_xml)
+                                            content = " ".join(text_values + desc_values) + " " + raw_xml
+                                        
+                                        def _normalize(t):
+                                            import re
+                                            # Remove HTML-like tags and all whitespace
+                                            t = re.sub(r'<[^>]*>', '', str(t or ""))
+                                            return "".join(t.split())
+
+                                        clean_content = _normalize(content)
+                                        clean_expected = _normalize(iter_expected)
+
+                                        if clean_expected in clean_content:
+                                            log(f"Iteration {iter_idx} Expected Result Verified.")
+                                        else:
+                                            log(f"Iteration {iter_idx} FAILED: Expected result '{iter_expected}' not found on screen.", "ERROR")
+                                            iteration_success = False
+                                            overall_status = "failed"
+                                    except Exception as e:
+                                        log(f"Failed to verify iteration expected result: {e}", "WARNING")
+
+                                if not iteration_success:
+                                    break # Stop further iterations if one fails
+
+                            if overall_status == "passed":
+                                log("All steps completed successfully.")
+                            
+                            try:
+                                await asyncio.sleep(0.5) # Wait for final UI transition
+                                await update_screen("final state")
+                            except: pass
+                        except Exception as e:
+                            log(f"Execution error: {str(e)}", "ERROR")
+                            overall_status = "failed"
+                    finally:
+                        if request.platform.upper() == "WEB":
+                            await web_step_runner.stop_session()
+                        else:
+                            app_step_runner.stop_session()
+                    
                     if overall_status == "passed":
-                        log("All steps completed successfully.")
-                        # with open(exit_code_file, "w") as ef: ef.write("0") <- Moved to finally
+                        break
+                    
+                    if attempt < request.try_count - 1:
+                        log(f"Attempt {attempt + 1} failed. Re-trying...", "WARNING")
+                        await asyncio.sleep(2)
+
+                # --- 3. AI Fallback (If all attempts failed) ---
+                if overall_status != "passed" and request.enable_ai_test:
+                    log(f"--- All {request.try_count} attempts failed. Initiating AI Autonomous Testing (Fallback) ---")
+                    
+                    from app.services.fallback_service import fallback_service
+                    
+                    # Determine Goal
+                    goal = request.script_name or f"Achieve the goal of scenario: {request.script_name or 'Manual Run'}"
                     
                     try:
-                        await asyncio.sleep(0.5) # Wait for final UI transition
-                        await update_screen("final state")
-                    except: pass
-                finally:
-                    if request.platform.upper() == "WEB":
-                        await web_step_runner.stop_session()
-                    else:
-                        app_step_runner.stop_session()
-                    
-                    # Final History Save
-                    duration_str = f"{round(asyncio.get_event_loop().time() - start_time, 1)}s"
-                    _save_history_record(
-                        overall_status, 
-                        None if overall_status=="passed" else "Step failure", 
-                        step_results, 
-                        duration=duration_str,
-                        execution_logs=execution_logs
-                    )
-                    # FINAL COMPLETION SIGNAL (after history is saved and stats updated)
-                    with open(exit_code_file, "w") as ef:
-                        ef.write("0" if overall_status == "passed" else "1")
+                        # Credentials from standard placeholders if available in mobile_config or project
+                        # For now, we take basic context
+                        persona_desc = None
+                        # (In a real scenario, we might fetch persona from DB here)
+
+                        ai_history = await fallback_service.run_ai_fallback(
+                            platform=request.platform,
+                            goal=goal,
+                            initial_url=None, # Already in session
+                            app_package=mobile_config.get("appPackage"),
+                            persona_context=None 
+                        )
+                        
+                        ai_passed = False
+                        for step in ai_history:
+                            step_num = step.get("step_number", "?")
+                            log(f"[AI Fallback Step {step_num}] {step.get('description', '')} -> {step.get('thought', '')}")
+                            
+                            # Stream screenshot if available
+                            if step.get("screenshot_data"):
+                                try:
+                                    with open(img_file, "wb") as f:
+                                        f.write(base64.b64decode(step["screenshot_data"]))
+                                except: pass
+
+                            if step.get("status") == "Completed":
+                                ai_passed = True
+                        
+                        if ai_passed:
+                            log("--- AI Autonomous Testing SUCCEEDED. Goal achieved. ---")
+                            overall_status = "passed"
+                        else:
+                            log("--- AI Autonomous Testing FAILED. ---", "ERROR")
+                    except Exception as ai_e:
+                        log(f"AI Fallback Error: {str(ai_e)}", "ERROR")
+
+                # --- OUTSIDE RETRY & FALLBACK LOOP ---
+                # Final History Save (Keep results of the last/successful attempt)
+                duration_str = f"{round(asyncio.get_event_loop().time() - start_time, 1)}s"
+                _save_history_record(
+                    overall_status, 
+                    None if overall_status=="passed" else "Step failure", 
+                    step_results, 
+                    duration=duration_str,
+                    execution_logs=execution_logs
+                )
+                # FINAL COMPLETION SIGNAL (after history is saved and stats updated)
+                with open(exit_code_file, "w") as ef:
+                    ef.write("0" if overall_status == "passed" else "1")
 
         except Exception as e:
             print(f"Error in step run task: {e}")

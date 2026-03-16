@@ -11,7 +11,12 @@ import os
 from datetime import datetime
 import traceback
 from app.models.test import Scenario as ScenarioModel, ActionMap as ActionMapModel
-from app.schemas.scenario import ActionMap as ActionMapSchema, ActionMapCreate, ActionMapUpdate
+from app.schemas.scenario import (
+    ActionMap as ActionMapSchema, 
+    ActionMapCreate, 
+    ActionMapUpdate,
+    ScenarioUpdate as UpdateScenarioRequest
+)
 from app.db.session import SessionLocal
 import uuid
 
@@ -46,9 +51,10 @@ class Scenario(BaseModel):
     golden_script_id: Optional[str] = None
     platform: Optional[str] = "WEB"
     target: Optional[str] = None
-    created_at: Any = None
     tags: List[str] = []
     category: Optional[str] = None
+    try_count: Optional[int] = 1
+    enable_ai_test: Optional[bool] = False
 
 
 
@@ -675,8 +681,9 @@ class CreateScenarioRequest(BaseModel):
     is_approved: bool = True
     platform: Optional[str] = "WEB"
     target: Optional[str] = None
-    created_at: Any = None
     tags: List[str] = []
+    try_count: Optional[int] = 1
+    enable_ai_test: Optional[bool] = False
 
 @router.post("/", response_model=Scenario)
 def create_scenario(
@@ -727,9 +734,7 @@ def create_scenario(
             f.write(trace_str)
         raise HTTPException(500, f"Creation Error: {str(e)}")
 
-class UpdateScenarioRequest(BaseModel):
-    golden_script_id: str = None
-    is_approved: bool = None
+
 
 @router.put("/{scenario_id}", response_model=Any) # Return simple dict or model
 def update_scenario(
@@ -748,6 +753,18 @@ def update_scenario(
         s.golden_script_id = update_in.golden_script_id
     if update_in.is_approved is not None:
         s.is_approved = update_in.is_approved
+    if update_in.try_count is not None:
+        s.try_count = update_in.try_count
+    if update_in.enable_ai_test is not None:
+        s.enable_ai_test = update_in.enable_ai_test
+    if update_in.category is not None:
+        s.category = update_in.category
+    if update_in.title is not None:
+        s.title = update_in.title
+    if update_in.description is not None:
+        s.description = update_in.description
+    if update_in.tags is not None:
+        s.tags = update_in.tags
         
     db.commit()
     return {"status": "success", "id": s.id}

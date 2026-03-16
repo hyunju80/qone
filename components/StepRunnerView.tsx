@@ -162,6 +162,19 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                             sleep: 1,
                             platform: activeTab
                         };
+                    } else if (recordMode === 'FIND') {
+                        newStep = {
+                            id: String(steps.length + stagedSteps.length + 1),
+                            stepName: `Find Element: ${res.name || 'Target'}`,
+                            description: `Recorded find check for ${res.name || 'element'}`,
+                            action: 'find',
+                            selectorType: activeTab === 'WEB' ? res.selector_type.toLowerCase() : res.selector_type.toUpperCase(),
+                            selectorValue: res.selector_value,
+                            mandatory: true,
+                            screenshot: false,
+                            sleep: 1,
+                            platform: activeTab
+                        };
                     } else if (recordMode === 'INPUT') {
                         setInspectorInputPendingRes(res);
                         setInspectorInputText('');
@@ -229,6 +242,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
     const [appSteps, setAppSteps] = useState<TestStep[]>([
         { id: '1', action: 'find', selectorType: 'xpath', selectorValue: '', option: '' }
     ]);
+    const [tryCount, setTryCount] = useState<number>(1);
 
     // Inspector & Recording State
     const [isInspectorOpen, setIsInspectorOpen] = useState(false);
@@ -246,7 +260,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
     const [xmlSource, setXmlSource] = useState<string>('');
     const [stagedSteps, setStagedSteps] = useState<any[]>([]);
     const [inspectorTab, setInspectorTab] = useState<'VIEW' | 'SOURCE'>('VIEW');
-    const [recordMode, setRecordMode] = useState<'CLICK' | 'TAP' | 'SWIPE' | 'SWIPE(하)' | 'BACK' | 'INPUT'>('CLICK');
+    const [recordMode, setRecordMode] = useState<'CLICK' | 'TAP' | 'SWIPE' | 'SWIPE(하)' | 'BACK' | 'FIND' | 'INPUT'>('CLICK');
     const [swipeStart, setSwipeStart] = useState<{ x: number, y: number } | null>(null);
     const [highlightBounds, setHighlightBounds] = useState<{ x1: number, y1: number, x2: number, y2: number } | null>(null);
     const [lastIdentifiedElement, setLastIdentifiedElement] = useState<any>(null);
@@ -544,14 +558,16 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                 const response = await api.post<{ run_id: string }>('/run/active-steps', {
                     steps: validSteps,
                     project_id: activeProject.id,
-                    platform: 'APP'
+                    platform: 'APP',
+                    try_count: tryCount
                 });
                 setActiveRunId(response.data.run_id);
             } else {
                 const response = await api.post<{ run_id: string }>('/run/active-steps', {
                     steps: validSteps,
                     project_id: activeProject.id,
-                    platform: 'WEB'
+                    platform: 'WEB',
+                    try_count: tryCount
                 });
                 setActiveRunId(response.data.run_id);
             }
@@ -661,6 +677,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
         code: '',
         engine: activeTab === 'APP' ? 'Appium' : 'Playwright',
         status: 'CERTIFIED',
+        try_count: tryCount,
         steps: steps.map((s, idx) => ({
             step_number: idx + 1,
             action: s.action || '',
@@ -741,6 +758,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
         setAssetName('');
         setAssetDescription('');
         setAssetCategory('');
+        setTryCount(1);
         setRefreshTrigger(prev => prev + 1);
     };
 
@@ -780,6 +798,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
             setAssetName(asset.name);
             setAssetDescription(asset.description || '');
             setAssetCategory(asset.category || '');
+            setTryCount(asset.try_count || 1);
 
         } catch (err) {
             console.error("Load failed", err);
@@ -884,6 +903,17 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                         >
                             <Save className="w-4 h-4" /> Save
                         </button>
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-800">
+                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest whitespace-nowrap">Retries</span>
+                            <input
+                                type="number"
+                                min="1"
+                                max="10"
+                                value={tryCount}
+                                onChange={(e) => setTryCount(Math.max(1, parseInt(e.target.value) || 1))}
+                                className="w-10 bg-transparent text-center text-xs font-bold text-indigo-600 dark:text-indigo-400 outline-none"
+                            />
+                        </div>
                         <button
                             onClick={handleRun}
                             className="flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all"
@@ -1337,7 +1367,7 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                                                 <span className="flex h-1.5 w-1.5 rounded-full bg-red-500 animate-ping" />
                                                             </div>
                                                             <div className="grid grid-cols-2 gap-2">
-                                                                {(['CLICK', 'TAP', 'SWIPE', 'SWIPE(하)', 'BACK', 'INPUT'] as const).map(mode => (
+                                                                {(['CLICK', 'TAP', 'SWIPE', 'SWIPE(하)', 'BACK', 'FIND', 'INPUT'] as const).map(mode => (
                                                                     <button
                                                                         key={mode}
                                                                         onClick={() => {
@@ -1925,7 +1955,6 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                             </select>
                                         </div>
                                     </div>
-
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Description (Optional)</label>
                                         <textarea
@@ -1934,6 +1963,22 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                             className="w-full bg-gray-50 dark:bg-[#0f1115] border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-gray-300 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 transition-all resize-none h-24 text-sm"
                                             placeholder="Brief description of this test..."
                                         />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Retry Count (on failure)</label>
+                                        <div className="flex items-center gap-4">
+                                            <input
+                                                type="range"
+                                                min="1"
+                                                max="10"
+                                                value={tryCount}
+                                                onChange={(e) => setTryCount(parseInt(e.target.value))}
+                                                className="flex-1 accent-indigo-600"
+                                            />
+                                            <span className="w-12 text-center py-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg font-black text-sm">{tryCount}</span>
+                                        </div>
+                                        <p className="mt-1 text-[10px] text-gray-500 font-medium italic">Stops immediately on the first success.</p>
                                     </div>
                                 </div>
 

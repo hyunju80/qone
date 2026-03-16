@@ -23,6 +23,10 @@ class ScenarioBase(BaseModel):
     platform: Optional[str] = "WEB"
     target: Optional[str] = None
     persona_id: Optional[str] = None
+    try_count: Optional[int] = 1
+    enable_ai_test: Optional[bool] = False
+    golden_script_id: Optional[str] = None
+
 
 class ScenarioCreate(ScenarioBase):
     title: str

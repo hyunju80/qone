@@ -21,6 +21,8 @@ class TestScriptBase(BaseModel):
     platform: Optional[str] = None
     capture_screenshots: Optional[bool] = False
     persona_id: Optional[str] = None
+    try_count: Optional[int] = 1
+    enable_ai_test: Optional[bool] = False
 
 # Creation
 class TestScriptCreate(TestScriptBase):
