@@ -14,6 +14,7 @@ import {
   Smartphone,
   ShieldCheck,
   TrendingUp,
+  Database,
   ClipboardList,
   Bot, // Added
   PlaySquare // Added
@@ -36,6 +37,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, onSwitchPro
     { id: ViewMode.STEP_RUNNER, label: 'Step Flow', icon: PlaySquare },
     { id: ViewMode.AI_EXPLORATION, label: 'AI Exploration', icon: Bot },
     { id: ViewMode.AI_GENERATOR, label: 'AI Generator', icon: Sparkles },
+    { id: ViewMode.DATASET_STUDIO, label: 'DataSet Studio', icon: Database },
     { id: ViewMode.LIBRARY, label: 'Asset Library', icon: Library },
     { id: ViewMode.SCHEDULES, label: 'Test Scheduler', icon: CalendarClock },
     { id: ViewMode.PIPELINE, label: 'Pipeline Watcher', icon: Activity },

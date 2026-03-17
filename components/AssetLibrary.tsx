@@ -25,7 +25,8 @@ interface AssetLibraryProps {
 }
 
 const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, personas, onRecordHistory, onRefresh, onAlert, initialSearchTerm = '', categories = [] }) => {
-  const [filter, setFilter] = useState<'ALL' | 'AI' | 'AI_EXPLORATION' | 'MANUAL' | 'FAVORITES' | 'STEP'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'AI_GEN' | 'STEP_FLOW'>('ALL');
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [platformFilter, setPlatformFilter] = useState<'ALL' | 'WEB' | 'APP'>('ALL');
   const [searchQuery, setSearchQuery] = useState(initialSearchTerm);
 
@@ -36,10 +37,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
     }
   }, [initialSearchTerm]);
   const [viewingScript, setViewingScript] = useState<TestScript | null>(null);
-  const [viewingStep, setViewingStep] = useState<TestScript | null>(null); // Added viewingStep state
   const [executingScript, setExecutingScript] = useState<TestScript | null>(null);
   const [copied, setCopied] = useState(false);
-  const [activeViewerTab, setActiveViewerTab] = useState<'steps' | 'code' | 'context'>('steps');
+  const [activeViewerTab, setActiveViewerTab] = useState<'scenario' | 'steps' | 'context'>('steps');
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [viewingScenario, setViewingScenario] = useState<Scenario | null>(null);
@@ -161,11 +161,17 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
     // Only 'STEP' origin assets are excluded from the Scripts list
     if (script.origin === ScriptOrigin.STEP) return false;
 
-    // Origin Filter
-    let originMatch = filter === 'ALL' || (filter === 'FAVORITES' ? script.isFavorite : script.origin === filter);
-
     // Platform Filter
     let platformMatch = platformFilter === 'ALL' || script.platform === platformFilter;
+
+    // Origin Filter
+    let originMatch = filter === 'ALL' || 
+       (filter === 'AI_GEN' ? (script.origin === ScriptOrigin.AI || script.origin === ScriptOrigin.AI_EXPLORATION) : false);
+
+    // Favorite Filter
+    let favoriteMatch = !showFavoritesOnly || script.isFavorite;
+
+    return originMatch && platformMatch && favoriteMatch;
 
     return originMatch && platformMatch;
   }).filter(script =>
@@ -176,13 +182,16 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
   );
 
   const filteredSteps = scripts.filter(script => script.origin === ScriptOrigin.STEP).filter(step => {
-    // Only 'STEP' origin or 'ALL' filter shows these
-    let originMatch = filter === 'ALL' || filter === 'STEP' || (filter === 'FAVORITES' ? step.isFavorite : false);
+    // Only 'STEP_FLOW' origin or 'ALL' filter shows these
+    let originMatch = filter === 'ALL' || filter === 'STEP_FLOW';
+
+    // Favorite Filter
+    let favoriteMatch = !showFavoritesOnly || step.isFavorite;
 
     // Platform Filter
     let platformMatch = platformFilter === 'ALL' || step.platform === platformFilter;
 
-    return originMatch && platformMatch && (
+    return originMatch && platformMatch && favoriteMatch && (
       (step.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
       (step.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
       (step.id?.toLowerCase() || '').includes(searchQuery.toLowerCase())
@@ -257,6 +266,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
   const [isEditingSteps, setIsEditingSteps] = useState(false);
   const [editedSteps, setEditedSteps] = useState<any[]>([]);
 
+  const [isEditingDataset, setIsEditingDataset] = useState(false);
+  const [editedDataset, setEditedDataset] = useState<TestDataRow[]>([]);
+
   // Internal Logic Methods
   const handleRegisterManualScript = async (script: TestScript) => {
     try {
@@ -300,6 +312,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         category: script.category,
         steps: script.steps,
         try_count: script.try_count,
+        // TODO: Rename to enable_self_healing
         enable_ai_test: script.enable_ai_test
       };
 
@@ -346,6 +359,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
       engine: script.engine || 'Playwright',
       dataset: script.dataset ? [...script.dataset] : [],
       try_count: script.try_count || 1,
+      // TODO: Rename to enable_self_healing
       enable_ai_test: script.enable_ai_test || false
     });
     setShowRegisterModal(true);
@@ -436,6 +450,28 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
     setNewManualScript({ ...newManualScript, dataset: newManualScript.dataset.filter((_, i) => i !== index) });
   };
 
+  // Handlers for editedDataset (Intelligence Center)
+  const addEditedDatasetRow = () => {
+    const newRow: TestDataRow = {
+      id: `d_${Date.now()}`,
+      field: '',
+      value: '',
+      type: DataType.VALID,
+      description: ''
+    };
+    setEditedDataset([...editedDataset, newRow]);
+  };
+
+  const removeEditedDatasetRow = (index: number) => {
+    setEditedDataset(editedDataset.filter((_, i) => i !== index));
+  };
+
+  const updateEditedDatasetItem = (index: number, field: keyof TestDataRow, value: string) => {
+    const updated = [...editedDataset];
+    updated[index] = { ...updated[index], [field]: value };
+    setEditedDataset(updated);
+  };
+
 
 
 
@@ -451,8 +487,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
       <div className="flex items-center justify-between mb-8">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1 transition-colors">Asset Library</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm transition-colors">Manage your Certified Golden Scripts and AI-generated assets.</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm transition-colors">Step Flow와 AI로 생성된 Test Asset 리스트입니다.</p>
         </div>
+        {/* 
         <button
           onClick={() => {
             setEditingScriptId(null);
@@ -474,6 +511,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
           <Plus className="w-4 h-4" />
           Register Manual Script
         </button>
+        */}
       </div>
 
       <div className="flex items-center gap-4 mb-6">
@@ -492,26 +530,33 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
             <button
               key={p}
               onClick={() => setPlatformFilter(p)}
-              className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${platformFilter === p ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'}`}
+              className={`px-3 py-1.5 rounded-md transition-all flex items-center justify-center ${platformFilter === p ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'}`}
               title={p === 'ALL' ? 'All Platforms' : p}
             >
-              {p === 'ALL' ? <Filter className="w-3.5 h-3.5" /> : p === 'WEB' ? <Globe className="w-3.5 h-3.5" /> : <Smartphone className="w-3.5 h-3.5" />}
               <span className="text-[10px] font-black uppercase tracking-wider">{p}</span>
             </button>
           ))}
         </div>
 
         <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
-          {['ALL', 'FAVORITES', 'AI', 'AI_EXPLORATION', 'MANUAL', 'STEP'].map((f) => (
+          {(['ALL', 'AI_GEN', 'STEP_FLOW'] as const).map((f) => (
             <button
               key={f}
-              onClick={() => setFilter(f as any)}
-              className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${filter === f ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'}`}
+              onClick={() => setFilter(f)}
+              className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${filter === f ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'}`}
             >
-              {f.replace('_', ' ')}
+              <span>{f === 'AI_GEN' ? 'AI Gen' : f === 'STEP_FLOW' ? 'Step Flow' : f}</span>
             </button>
           ))}
         </div>
+
+        <button
+          onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+          className={`p-2.5 rounded-lg border transition-all flex items-center justify-center ${showFavoritesOnly ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-500 shadow-sm shadow-yellow-500/10' : 'bg-gray-100 dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-400 dark:text-gray-600 hover:text-yellow-500/50'}`}
+          title="Favorites only"
+        >
+          <Star className={`w-4 h-4 ${showFavoritesOnly ? 'fill-yellow-500' : ''}`} />
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-20">
@@ -558,15 +603,6 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                   </button>
                   <button onClick={() => handleModifyScript(script)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500" title="Modify Asset"><Edit3 className="w-4 h-4" /></button>
                   <button onClick={() => { setViewingScript(script); setActiveViewerTab('steps'); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500" title="Asset Intelligence"><Maximize2 className="w-4 h-4" /></button>
-                  {scenarios.find(s => s.goldenScriptId === script.id) && (
-                    <button
-                      onClick={() => setViewingScenario(scenarios.find(s => s.goldenScriptId === script.id) || null)}
-                      className="p-2 hover:bg-indigo-600/10 rounded-lg text-indigo-600 dark:text-indigo-400"
-                      title="View Linked Scenario"
-                    >
-                      <FileCode className="w-4 h-4" />
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
@@ -660,7 +696,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                 </div>
                 <div className="flex gap-1">
                   <button onClick={() => handleModifyScript(step)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500" title="Modify Asset"><Edit3 className="w-4 h-4" /></button>
-                  <button onClick={() => setViewingStep(step)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500" title="Asset Intelligence"><Maximize2 className="w-4 h-4" /></button>
+                  <button onClick={() => { setViewingScript(step); setActiveViewerTab('steps'); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500" title="Asset Intelligence"><Maximize2 className="w-4 h-4" /></button>
                 </div>
               </div>
             </div>
@@ -728,63 +764,124 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         <div className="fixed inset-0 z-[100] flex justify-end animate-in fade-in duration-300">
           <div className="absolute inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-sm" onClick={() => setViewingScript(null)} />
           <div className="relative w-full max-w-4xl bg-white dark:bg-[#16191f] border-l border-gray-200 dark:border-gray-800 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 transition-colors">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-gray-900/20 transition-colors">
-              <div className="flex items-center gap-4">
-                <div className="p-2.5 bg-indigo-600 rounded-xl text-white">
-                  {viewingScript.engine === 'Appium' ? <Smartphone className="w-5 h-5" /> : <FileCode className="w-5 h-5" />}
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Asset Intelligence Center</h3>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{viewingScript.name}</p>
-                </div>
-              </div>
-              <button onClick={() => setViewingScript(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+            {(() => {
+              const isStepFlow = viewingScript.origin === ScriptOrigin.STEP;
+              const themeColor = isStepFlow ? 'emerald' : 'indigo';
+              const themeBg = isStepFlow ? `bg-${themeColor}-600` : `bg-indigo-600`; // Fallback to indigo for clarity
+              // We'll use a more robust way to handle classes to avoid JIT issues
+              const t = {
+                text: isStepFlow ? 'text-emerald-600' : 'text-indigo-600',
+                textLight: isStepFlow ? 'text-emerald-400' : 'text-indigo-400',
+                bg: isStepFlow ? 'bg-emerald-600' : 'bg-indigo-600',
+                bgLight: isStepFlow ? 'bg-emerald-50' : 'bg-indigo-50',
+                bgMuted: isStepFlow ? 'bg-emerald-50/50' : 'bg-indigo-50/50',
+                bgDeep: isStepFlow ? 'bg-emerald-900/30' : 'bg-indigo-900/30',
+                bgDeep2: isStepFlow ? 'bg-emerald-950/20' : 'bg-indigo-950/20',
+                border: isStepFlow ? 'border-emerald-500' : 'border-indigo-500',
+                borderLight: isStepFlow ? 'border-emerald-200' : 'border-indigo-200',
+                borderMuted: isStepFlow ? 'border-emerald-100' : 'border-indigo-100',
+                ring: isStepFlow ? 'focus:border-emerald-500' : 'focus:border-indigo-500',
+                tag: isStepFlow ? 'bg-emerald-600/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-indigo-600/10 border-indigo-500/20 text-indigo-600 dark:text-indigo-400',
+                button: isStepFlow ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700',
+                hover: isStepFlow ? 'hover:bg-emerald-50' : 'hover:bg-indigo-50',
+                shadow: isStepFlow ? 'shadow-emerald-600/20' : 'shadow-indigo-600/20'
+              };
 
-            <div className="flex border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#16191f] transition-colors">
-              <button
-                onClick={() => setActiveViewerTab('steps')}
-                className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeViewerTab === 'steps' ? 'text-indigo-600 dark:text-indigo-400 border-indigo-500' : 'text-gray-400 dark:text-gray-500 border-transparent hover:text-gray-600 dark:hover:text-gray-300'}`}
-              >
-                <Tags className="w-3.5 h-3.5 inline mr-2" /> Scenario Steps
-              </button>
-              <button
-                onClick={() => setActiveViewerTab('code')}
-                className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeViewerTab === 'code' ? 'text-indigo-600 dark:text-indigo-400 border-indigo-500' : 'text-gray-400 dark:text-gray-500 border-transparent hover:text-gray-600 dark:hover:text-gray-300'}`}
-              >
-                <Code className="w-3.5 h-3.5 inline mr-2" /> Code Source
-              </button>
-              <button
-                onClick={() => setActiveViewerTab('context')}
-                className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeViewerTab === 'context' ? 'text-indigo-600 dark:text-indigo-400 border-indigo-500' : 'text-gray-400 dark:text-gray-500 border-transparent hover:text-gray-600 dark:hover:text-gray-300'}`}
-              >
-                <Bot className="w-3.5 h-3.5 inline mr-2" /> Execution Context
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-auto bg-gray-50 dark:bg-[#0c0e12] relative custom-scrollbar transition-colors">
-              {activeViewerTab === 'code' ? (
-                <div className="p-8">
-                  <div className="flex justify-between items-center mb-4">
-                    <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">{viewingScript.engine} Implementation</span>
-                    <button
-                      onClick={() => handleCopyCode(viewingScript.code)}
-                      className="flex items-center gap-2 text-[10px] font-black text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 uppercase tracking-widest transition-colors"
-                    >
-                      {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />} {copied ? 'Copied' : 'Copy Code'}
+              return (
+                <>
+                  <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-gray-900/20 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <div className={`p-2.5 ${t.bg} rounded-xl text-white`}>
+                        {isStepFlow ? <Tags className="w-5 h-5" /> : (viewingScript.engine === 'Appium' ? <Smartphone className="w-5 h-5" /> : <FileCode className="w-5 h-5" />)}
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Asset Intelligence Center</h3>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{viewingScript.name}</p>
+                      </div>
+                    </div>
+                    <button onClick={() => {
+                      setViewingScript(null);
+                      setIsEditingDataset(false);
+                      setIsEditingSteps(false);
+                    }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 transition-colors">
+                      <X className="w-5 h-5" />
                     </button>
                   </div>
-                  <pre className="mono text-[12px] text-gray-800 dark:text-blue-300 leading-relaxed whitespace-pre p-6 bg-white dark:bg-black/40 rounded-2xl border border-gray-200 dark:border-gray-800 transition-colors">
-                    {viewingScript.code}
-                  </pre>
+
+                  <div className="flex border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#16191f] transition-colors">
+                    <button
+                      onClick={() => setActiveViewerTab('scenario')}
+                      className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeViewerTab === 'scenario' ? `${t.text} ${t.border}` : 'text-gray-400 dark:text-gray-500 border-transparent hover:text-gray-600 dark:hover:text-gray-300'}`}
+                    >
+                      <FileCode className="w-3.5 h-3.5 inline mr-2" /> Connected Scenario
+                    </button>
+                    <button
+                      onClick={() => setActiveViewerTab('steps')}
+                      className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeViewerTab === 'steps' ? `${t.text} ${t.border}` : 'text-gray-400 dark:text-gray-500 border-transparent hover:text-gray-600 dark:hover:text-gray-300'}`}
+                    >
+                      <Tags className="w-3.5 h-3.5 inline mr-2" /> Steps
+                    </button>
+                    <button
+                      onClick={() => setActiveViewerTab('context')}
+                      className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeViewerTab === 'context' ? `${t.text} ${t.border}` : 'text-gray-400 dark:text-gray-500 border-transparent hover:text-gray-600 dark:hover:text-gray-300'}`}
+                    >
+                      <Bot className="w-3.5 h-3.5 inline mr-2" /> Execution Context
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-auto bg-gray-50 dark:bg-[#0c0e12] relative custom-scrollbar transition-colors">
+                    {activeViewerTab === 'scenario' ? (
+                <div className="p-8 space-y-8 overflow-y-auto custom-scrollbar">
+                  {(() => {
+                    const scenario = scenarios.find(s => s.goldenScriptId === viewingScript.id);
+                    if (!scenario) return (
+                      <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800/50 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center text-center">
+                        <FileCode className="w-12 h-12 text-gray-400 mb-4 opacity-50" />
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">No Linked Scenario found</p>
+                      </div>
+                    );
+                    return (
+                      <>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Scenario Title</label>
+                          <div className="text-lg font-bold text-gray-900 dark:text-white transition-colors">{scenario.title}</div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors">{scenario.description}</p>
+                        </div>
+
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Test Cases / Steps</label>
+                          <div className="space-y-4">
+                            {scenario.testCases.map((tc, idx) => (
+                              <div key={tc.id || idx} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl p-6 transition-colors shadow-sm">
+                                <div className="flex items-center justify-between mb-4">
+                                  <h4 className="font-bold text-gray-900 dark:text-white text-sm transition-colors">{tc.title}</h4>
+                                  <span className="text-[10px] bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-gray-500 dark:text-gray-400 uppercase transition-colors">{tc.status}</span>
+                                </div>
+                                <div className="space-y-3">
+                                  {tc.steps.map((step, sIdx) => (
+                                    <div key={sIdx} className="flex gap-3 text-sm text-gray-600 dark:text-gray-300 transition-colors">
+                                      <span className="text-gray-500 dark:text-gray-600 font-mono text-xs w-4 transition-colors">{sIdx + 1}.</span>
+                                      <span>{step}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800 transition-colors">
+                                  <span className={`text-[10px] font-black ${t.text} uppercase tracking-widest block mb-1 transition-colors`}>Expected Result</span>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors">{tc.expectedResult}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               ) : activeViewerTab === 'context' ? (
                 <div className="p-8 space-y-10">
                   <div className="space-y-4">
                     <div className="text-[10px] font-black text-gray-600 uppercase tracking-widest flex items-center gap-2">
-                      <UserCheck className="w-4 h-4 text-indigo-400" /> Mapped Agent Persona
+                      <UserCheck className={`w-4 h-4 ${t.textLight}`} /> Mapped Agent Persona
                     </div>
 
                     {viewingScript.persona ? (
@@ -792,7 +889,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                         <div className="absolute top-0 right-0 p-4 opacity-5"><Bot className="w-20 h-20" /></div>
                         <div className="flex items-center gap-3 mb-2">
                           <h4 className="text-lg font-bold text-gray-900 dark:text-white transition-colors">{viewingScript.persona.name}</h4>
-                          <span className="px-2 py-0.5 bg-indigo-600/10 border border-indigo-500/20 text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase rounded tracking-widest transition-colors">{viewingScript.persona.skillLevel}</span>
+                          <span className={`px-2 py-0.5 ${t.tag} text-[8px] font-black uppercase rounded tracking-widest transition-colors`}>{viewingScript.persona.skillLevel}</span>
                         </div>
                         <p className="text-xs text-gray-600 dark:text-gray-400 mb-4 transition-colors">{viewingScript.persona.description}</p>
                         <div className="grid grid-cols-2 gap-4">
@@ -819,38 +916,128 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                     )}
                   </div>
 
-                  <div className="space-y-4">
-                    <div className="text-[10px] font-black text-gray-500 dark:text-gray-600 uppercase tracking-widest flex items-center gap-2 transition-colors">
-                      <Database className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Bound Dataset (Synthetic)
+                    <div className="text-[10px] font-black text-gray-500 dark:text-gray-600 uppercase tracking-widest flex items-center justify-between transition-colors">
+                      <div className="flex items-center gap-2">
+                        <Database className={`w-4 h-4 ${t.text}`} /> Bound Dataset (Synthetic)
+                      </div>
+                      {!isEditingDataset ? (
+                        <button
+                          onClick={() => {
+                            setEditedDataset(viewingScript.dataset ? [...viewingScript.dataset] : []);
+                            setIsEditingDataset(true);
+                          }}
+                          className={`text-[10px] font-bold ${t.text} hover:opacity-80 uppercase tracking-wider flex items-center gap-1 transition-colors ${t.bgLight} dark:${t.bgDeep} px-2 py-1 rounded`}
+                        >
+                          <Edit2 className="w-3 h-3" /> Edit Dataset
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setIsEditingDataset(false)}
+                            className="text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 uppercase tracking-wider transition-colors px-2 py-1"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const updatedScript = { ...viewingScript, dataset: editedDataset };
+                              setViewingScript(updatedScript);
+                              await handleUpdateScript(updatedScript);
+                              setIsEditingDataset(false);
+                            }}
+                            className={`text-[10px] font-bold text-white ${t.bg} hover:opacity-90 uppercase tracking-wider flex items-center gap-1 transition-colors px-2 py-1 rounded shadow-sm`}
+                          >
+                            <Save className="w-3 h-3" /> Save Changes
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden shadow-2xl transition-colors">
-                      <table className="w-full text-left text-[11px] table-fixed">
-                        <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800 text-[9px] font-black uppercase text-gray-500 transition-colors">
-                          <tr>
-                            <th className="px-5 py-3 w-[140px]">Field</th>
-                            <th className="px-5 py-3">Value</th>
-                            <th className="px-5 py-3 w-[180px]">Expected</th>
-                            <th className="px-5 py-3 text-right w-[80px]">Type</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-gray-800 transition-colors">
-                          {viewingScript.dataset && viewingScript.dataset.length > 0 ? viewingScript.dataset.map((row) => (
-                            <tr key={row.id} className="hover:bg-indigo-50 dark:hover:bg-indigo-500/5 transition-colors">
-                              <td className="px-5 py-4 font-bold text-gray-700 dark:text-gray-300 mono transition-colors whitespace-nowrap overflow-hidden text-ellipsis">{row.field}</td>
-                              <td className="px-5 py-4 text-indigo-600 dark:text-blue-300 mono transition-colors break-all">{row.value}</td>
-                              <td className="px-5 py-4 text-emerald-600 dark:text-emerald-400 font-bold transition-colors break-all">{row.expected_result || '-'}</td>
-                              <td className="px-5 py-4 text-right">
-                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${row.type === DataType.VALID ? 'bg-green-600/10 text-green-500' : 'bg-red-600/10 text-red-500'
-                                  }`}>{row.type}</span>
-                              </td>
+
+                    {isEditingDataset ? (
+                      <div className="space-y-4">
+                        <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden shadow-sm transition-colors">
+                          <div className="p-4 grid grid-cols-4 gap-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-[9px] font-black text-gray-400 uppercase tracking-widest transition-colors">
+                            <span>Field (ID)</span>
+                            <span>Value</span>
+                            <span>Expected</span>
+                            <span className="text-right pr-8">Type / Action</span>
+                          </div>
+                          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                            {editedDataset.map((row, idx) => (
+                              <div key={row.id} className="p-3 grid grid-cols-4 gap-4 items-center">
+                                <input
+                                  type="text"
+                                  value={row.field}
+                                  onChange={e => updateEditedDatasetItem(idx, 'field', e.target.value)}
+                                  className={`bg-transparent border-b border-transparent ${t.ring} outline-none text-[11px] font-bold ${t.text} mono transition-colors`}
+                                  placeholder="FIELD_ID"
+                                />
+                                <input
+                                  type="text"
+                                  value={row.value || ''}
+                                  onChange={e => updateEditedDatasetItem(idx, 'value', e.target.value)}
+                                  className={`bg-transparent border-b border-transparent ${t.ring} outline-none text-[11px] text-gray-900 dark:text-blue-300 mono transition-colors`}
+                                  placeholder="value"
+                                />
+                                <input
+                                  type="text"
+                                  value={row.expected_result || ''}
+                                  onChange={e => updateEditedDatasetItem(idx, 'expected_result', e.target.value)}
+                                  className={`bg-transparent border-b border-transparent ${t.ring} outline-none text-[11px] text-emerald-600 dark:text-emerald-400 mono transition-colors`}
+                                  placeholder="expected"
+                                />
+                                <div className="flex justify-end gap-2">
+                                  <select
+                                    value={row.type}
+                                    onChange={e => updateEditedDatasetItem(idx, 'type', e.target.value as any)}
+                                    className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-1 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase outline-none transition-colors"
+                                  >
+                                    <option value={DataType.VALID}>Valid</option>
+                                    <option value={DataType.INVALID}>Invalid</option>
+                                    <option value={DataType.SECURITY}>Security</option>
+                                  </select>
+                                  <button onClick={() => removeEditedDatasetRow(idx)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                                </div>
+                              </div>
+                            ))}
+                            <button
+                              onClick={addEditedDatasetRow}
+                              className={`w-full py-4 text-[10px] font-black ${t.text} ${t.hover} dark:hover:bg-white/5 uppercase tracking-widest transition-all flex items-center justify-center gap-2`}
+                            >
+                              <Plus className="w-4 h-4" /> Add Synthetic Vector
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden shadow-2xl transition-colors">
+                        <table className="w-full text-left text-[11px] table-fixed">
+                          <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800 text-[9px] font-black uppercase text-gray-500 transition-colors">
+                            <tr>
+                              <th className="px-5 py-3 w-[140px]">Field</th>
+                              <th className="px-5 py-3">Value</th>
+                              <th className="px-5 py-3 w-[180px]">Expected</th>
+                              <th className="px-5 py-3 text-right w-[80px]">Type</th>
                             </tr>
-                          )) : (
-                            <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-600 italic">No dataset mapping found for this asset.</td></tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200 dark:divide-gray-800 transition-colors">
+                            {viewingScript.dataset && viewingScript.dataset.length > 0 ? viewingScript.dataset.map((row) => (
+                              <tr key={row.id} className={`${t.hover} dark:hover:bg-white/5 transition-colors`}>
+                                <td className="px-5 py-4 font-bold text-gray-700 dark:text-gray-300 mono transition-colors whitespace-nowrap overflow-hidden text-ellipsis">{row.field}</td>
+                                <td className={`px-5 py-4 ${t.text} dark:text-blue-300 mono transition-colors break-all`}>{row.value}</td>
+                                <td className="px-5 py-4 text-emerald-600 dark:text-emerald-400 font-bold transition-colors break-all">{row.expected_result || '-'}</td>
+                                <td className="px-5 py-4 text-right">
+                                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${row.type === DataType.VALID ? 'bg-green-600/10 text-green-500' : 'bg-red-600/10 text-red-500'
+                                    }`}>{row.type}</span>
+                                </td>
+                              </tr>
+                            )) : (
+                              <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-600 italic">No dataset mapping found for this asset.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                 </div>
               ) : activeViewerTab === 'steps' ? (
                 <div className="p-8 space-y-6">
@@ -860,7 +1047,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                         <span>Steps ({viewingScript.steps.length})</span>
                         <div className="flex items-center gap-3">
                           {viewingScript.platform && (
-                            <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded uppercase border border-indigo-200 dark:border-indigo-800">
+                            <span className={`text-[10px] ${t.bgLight} dark:${t.bgDeep} ${t.text} px-2 py-0.5 rounded uppercase border ${t.borderLight} dark:border-gray-800`}>
                               {viewingScript.platform}
                             </span>
                           )}
@@ -870,7 +1057,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                                 setEditedSteps(JSON.parse(JSON.stringify(viewingScript.steps || [])));
                                 setIsEditingSteps(true);
                               }}
-                              className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 uppercase tracking-wider flex items-center gap-1 transition-colors bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded"
+                              className={`text-[10px] font-bold ${t.text} hover:opacity-80 uppercase tracking-wider flex items-center gap-1 transition-colors ${t.bgLight} dark:${t.bgDeep} px-2 py-1 rounded`}
                             >
                               <Edit2 className="w-3 h-3" /> Edit Steps
                             </button>
@@ -889,7 +1076,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                                   await handleUpdateScript(updatedScript);
                                   setIsEditingSteps(false);
                                 }}
-                                className="text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 uppercase tracking-wider flex items-center gap-1 transition-colors px-2 py-1 rounded shadow-sm"
+                                className={`text-[10px] font-bold text-white ${t.bg} hover:opacity-90 uppercase tracking-wider flex items-center gap-1 transition-colors px-2 py-1 rounded shadow-sm`}
                               >
                                 <Save className="w-3 h-3" /> Save Changes
                               </button>
@@ -899,7 +1086,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                       </h4>
                       <div className="space-y-3">
                         {(isEditingSteps ? editedSteps : viewingScript.steps).map((step, idx) => (
-                          <div key={idx} className={`bg-white dark:bg-[#16191f] border rounded-xl p-4 transition-all ${isEditingSteps ? 'border-indigo-300 dark:border-indigo-700 shadow-sm' : 'border-gray-200 dark:border-gray-800 hover:border-indigo-500/50'}`}>
+                          <div key={idx} className={`bg-white dark:bg-[#16191f] border rounded-xl p-4 transition-all ${isEditingSteps ? `${t.border} dark:border-opacity-50 shadow-sm` : `border-gray-200 dark:border-gray-800 hover:${t.border}/50`}`}>
                             <div className="flex items-start gap-3">
                               <div className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">
                                 {idx + 1}
@@ -915,7 +1102,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                                           newSteps[idx].action = e.target.value;
                                           setEditedSteps(newSteps);
                                         }}
-                                        className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-1 rounded border border-indigo-200 dark:border-indigo-500/30 outline-none"
+                                        className={`text-[10px] font-black uppercase tracking-wider ${t.text} ${t.bgLight} dark:${t.bgDeep} px-1.5 py-1 rounded border ${t.borderLight} dark:border-opacity-30 outline-none`}
                                       >
                                         <option value="navigate">NAVIGATE</option>
                                         <option value="click">CLICK</option>
@@ -933,7 +1120,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                                           newSteps[idx].stepName = e.target.value;
                                           setEditedSteps(newSteps);
                                         }}
-                                        className="flex-1 text-xs font-bold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-500 outline-none py-0.5"
+                                        className={`flex-1 text-xs font-bold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 ${t.ring} outline-none py-0.5`}
                                       />
                                     </div>
                                     <input
@@ -945,7 +1132,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                                         newSteps[idx].description = e.target.value;
                                         setEditedSteps(newSteps);
                                       }}
-                                      className="w-full text-[11px] text-gray-600 dark:text-gray-400 bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-500 outline-none py-0.5"
+                                      className={`w-full text-[11px] text-gray-600 dark:text-gray-400 bg-transparent border-b border-gray-200 dark:border-gray-700 ${t.ring} outline-none py-0.5`}
                                     />
                                     <div className="grid grid-cols-2 gap-2 text-[10px]">
                                       <div>
@@ -981,7 +1168,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                                       </div>
                                     </div>
                                     <div className="mt-2 text-[10px]">
-                                      <span className="text-indigo-400 uppercase tracking-tighter block text-[8px] mb-0.5">Input Value</span>
+                                      <span className={`text-[8px] ${t.textLight} uppercase tracking-tighter block mb-0.5`}>Input Value</span>
                                       <input
                                         type="text"
                                         value={step.inputValue || ''}
@@ -990,7 +1177,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                                           newSteps[idx].inputValue = e.target.value;
                                           setEditedSteps(newSteps);
                                         }}
-                                        className="w-full bg-indigo-50/50 dark:bg-indigo-900/10 p-1.5 rounded-lg border border-indigo-100 dark:border-indigo-900/30 outline-none font-mono text-indigo-700 dark:text-indigo-300"
+                                        className={`w-full ${t.bgMuted} dark:${t.bgDeep2} p-1.5 rounded-lg border ${t.borderMuted} dark:border-gray-800 outline-none font-mono ${t.text} dark:text-blue-300`}
                                         placeholder="e.g. {{검색어}}"
                                       />
                                     </div>
@@ -1014,7 +1201,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                                 ) : (
                                   <>
                                     <div className="flex items-center gap-2 mb-1">
-                                      <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-500/20">
+                                      <span className={`text-[10px] font-black uppercase tracking-wider ${t.text} ${t.bgLight} dark:${t.bgDeep} px-1.5 py-0.5 rounded border ${t.borderLight} dark:border-opacity-20`}>
                                         {step.action || 'Unknown'}
                                       </span>
                                       {step.stepName && <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{step.stepName}</span>}
@@ -1033,9 +1220,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                                       </div>
                                     </div>
                                     {step.inputValue && (
-                                      <div className="mt-2 text-[10px] bg-indigo-50 dark:bg-indigo-900/10 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/30 transition-colors">
-                                        <span className="text-indigo-400 uppercase tracking-tighter block text-[8px] mb-0.5">Input Value</span>
-                                        <span className="font-mono text-indigo-700 dark:text-indigo-300">{step.inputValue}</span>
+                                      <div className={`mt-2 text-[10px] ${t.bgLight} dark:${t.bgDeep} p-2 rounded-lg border ${t.borderLight} dark:border-opacity-30 transition-colors`}>
+                                        <span className={`text-[8px] ${t.textLight} uppercase tracking-tighter block mb-0.5`}>Input Value</span>
+                                        <span className={`font-mono ${t.text} dark:text-blue-300`}>{step.inputValue}</span>
                                       </div>
                                     )}
                                     {step.assertText && (
@@ -1063,207 +1250,14 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                   )}
                 </div>
               ) : null}
-            </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
 
-      {/* STEP DETAIL VIEWER OVERLAY */}
-      {viewingStep && (
-        <div className="fixed inset-0 z-[100] flex justify-end animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-sm" onClick={() => setViewingStep(null)} />
-          <div className="relative w-full max-w-2xl bg-white dark:bg-[#16191f] border-l border-gray-200 dark:border-gray-800 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 transition-colors">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-gray-900/20 transition-colors">
-              <div className="flex items-center gap-4">
-                <div className="p-2.5 bg-emerald-600 rounded-xl text-white">
-                  <Tags className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Step Asset Details</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{viewingStep.name}</p>
-                    <select
-                      value={viewingStep.category || ''}
-                      onChange={async (e) => {
-                        const newCategory = e.target.value;
-                        setViewingStep({ ...viewingStep, category: newCategory });
-                        await handleUpdateScript({ ...viewingStep, category: newCategory }, true);
-                      }}
-                      className="text-[9px] font-black bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded px-1.5 py-0.5 uppercase outline-none cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-800/50 transition-colors"
-                    >
-                      <option value="">No Category</option>
-                      {categories.map(cat => (
-                        <option key={cat.id} value={cat.name}>{cat.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <button onClick={() => setViewingStep(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-auto bg-gray-50 dark:bg-[#0c0e12] relative custom-scrollbar transition-colors p-6">
-              <div className="mb-6">
-                <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Description</h4>
-                <p className="text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-[#16191f] p-4 rounded-xl border border-gray-200 dark:border-gray-800">
-                  {viewingStep.description || "No description provided."}
-                </p>
-              </div>
-
-              {viewingStep.persona && (
-                <div className="mb-6">
-                  <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-2">
-                    <UserCheck className="w-3.5 h-3.5" />
-                    Persona Context
-                  </h4>
-                  <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl p-5 relative overflow-hidden transition-colors">
-                    <div className="absolute top-0 right-0 p-4 opacity-5"><Bot className="w-16 h-16" /></div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-sm font-bold text-gray-900 dark:text-white">{viewingStep.persona.name}</span>
-                      <span className="px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase rounded border border-indigo-100 dark:border-indigo-500/20">{viewingStep.persona.skillLevel}</span>
-                    </div>
-                    <p className="text-[11px] text-gray-600 dark:text-gray-400 mb-3">{viewingStep.persona.description}</p>
-                    <div className="flex flex-wrap gap-1">
-                      {viewingStep.persona.traits?.map((t, idx) => (
-                        <span key={idx} className="px-1.5 py-0.5 bg-gray-50 dark:bg-gray-800 text-[8px] font-bold text-gray-500 rounded uppercase border border-gray-100 dark:border-gray-700">{t}</span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 flex items-center justify-between">
-                  <span>Steps ({viewingStep.steps.length})</span>
-                  <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded uppercase">{viewingStep.platform}</span>
-                </h4>
-                <div className="space-y-3">
-                  {viewingStep.steps.map((step, idx) => (
-                    <div key={idx} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl p-4 transition-all hover:border-indigo-500/50">
-                      <div className="flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">
-                          {idx + 1}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-500/20">
-                              {step.action || 'Unknown'}
-                            </span>
-                            {step.stepName && <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{step.stepName}</span>}
-                          </div>
-                          <p className="text-[11px] text-gray-600 dark:text-gray-400 mb-2 truncate">
-                            {step.description || "No description"}
-                          </p>
-                          <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-100 dark:border-gray-800">
-                            <div>
-                              <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
-                              <span className="font-mono text-gray-700 dark:text-gray-300">{step.selectorType || (step as any).selector_type || '-'}</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
-                              <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue || (step as any).selector_value}>{step.selectorValue || (step as any).selector_value || '-'}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )
-      }
-
-      {/* STEP DETAIL VIEWER OVERLAY */}
-      {
-        viewingStep && (
-          <div className="fixed inset-0 z-[100] flex justify-end animate-in fade-in duration-300">
-            <div className="absolute inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-sm" onClick={() => setViewingStep(null)} />
-            <div className="relative w-full max-w-2xl bg-white dark:bg-[#16191f] border-l border-gray-200 dark:border-gray-800 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 transition-colors">
-              <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-gray-900/20 transition-colors">
-                <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-emerald-600 rounded-xl text-white">
-                    <Tags className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Step Asset Details</h3>
-                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{viewingStep.name}</p>
-                  </div>
-                </div>
-                <button onClick={() => setViewingStep(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-auto bg-gray-50 dark:bg-[#0c0e12] relative custom-scrollbar transition-colors p-6">
-                <div className="mb-6">
-                  <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Description</h4>
-                  <p className="text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-[#16191f] p-4 rounded-xl border border-gray-200 dark:border-gray-800">
-                    {viewingStep.description || "No description provided."}
-                  </p>
-                </div>
-
-                <div>
-                  <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 flex items-center justify-between">
-                    <span>Steps ({viewingStep.steps.length})</span>
-                    <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded uppercase">{viewingStep.platform}</span>
-                  </h4>
-                  <div className="space-y-3">
-                    {viewingStep.steps.map((step, idx) => (
-                      <div key={idx} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl p-4 transition-all hover:border-indigo-500/50">
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">
-                            {idx + 1}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-500/20">
-                                {step.action || 'Unknown'}
-                              </span>
-                              {step.stepName && <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{step.stepName}</span>}
-                            </div>
-                            <p className="text-[11px] text-gray-600 dark:text-gray-400 mb-2 truncate">
-                              {step.description || "No description"}
-                            </p>
-                            <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-100 dark:border-gray-800">
-                              <div>
-                                <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
-                                <span className="font-mono text-gray-700 dark:text-gray-300">{step.selectorType || (step as any).selector_type || '-'}</span>
-                              </div>
-                              <div>
-                                <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
-                                <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue || (step as any).selector_value}>{step.selectorValue || (step as any).selector_value || '-'}</span>
-                              </div>
-                            </div>
-                            {step.inputValue && (
-                              <div className="mt-2 text-[10px] bg-indigo-50 dark:bg-indigo-900/10 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/30 transition-colors">
-                                <span className="text-indigo-400 uppercase tracking-tighter block text-[8px] mb-0.5">Input Value</span>
-                                <span className="font-mono text-indigo-700 dark:text-indigo-300">{step.inputValue}</span>
-                              </div>
-                            )}
-                            {step.assertText && (
-                              <div className="mt-2 text-[10px] bg-blue-50 dark:bg-blue-500/10 p-2 rounded-lg border border-blue-200 dark:border-blue-500/30 transition-colors flex flex-col">
-                                <span className="text-blue-500 uppercase tracking-tighter text-[8px] mb-0.5 flex items-center gap-1">
-                                  <CheckCircle2 className="w-2.5 h-2.5" /> Rule Assertion
-                                </span>
-                                <span className="font-mono text-gray-900 dark:text-white">"{step.assertText}"</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-      }
 
       {/* REGISTRATION / EDIT MODAL */}
       {
@@ -1280,57 +1274,46 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                     <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Define logic, tags, and testing vectors</p>
                   </div>
                 </div>
-                <button onClick={() => setShowRegisterModal(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-500 transition-colors">
+                <button onClick={() => {
+                  setShowRegisterModal(false);
+                  setIsEditingDataset(false);
+                  setIsEditingSteps(false);
+                }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-500 transition-colors">
                   <X className="w-6 h-6" />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-10 grid grid-cols-1 lg:grid-cols-2 gap-10 custom-scrollbar">
-                <div className="space-y-8">
-                  <div className="space-y-4">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Engine & Logic Type</label>
-                    <div className="flex bg-gray-100 dark:bg-[#0c0e12] p-1.5 rounded-2xl border border-gray-200 dark:border-gray-800 gap-1 transition-colors">
-                      <button
-                        onClick={() => setNewManualScript({ ...newManualScript, engine: 'Playwright' })}
-                        className={`flex-1 py-4 px-2 rounded-xl text-[10px] font-black uppercase transition-all flex flex-col items-center gap-2 ${newManualScript.engine === 'Playwright' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-lg border border-gray-200 dark:border-gray-700' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}
-                      >
-                        <Globe className="w-5 h-5" /> Web (Playwright)
-                      </button>
-                      <button
-                        onClick={() => setNewManualScript({ ...newManualScript, engine: 'Appium' })}
-                        className={`flex-1 py-4 px-2 rounded-xl text-[10px] font-black uppercase transition-all flex flex-col items-center gap-2 ${newManualScript.engine === 'Appium' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}
-                      >
-                        <Smartphone className="w-5 h-5" /> App (Appium)
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Basic Definition</label>
-                    <div className="grid grid-cols-1 gap-4">
-                      <input
-                        type="text"
-                        value={newManualScript.name}
-                        onChange={e => setNewManualScript({ ...newManualScript, name: e.target.value })}
-                        className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-gray-900 dark:text-white focus:border-indigo-500 outline-none transition-all"
-                        placeholder="Script Name"
-                      />
-                      <input
-                        type="text"
-                        value={newManualScript.tags}
-                        onChange={e => setNewManualScript({ ...newManualScript, tags: e.target.value })}
-                        className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-indigo-600 dark:text-indigo-400 focus:border-indigo-500 outline-none transition-all"
-                        placeholder="Tags (comma separated, e.g. Login, Mobile, Security)"
-                      />
-                      <textarea
-                        value={newManualScript.description}
-                        onChange={e => setNewManualScript({ ...newManualScript, description: e.target.value })}
-                        className="w-full h-24 bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-gray-700 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all resize-none"
-                        placeholder="Describe the logic flow..."
-                      />
+                <div className="space-y-6">
+                  {/* Left Column: Basic Information */}
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Basic Definition</label>
+                      <div className="grid grid-cols-1 gap-3">
+                        <input
+                          type="text"
+                          value={newManualScript.name}
+                          onChange={e => setNewManualScript({ ...newManualScript, name: e.target.value })}
+                          className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-gray-900 dark:text-white focus:border-indigo-500 outline-none transition-all"
+                          placeholder="Script Name"
+                        />
+                        <input
+                          type="text"
+                          value={newManualScript.tags}
+                          onChange={e => setNewManualScript({ ...newManualScript, tags: e.target.value })}
+                          className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-indigo-600 dark:text-indigo-400 focus:border-indigo-500 outline-none transition-all"
+                          placeholder="Tags (comma separated, e.g. Login, Mobile, Security)"
+                        />
+                        <textarea
+                          value={newManualScript.description}
+                          onChange={e => setNewManualScript({ ...newManualScript, description: e.target.value })}
+                          className="w-full h-24 bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-gray-700 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all resize-none"
+                          placeholder="Describe the logic flow..."
+                        />
+                      </div>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       <div className="flex items-center gap-2">
                         <Database className="w-4 h-4 text-indigo-400" />
                         <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Asset Category</label>
@@ -1346,8 +1329,31 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                         ))}
                       </select>
                     </div>
+                  </div>
+                </div>
 
-                    <div className="space-y-4">
+                <div className="space-y-6">
+                  {/* Right Column: Execution Settings */}
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Engine & Logic Type</label>
+                      <div className="flex bg-gray-100 dark:bg-[#0c0e12] p-1.5 rounded-2xl border border-gray-200 dark:border-gray-800 gap-1 transition-colors">
+                        <button
+                          onClick={() => setNewManualScript({ ...newManualScript, engine: 'Playwright' })}
+                          className={`flex-1 py-4 px-2 rounded-xl text-[10px] font-black uppercase transition-all flex flex-col items-center gap-2 ${newManualScript.engine === 'Playwright' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-lg border border-gray-200 dark:border-gray-700' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}
+                        >
+                          <Globe className="w-5 h-5" /> Web (Playwright)
+                        </button>
+                        <button
+                          onClick={() => setNewManualScript({ ...newManualScript, engine: 'Appium' })}
+                          className={`flex-1 py-4 px-2 rounded-xl text-[10px] font-black uppercase transition-all flex flex-col items-center gap-2 ${newManualScript.engine === 'Appium' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}
+                        >
+                          <Smartphone className="w-5 h-5" /> App (Appium)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
                       <div className="flex items-center gap-2">
                         <RefreshCw className="w-4 h-4 text-indigo-400" />
                         <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Retry Policy</label>
@@ -1366,117 +1372,31 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                           <span className="text-[8px] font-bold text-gray-400 uppercase">Tries</span>
                         </div>
                       </div>
-                      <p className="text-[9px] text-gray-500 italic px-1">"Indicates how many times to retry on failure (stops on first success)."</p>
+                      <p className="text-[9px] text-gray-500 italic px-1">"Indicates how many times to retry on failure."</p>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       <div className="flex items-center gap-2">
                         <Bot className="w-4 h-4 text-indigo-400" />
-                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">AI Autonomous Testing (Fallback Mode)</label>
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Self Healing Mode</label>
                       </div>
                       <div className="flex items-center justify-between bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4">
                         <div className="flex flex-col">
-                          <span className="text-[11px] font-bold text-gray-900 dark:text-gray-200">AI Fallback Enabled</span>
-                          <span className="text-[9px] text-gray-500">Run autonomous exploration if all retries fail.</span>
+                          <span className="text-[11px] font-bold text-gray-900 dark:text-gray-200">Enable Self-Healing</span>
+                          <span className="text-[9px] text-gray-500">Automatically performs self-healing if the test execution fails.</span>
                         </div>
                         <button
                           onClick={() => setNewManualScript({ ...newManualScript, enable_ai_test: !newManualScript.enable_ai_test })}
                           className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
                         >
-                          {newManualScript.enable_ai_test ? <ToggleRight className="w-6 h-6 text-indigo-600 dark:text-indigo-500" /> : <ToggleLeft className="w-6 h-6 text-gray-400 dark:text-gray-700" />}
+                          {/* TODO: Rename field to enable_self_healing */}
+                          {newManualScript.enable_ai_test ? <ToggleRight className="w-6 h-6 text-indigo-600 dark:text-indigo-400" /> : <ToggleLeft className="w-6 h-6 text-gray-400 dark:text-gray-700" />}
                         </button>
                       </div>
                     </div>
                   </div>
-
-                  {/* Assigned Persona Information (Read-only) */}
-                  {editingScript?.persona && (
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2">
-                        <Target className="w-4 h-4 text-indigo-400" />
-                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Assigned Persona Context</label>
-                      </div>
-                      <div className="p-6 bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-2xl relative overflow-hidden group transition-colors">
-                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Bot className="w-16 h-16 text-indigo-500 dark:text-indigo-400" /></div>
-                        <div className="flex items-center gap-3 mb-2">
-                          <h4 className="text-sm font-bold text-gray-900 dark:text-white transition-colors">{editingScript.persona.name}</h4>
-                          <span className="px-2 py-0.5 bg-indigo-600/10 border border-indigo-500/20 text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase rounded tracking-widest transition-colors">{editingScript.persona.skillLevel}</span>
-                        </div>
-                        <p className="text-[10px] text-gray-600 dark:text-gray-500 leading-relaxed italic mb-4 transition-colors">"{editingScript.persona.goal}"</p>
-                        <div className="flex flex-wrap gap-1">
-                          {editingScript.persona.traits.map((t, idx) => (
-                            <span key={idx} className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-900 border border-gray-300 dark:border-gray-800 text-[8px] font-bold text-gray-600 dark:text-gray-600 rounded uppercase transition-colors">{t}</span>
-                          ))}
-                        </div>
-                      </div>
-                      <p className="text-[9px] text-gray-600 italic px-2">"이 페르소나는 Test Generator에서 생성 시 지정된 불변 컨텍스트입니다."</p>
-                    </div>
-                  )}
-
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Implementation Source</label>
-                      <button onClick={() => fileInputRef.current?.click()} className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 transition-colors"><FileUp className="w-3.5 h-3.5" /> Import</button>
-                      <input type="file" ref={fileInputRef} className="hidden" accept=".js,.ts" onChange={handleFileUpload} />
-                    </div>
-                    <div className="bg-gray-50 dark:bg-black rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden focus-within:border-indigo-500 transition-all">
-                      <textarea
-                        value={newManualScript.code}
-                        onChange={e => setNewManualScript({ ...newManualScript, code: e.target.value })}
-                        className="w-full h-64 bg-transparent p-5 mono text-[11px] text-gray-800 dark:text-green-400 outline-none resize-none transition-colors"
-                        spellCheck={false}
-                      />
-                    </div>
-                  </div>
                 </div>
 
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Dataset Configuration</label>
-                    <button onClick={addDatasetRow} className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-indigo-600 hover:text-white text-gray-500 dark:text-white rounded-lg text-[10px] font-black uppercase flex items-center gap-1.5 transition-all">
-                      <Plus className="w-3.5 h-3.5" /> Add Field
-                    </button>
-                  </div>
-                  <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden min-h-[400px] flex flex-col shadow-inner transition-colors">
-                    <div className="p-4 grid grid-cols-3 gap-4 border-b border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/50 text-[9px] font-black text-gray-500 dark:text-gray-600 uppercase tracking-widest transition-colors">
-                      <span>Field (ID)</span>
-                      <span>Synthetic Value</span>
-                      <span className="text-right">Actions</span>
-                    </div>
-                    <div className="flex-1 overflow-y-auto max-h-[500px] custom-scrollbar">
-                      {newManualScript.dataset.map((row, idx) => (
-                        <div key={row.id} className="p-4 grid grid-cols-3 gap-4 border-b border-gray-200 dark:border-gray-900 items-center group transition-colors">
-                          <input
-                            type="text"
-                            value={row.field}
-                            onChange={e => updateDatasetItem(idx, 'field', e.target.value)}
-                            className="bg-transparent border-b border-transparent focus:border-indigo-500 outline-none text-[11px] font-bold text-indigo-600 dark:text-indigo-400 mono placeholder:text-gray-400 dark:placeholder:text-gray-800 transition-colors"
-                            placeholder="FIELD_ID"
-                          />
-                          <input
-                            type="text"
-                            value={row.value}
-                            onChange={e => updateDatasetItem(idx, 'value', e.target.value)}
-                            className="bg-transparent border-b border-transparent focus:border-indigo-500 outline-none text-[11px] text-gray-900 dark:text-blue-300 mono placeholder:text-gray-400 dark:placeholder:text-gray-800 transition-colors"
-                            placeholder="value"
-                          />
-                          <div className="flex justify-end gap-2">
-                            <select
-                              value={row.type}
-                              onChange={e => updateDatasetItem(idx, 'type', e.target.value as any)}
-                              className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase outline-none transition-colors"
-                            >
-                              <option value={DataType.VALID}>Valid</option>
-                              <option value={DataType.INVALID}>Invalid</option>
-                              <option value={DataType.SECURITY}>Security</option>
-                            </select>
-                            <button onClick={() => removeDatasetRow(idx)} className="p-1.5 text-gray-700 hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
               </div>
 
               <div className="p-8 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/20 flex justify-end gap-4 transition-colors">

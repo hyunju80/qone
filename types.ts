@@ -14,7 +14,8 @@ export enum ViewMode {
   REPORTS = 'reports',
   DEVICE_FARM = 'device_farm',
   CMS = 'cms', // Customer Management System (Super Admin)
-  DESIGN_CENTER = 'design_center' // Asset Management
+  DESIGN_CENTER = 'design_center', // Asset Management
+  DATASET_STUDIO = 'dataset_studio'
 }
 
 export type UserRole = 'Super Admin' | 'Admin' | 'Manager' | 'QA Engineer' | 'Viewer';

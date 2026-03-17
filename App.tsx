@@ -30,6 +30,7 @@ import CustomerHub from './components/CustomerHub';
 import WorkspaceSelection from './components/WorkspaceSelection';
 import AiExploration from './components/AiExploration'; // Added
 import StepRunnerView from './components/StepRunnerView'; // Added
+import DataSetStudio from './components/DataSetStudio'; // Added
 import DesignCenter from './components/DesignCenter/DesignCenter'; // Added
 import Logo from './components/Logo';
 import { ViewMode, TestScript, ScriptStatus, ScriptOrigin, User, Project, Persona, TestHistory, Message, TestSchedule, Device, ApprovalTask, TargetDevice, CustomerAccount, SubscriptionPlan, Scenario } from './types';
@@ -117,6 +118,7 @@ const AppContent: React.FC = () => {
       case ViewMode.AI_GENERATOR: return 'AI Generator';
       case ViewMode.AI_EXPLORATION: return 'AI Exploration';
       case ViewMode.GENERATOR: return 'Test Generator';
+      case ViewMode.DATASET_STUDIO: return 'DataSet Studio';
       case ViewMode.LIBRARY: return 'Asset Library';
       case ViewMode.PERSONAS: return 'Persona Management';
       case ViewMode.HISTORY: return 'Test History';
@@ -679,6 +681,8 @@ const AppContent: React.FC = () => {
         />;
       case ViewMode.REPORTS:
         return <ReportDashboard history={filteredHistory} scripts={filteredScripts} activeProject={activeProject} />;
+      case ViewMode.DATASET_STUDIO:
+        return <DataSetStudio activeProject={activeProject} onAlert={showAlert} />;
       case ViewMode.DESIGN_CENTER:
         return (
           <DesignCenter

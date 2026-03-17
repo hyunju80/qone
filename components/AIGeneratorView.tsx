@@ -47,7 +47,7 @@ const AIGeneratorView: React.FC<AIGeneratorViewProps> = ({
     onUpdateLastEditingScenarioId
 }) => {
     // Determine the active pipeline stage
-    const [activeTab, setActiveTab] = useState<'scenario' | 'verification' | 'dataset'>('scenario');
+    const [activeTab, setActiveTab] = useState<'scenario' | 'verification'>('scenario');
 
     if (!activeProject) return null;
 
@@ -74,16 +74,6 @@ const AIGeneratorView: React.FC<AIGeneratorViewProps> = ({
                             }`}
                     >
                         <Activity className="w-3.5 h-3.5" /> 2. Auto-Verification
-                    </button>
-                    <div className="w-8 flex items-center justify-center text-gray-300 dark:text-gray-700">-</div>
-                    <button
-                        onClick={() => setActiveTab('dataset')}
-                        className={`px-4 py-2 flex items-center gap-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === 'dataset'
-                            ? 'bg-indigo-600 text-white shadow-md'
-                            : 'bg-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                            }`}
-                    >
-                        <Database className="w-3.5 h-3.5" /> 3. DataSet Studio
                     </button>
                 </div>
             </div>
@@ -119,17 +109,7 @@ const AIGeneratorView: React.FC<AIGeneratorViewProps> = ({
                             personas={personas}
                             onRegisterAsset={(script) => {
                                 onSyncScript(script);
-                                // Optional jump to dataset automatically:
-                                // setActiveTab('dataset');
                             }}
-                        />
-                    </div>
-                )}
-                {activeTab === 'dataset' && (
-                    <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-0 animate-in fade-in duration-300">
-                        <DataSetStudio
-                            activeProject={activeProject}
-                            onAlert={onAlert}
                         />
                     </div>
                 )}
