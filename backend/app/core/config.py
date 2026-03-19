@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     ]
 
     # AI SETTINGS
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3-flash-preview"
     GOOGLE_API_KEY: str = ""
 
     model_config = SettingsConfigDict(
