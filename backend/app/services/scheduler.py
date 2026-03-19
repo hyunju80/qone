@@ -65,6 +65,10 @@ class SchedulerService:
     def execute_job(self, schedule_id: str):
         """
         The actual job function.
+        
+        TODO: Implement Execution Preemption (자원 선점)
+        - Priority가 'Critical'인 작업이 실행될 때 리소스를 선점하도록 로직 고도화 예정.
+        - 현재 실행 중인 낮은 우선순위의 작업을 중단하거나, 대기 큐에서 최우선 순위로 배치.
         """
         logger.info(f"Executing scheduled job: {schedule_id}")
         try:

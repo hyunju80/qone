@@ -30,3 +30,12 @@ class User(Base):
     customer_account = relationship("CustomerAccount", back_populates="users")
     # Access control can be a separate table or implicit
     project_access = relationship("ProjectAccess", back_populates="user")
+
+class PermissionMatrix(Base):
+    id = Column(String, primary_key=True, index=True)
+    category = Column(String, nullable=False)
+    feature = Column(String, nullable=False)
+    admin_allowed = Column(Boolean, default=True)
+    manager_allowed = Column(Boolean, default=True)
+    qa_engineer_allowed = Column(Boolean, default=True)
+    viewer_allowed = Column(Boolean, default=False)

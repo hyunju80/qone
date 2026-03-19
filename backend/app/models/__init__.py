@@ -1,4 +1,4 @@
-from .user import User, CustomerAccount
+from .user import User, CustomerAccount, PermissionMatrix
 from .project import Project, ProjectAccess
 from .test import TestScript, Persona, Scenario, TestHistory, TestSchedule, ScheduleScript
 from .device import Device

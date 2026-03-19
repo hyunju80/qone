@@ -88,6 +88,7 @@ const DataSetStudio: React.FC<DataSetStudioProps> = ({ activeProject, onAlert })
         }
     };
 
+
     const handleSaveDataset = async () => {
         if (!selectedScript || generatedData.length === 0) return;
 
@@ -110,10 +111,15 @@ const DataSetStudio: React.FC<DataSetStudioProps> = ({ activeProject, onAlert })
         <div className="flex h-full w-full overflow-hidden bg-gray-50 dark:bg-[#0c0e12]">
             {/* Sidebar: Asset List */}
             <div className="w-[300px] border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111318] flex flex-col shrink-0 transition-colors">
-                <div className="p-5 border-b border-gray-200 dark:border-gray-800 space-y-4">
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Asset Studio</span>
-                        <span className="text-[9px] text-gray-500 uppercase font-black tracking-widest">Verified Assets</span>
+                <div className="p-6 border-b border-gray-200 dark:border-gray-800 bg-indigo-50/30 dark:bg-indigo-500/5 space-y-4">
+                    <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2">
+                            <div className="w-1 h-3.5 bg-indigo-600 rounded-full" />
+                            <span className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-tight">Verified Test Assets</span>
+                        </div>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium leading-relaxed">
+                            Select a verified test asset to create and map intelligent datasets.
+                        </p>
                     </div>
 
                     <div className="relative">
@@ -258,7 +264,9 @@ const DataSetStudio: React.FC<DataSetStudioProps> = ({ activeProject, onAlert })
                                         <TableIcon className="w-5 h-5 text-indigo-500" />
                                         <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight transition-colors">DataSet Mapping Table</h3>
                                     </div>
-                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest transition-colors">Total Rows: {generatedData.length}</div>
+                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-4 transition-colors">
+                                        <span>Total Rows: {generatedData.length}</span>
+                                    </div>
                                 </div>
                                 <div className="flex-1 overflow-auto custom-scrollbar">
                                     {generatedData.length === 0 ? (
@@ -281,8 +289,8 @@ const DataSetStudio: React.FC<DataSetStudioProps> = ({ activeProject, onAlert })
                                             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 transition-colors">
                                                 {generatedData.map((row, idx) => (
                                                     <tr key={idx} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                                                        <td className="px-8 py-4">
-                                                            <div className="text-[11px] font-black text-gray-900 dark:text-gray-200 transition-colors truncate">{row.field}</div>
+                                                        <td className="px-8 py-4 text-[11px] font-black text-gray-900 dark:text-gray-200">
+                                                            {row.field}
                                                         </td>
                                                         <td className="px-8 py-4">
                                                             <input

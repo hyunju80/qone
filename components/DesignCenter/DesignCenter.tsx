@@ -4,7 +4,7 @@ import ObjectRepository from './ObjectRepository';
 import ActionLibrary from './ActionLibrary';
 import DataManagement from './DataManagement';
 import PersonaManager from '../PersonaManager';
-import { Database, Code, Target, Layout, Users } from 'lucide-react';
+import { Database, Code, Target, Users, ExternalLink, Library } from 'lucide-react';
 
 interface DesignCenterProps {
     activeProject: Project;
@@ -16,7 +16,7 @@ interface DesignCenterProps {
 }
 
 const DesignCenter: React.FC<DesignCenterProps> = ({ activeProject, user, personas, onAddPersona, onUpdatePersona, onAlert }) => {
-    const [activeTab, setActiveTab] = useState<'objects' | 'actions' | 'data' | 'personas'>('personas');
+    const [activeTab, setActiveTab] = useState<'objects' | 'actions' | 'personas' | 'data'>('personas');
 
     return (
         <div className="h-full flex flex-col bg-gray-50 dark:bg-[#0c0e12] transition-colors">
@@ -56,7 +56,7 @@ const DesignCenter: React.FC<DesignCenterProps> = ({ activeProject, user, person
                             : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                             }`}
                     >
-                        <Database className="w-4 h-4" /> Test Data
+                        <Library className="w-4 h-4" /> Global Data
                     </button>
                 </div>
             </div>
@@ -67,9 +67,11 @@ const DesignCenter: React.FC<DesignCenterProps> = ({ activeProject, user, person
                         personas={personas.filter(p => (
                             p.projectId === activeProject.id ||
                             p.projectId === 'global' ||
+                            p.type === 'SYSTEM' ||
                             !p.projectId
                         ))}
                         activeProjectId={activeProject.id}
+                        activeProjectDomain={activeProject.domain}
                         onAddPersona={onAddPersona}
                         onUpdatePersona={onUpdatePersona}
                     />

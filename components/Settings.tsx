@@ -2,9 +2,10 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Project, User, ProjectAccess, TargetDevice, CustomerAccount, ProjectEnvironment, UserRole, ObjectElement, CategoryNode } from '../types';
-import { Database, Plus, Trash2, Edit3, X, Fingerprint, Layout, Monitor, Smartphone, Globe, Mail, UserPlus, UserMinus, Server, CheckCircle2, AlertCircle, Info, Package, Apple, Hash, Network, Laptop, ShieldCheck } from 'lucide-react';
+import { Database, Plus, Trash2, Edit3, X, Fingerprint, Layout, Monitor, Smartphone, Globe, Mail, UserPlus, UserMinus, Server, CheckCircle2, AlertCircle, Info, Package, Apple, Hash, Network, Laptop, ShieldCheck, ShieldAlert, Loader2, Lock, Users } from 'lucide-react';
 import { MOCK_CUSTOMER } from '../constants';
 import { projectsApi } from '../api/projects';
+import { RolePermission } from '../types';
 
 interface SettingsProps {
   user: User;
@@ -24,6 +25,10 @@ const Settings: React.FC<SettingsProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'iam' | 'workspace'>('workspace');
   const [customer, setCustomer] = useState<CustomerAccount>(MOCK_CUSTOMER);
+
+  // --- RBAC State ---
+  const [permissions, setPermissions] = useState<RolePermission[]>([]);
+  const [loadingPermissions, setLoadingPermissions] = useState(false);
 
   // --- Workspace Config State ---
   const [editingEnv, setEditingEnv] = useState<ProjectEnvironment | null>(null);
@@ -264,6 +269,69 @@ const Settings: React.FC<SettingsProps> = ({
     }
   };
 
+  const isSuperAdmin = user.isSaaSSuperAdmin || user.role === 'Admin';
+
+  const fetchPermissions = async () => {
+    if (!isSuperAdmin) return;
+    setLoadingPermissions(true);
+    try {
+      // @ts-ignore
+      const data = await import('../api/users').then(m => m.usersApi.getPermissions());
+      setPermissions(data as RolePermission[]);
+    } catch (e) {
+      console.error("Failed to fetch permissions", e);
+    } finally {
+      setLoadingPermissions(false);
+    }
+  };
+
+  const togglePermission = async (id: string, role: string, currentValue: boolean) => {
+    const roleKey = role === 'Admin' ? 'admin_allowed' :
+      role === 'Manager' ? 'manager_allowed' :
+        role === 'QA Engineer' ? 'qa_engineer_allowed' :
+          'viewer_allowed';
+
+    const update = { [roleKey]: !currentValue };
+
+    // Optimistic update
+    setPermissions(prev => prev.map(p => {
+      if (p.id === id) {
+        const pCopy = { ...p };
+        if (role === 'Admin') pCopy.adminAllowed = !currentValue;
+        if (role === 'Manager') pCopy.managerAllowed = !currentValue;
+        if (role === 'QA Engineer') pCopy.qaEngineerAllowed = !currentValue;
+        if (role === 'Viewer') pCopy.viewerAllowed = !currentValue;
+        return pCopy;
+      }
+      return p;
+    }));
+
+    try {
+      // @ts-ignore
+      await import('../api/users').then(m => m.usersApi.updatePermission(id, update));
+    } catch (e) {
+      onAlert("Error", "Failed to update permission", 'error');
+      // Rollback
+      setPermissions(prev => prev.map(p => {
+        if (p.id === id) {
+          const pCopy = { ...p };
+          if (role === 'Admin') pCopy.adminAllowed = currentValue;
+          if (role === 'Manager') pCopy.managerAllowed = currentValue;
+          if (role === 'QA Engineer') pCopy.qaEngineerAllowed = currentValue;
+          if (role === 'Viewer') pCopy.viewerAllowed = currentValue;
+          return pCopy;
+        }
+        return p;
+      }));
+    }
+  };
+
+  React.useEffect(() => {
+    if (activeTab === 'iam' && isSuperAdmin && permissions.length === 0) {
+      fetchPermissions();
+    }
+  }, [activeTab]);
+
   return (
     <div className="p-8 max-w-7xl mx-auto h-full overflow-y-auto custom-scrollbar bg-gray-50 dark:bg-[#0c0e12] transition-colors">
       {/* Tabs Navigation */}
@@ -283,9 +351,14 @@ const Settings: React.FC<SettingsProps> = ({
         {activeTab === 'iam' && (
           <div className="space-y-10">
             <div className="flex justify-between items-center">
-              <div>
-                <h3 className="text-sm font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest transition-colors mb-1">Project Team Members ({users.length})</h3>
-                <p className="text-[10px] text-gray-400 dark:text-gray-600 font-bold uppercase tracking-tighter transition-colors">Authorized agents for workspace: {activeProject?.name}</p>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-100 dark:bg-indigo-600/10 rounded-lg text-indigo-600 dark:text-indigo-400">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors mb-0.5">Project Team Members ({users.length})</h3>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-600 font-bold uppercase tracking-tight">Authorized agents for workspace: {activeProject?.name}</p>
+                </div>
               </div>
               {isAtLeastManager && (
                 <button onClick={handleOpenInvite} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 transition-all shadow-lg shadow-indigo-600/20">
@@ -322,7 +395,8 @@ const Settings: React.FC<SettingsProps> = ({
                           <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest transition-colors ${u.role === 'Admin' ? 'bg-indigo-600 text-white' :
                             u.role === 'Manager' ? 'bg-amber-100 dark:bg-amber-600/10 text-amber-600 dark:text-amber-500 border border-amber-200 dark:border-amber-500/20' :
                               u.role === 'QA Engineer' ? 'bg-emerald-100 dark:bg-emerald-600/10 text-emerald-600 dark:text-emerald-500 border border-emerald-200 dark:border-emerald-500/20' :
-                                'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                                u.role === 'Viewer' ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700' :
+                                  'bg-gray-100 dark:bg-gray-800 text-gray-500'
                             }`}>
                             {u.role}
                           </span>
@@ -343,6 +417,75 @@ const Settings: React.FC<SettingsProps> = ({
                 </tbody>
               </table>
             </div>
+
+            {/* --- Advanced: Role Permission Matrix (RBAC Management) --- */}
+            {isSuperAdmin && (
+              <div className="space-y-6 pt-10 border-t border-gray-100 dark:border-gray-800 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-100 dark:bg-indigo-600/10 rounded-lg text-indigo-600 dark:text-indigo-400">
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors mb-0.5">Role Permission Matrix (Advanced)</h3>
+                      <p className="text-[10px] text-gray-400 dark:text-gray-600 font-bold uppercase tracking-tight">Define feature access policies across different user roles</p>
+                    </div>
+                  </div>
+                  {loadingPermissions && <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />}
+                </div>
+
+                <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2rem] overflow-hidden shadow-xl transition-colors">
+                  <div className="overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left">
+                      <thead className="bg-gray-50 dark:bg-gray-900/50 text-[10px] font-black uppercase text-gray-500 border-b border-gray-200 dark:border-gray-800 transition-colors">
+                        <tr>
+                          <th className="px-8 py-4">Functional Area & Feature</th>
+                          <th className="px-6 py-4 text-center">Admin</th>
+                          <th className="px-6 py-4 text-center">Manager</th>
+                          <th className="px-6 py-4 text-center">QA Engineer</th>
+                          <th className="px-6 py-4 text-center">Viewer</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 dark:divide-gray-800 transition-colors">
+                        {permissions.map((p) => (
+                          <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
+                            <td className="px-8 py-5">
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest mb-0.5">{p.category}</span>
+                                <span className="text-xs font-bold text-gray-900 dark:text-white transition-colors">{p.feature}</span>
+                              </div>
+                            </td>
+                            {['Admin', 'Manager', 'QA Engineer', 'Viewer'].map((role) => {
+                              const isAllowed = role === 'Admin' ? p.adminAllowed :
+                                role === 'Manager' ? p.managerAllowed :
+                                  role === 'QA Engineer' ? p.qaEngineerAllowed :
+                                    p.viewerAllowed;
+
+                              return (
+                                <td key={role} className="px-6 py-5">
+                                  <div className="flex justify-center">
+                                    <button
+                                      onClick={() => togglePermission(p.id, role, isAllowed)}
+                                      disabled={role === 'Admin'}
+                                      className={`p-2 rounded-xl transition-all ${isAllowed
+                                        ? 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20'
+                                        : 'text-gray-300 dark:text-gray-700 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10'
+                                        }`}
+                                    >
+                                      {isAllowed ? <CheckCircle2 className="w-5 h-5" /> : <ShieldAlert className="w-5 h-5" />}
+                                    </button>
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* User Create/Edit Modal */}
             {showUserModal && createPortal(
@@ -390,6 +533,7 @@ const Settings: React.FC<SettingsProps> = ({
                       >
                         <option value="Manager">Manager (Approver)</option>
                         <option value="QA Engineer">QA Engineer (Test Developer)</option>
+                        <option value="Viewer">Viewer (Read Only)</option>
                       </select>
                     </div>
                   </div>
@@ -447,238 +591,272 @@ const Settings: React.FC<SettingsProps> = ({
 
         {/* --- Tab 2: Workspace & Infrastructure (Project-Specific) --- */}
         {activeTab === 'workspace' && (
-          <div className="space-y-12 animate-in slide-in-from-bottom-2 duration-500">
-            {/* Target Platforms Config */}
-            <div className="space-y-6">
-              <div className="flex items-center gap-3">
-                <Monitor className="w-5 h-5 text-indigo-500 dark:text-indigo-400 transition-colors" />
-                <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Target Platforms & Device Station</h3>
+          <div className="space-y-12 animate-in slide-in-from-bottom-2 duration-500 pb-20">
+            {/* --- Section 1: Application Identity & Infrastructure --- */}
+            <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[3rem] p-10 shadow-sm transition-colors space-y-12">
+              <div className="flex items-center gap-4 border-b border-gray-100 dark:border-gray-800 pb-8 transition-colors">
+                <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-xl shadow-indigo-600/20">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight italic transition-colors">
+                    1. Application Identity & Infrastructure
+                  </h3>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest mt-1">
+                    Managed Runtime Environment & Platform Identification Station
+                  </p>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {(['PC-Web', 'Mobile-Web', 'Mobile-App'] as TargetDevice[]).map(device => {
-                  const isSelected = (activeProject?.targetDevices || []).includes(device);
-                  return (
-                    <button
-                      key={device}
-                      onClick={() => toggleTargetDevice(device)}
-                      className={`group relative p-6 rounded-[2rem] border transition-all text-left overflow-hidden shadow-sm dark:shadow-none ${isSelected
-                        ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-200 dark:border-indigo-500 shadow-xl shadow-indigo-600/10'
-                        : 'bg-white dark:bg-[#16191f] border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 opacity-60'
-                        }`}
-                    >
-                      <div className={`absolute top-0 right-0 p-6 transition-transform group-hover:scale-110 ${isSelected ? 'text-indigo-200 dark:text-indigo-400' : 'text-gray-100 dark:text-gray-800'}`}>
-                        {device === 'PC-Web' ? <Laptop className="w-16 h-16" /> : <Smartphone className="w-16 h-16" />}
-                      </div>
-
-                      <div className="relative z-10">
-                        <div className="flex items-center gap-2 mb-2">
-                          {device === 'PC-Web' ? <Monitor className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
-                          <span className={`text-[10px] font-black uppercase tracking-widest ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'}`}>Platform</span>
-                        </div>
-                        <h4 className="text-xl font-black text-gray-900 dark:text-white mb-4 transition-colors">{device}</h4>
-                        <div className="flex items-center gap-2">
-                          {isSelected ? (
-                            <div className="flex items-center gap-1.5 px-2 py-1 bg-green-100 dark:bg-green-600/10 border border-green-200 dark:border-green-500/20 rounded text-[9px] font-black text-green-600 dark:text-green-500 uppercase transition-colors">
-                              <CheckCircle2 className="w-3 h-3" /> Active Station
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded text-[9px] font-black text-gray-500 dark:text-gray-700 uppercase transition-colors">
-                              <X className="w-3 h-3" /> Inactive
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Mobile Application Identity (Conditional) */}
-            {(activeProject?.targetDevices || []).includes('Mobile-App') && (
-              <div className="animate-in slide-in-from-top-4 duration-500 space-y-6">
+              {/* 1.1 Target Platforms */}
+              <div className="space-y-6">
                 <div className="flex items-center gap-3">
-                  <Smartphone className="w-5 h-5 text-indigo-500 dark:text-indigo-400 transition-colors" />
-                  <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Mobile Application Identity</h3>
+                  <Monitor className="w-4 h-4 text-indigo-500 dark:text-indigo-400 transition-colors" />
+                  <h4 className="text-[11px] font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">1.1 Target Technology Stacks</h4>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] p-8 shadow-xl transition-colors">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 bg-indigo-100 dark:bg-indigo-600/10 rounded-xl text-indigo-600 dark:text-indigo-400 transition-colors">
-                        <Monitor className="w-4 h-4" />
-                      </div>
-                      <h4 className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Android Identification</h4>
-                    </div>
-                    <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2 transition-colors">
-                          <Package className="w-3 h-3" /> Package Name
-                        </label>
-                        <input
-                          type="text"
-                          value={activeProject.mobileConfig?.androidPackage || ''}
-                          onChange={(e) => updateMobileConfig('androidPackage', e.target.value)}
-                          placeholder="e.g., com.company.appname"
-                          className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-3 text-sm text-gray-900 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all mono shadow-sm dark:shadow-none"
-                        />
-                      </div>
-                    </div>
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {(['PC-Web', 'Mobile-Web', 'Mobile-App'] as TargetDevice[]).map(device => {
+                    const isSelected = (activeProject?.targetDevices || []).includes(device);
+                    return (
+                      <button
+                        key={device}
+                        onClick={() => toggleTargetDevice(device)}
+                        className={`group relative p-6 rounded-[2rem] border transition-all text-left overflow-hidden shadow-sm dark:shadow-none ${isSelected
+                          ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-200 dark:border-indigo-500 shadow-xl shadow-indigo-600/10'
+                          : 'bg-white dark:bg-[#16191f] border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 opacity-60'
+                          }`}
+                      >
+                        <div className={`absolute top-0 right-0 p-6 transition-transform group-hover:scale-110 ${isSelected ? 'text-indigo-200 dark:text-indigo-400' : 'text-gray-100 dark:text-gray-800'}`}>
+                          {device === 'PC-Web' ? <Laptop className="w-16 h-16" /> : <Smartphone className="w-16 h-16" />}
+                        </div>
 
-                  <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] p-8 shadow-xl transition-colors">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 bg-gray-100 dark:bg-gray-600/10 rounded-xl text-gray-500 dark:text-gray-300 transition-colors">
-                        <Apple className="w-4 h-4" />
-                      </div>
-                      <h4 className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">iOS Identification</h4>
-                    </div>
-                    <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2 transition-colors">
-                          <Fingerprint className="w-3 h-3" /> Bundle Identifier
-                        </label>
-                        <input
-                          type="text"
-                          value={activeProject.mobileConfig?.iosBundleId || ''}
-                          onChange={(e) => updateMobileConfig('iosBundleId', e.target.value)}
-                          placeholder="e.g., io.company.appname"
-                          className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-3 text-sm text-gray-900 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all mono shadow-sm dark:shadow-none"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] p-8 shadow-xl flex items-center justify-between transition-colors">
-                  <div className="flex items-center gap-6">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2 transition-colors">
-                        <Hash className="w-3 h-3" /> Version Policy
-                      </label>
-                      <input
-                        type="text"
-                        value={activeProject.mobileConfig?.appVersion || ''}
-                        onChange={(e) => updateMobileConfig('appVersion', e.target.value)}
-                        placeholder="e.g., 1.2.0-beta"
-                        className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-3 text-sm text-gray-900 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all w-48 shadow-sm dark:shadow-none"
-                      />
-                    </div>
-                  </div>
-                  <div className="p-4 bg-indigo-50 dark:bg-indigo-600/5 border border-indigo-100 dark:border-indigo-500/10 rounded-2xl flex items-center gap-3 max-w-md transition-colors">
-                    <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0 transition-colors" />
-                    <p className="text-[10px] text-gray-500 italic leading-relaxed text-balance transition-colors">
-                      "상기 식별자는 Oracle 에이전트가 전 세계 디바이스 팜에서 타겟 앱을 식별하고 자동 실행하는 데 사용되는 핵심 메타데이터입니다."
-                    </p>
-                  </div>
+                        <div className="relative z-10">
+                          <div className="flex items-center gap-2 mb-2">
+                            {device === 'PC-Web' ? <Monitor className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'}`}>Platform</span>
+                          </div>
+                          <h4 className="text-xl font-black text-gray-900 dark:text-white mb-4 transition-colors">{device}</h4>
+                          <div className="flex items-center gap-2">
+                            {isSelected ? (
+                              <div className="flex items-center gap-1.5 px-2 py-1 bg-green-100 dark:bg-green-600/10 border border-green-200 dark:border-green-500/20 rounded text-[9px] font-black text-green-600 dark:text-green-500 uppercase transition-colors">
+                                <CheckCircle2 className="w-3 h-3" /> Active Station
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded text-[9px] font-black text-gray-500 dark:text-gray-700 uppercase transition-colors">
+                                <X className="w-3 h-3" /> Inactive
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            )}
 
-            {/* Environment URLs Mapping */}
-            <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] p-8 shadow-xl transition-colors">
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-3">
-                  <Server className="w-5 h-5 text-indigo-500 dark:text-indigo-400 transition-colors" />
-                  <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Active Workspace: {activeProject?.name}</h3>
-                </div>
-                <span className="px-3 py-1 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-[10px] font-black text-gray-500 uppercase tracking-tighter transition-colors">Domain: {activeProject?.domain}</span>
-              </div>
+              {/* 1.2 Mobile Platform Identity (Conditional) */}
+              {(activeProject?.targetDevices || []).includes('Mobile-App') && (
+                <div className="animate-in slide-in-from-top-4 duration-500 space-y-6">
+                  <div className="flex items-center gap-3">
+                    <Fingerprint className="w-4 h-4 text-indigo-500 dark:text-indigo-400 transition-colors" />
+                    <h4 className="text-[11px] font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">1.2 Mobile Platform Identification Metadata (Appium)</h4>
+                  </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {(['Development', 'Staging', 'Production'] as ProjectEnvironment[]).map(env => (
-                  <div key={env} className={`p-5 bg-gray-50 dark:bg-[#0c0e12] border rounded-2xl transition-all shadow-sm dark:shadow-none ${editingEnv === env ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-gray-200 dark:border-gray-800'}`}>
-                    <div className="text-[10px] font-black text-gray-500 dark:text-gray-600 uppercase mb-3 flex items-center gap-2 transition-colors">
-                      <Globe className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-500" /> {env} URL
-                    </div>
-
-                    {editingEnv === env ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-gray-800 rounded-[2.5rem] p-8 shadow-sm transition-colors">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-indigo-100 dark:bg-indigo-600/10 rounded-xl text-indigo-600 dark:text-indigo-400 transition-colors">
+                          <Monitor className="w-4 h-4" />
+                        </div>
+                        <h4 className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Android Identification</h4>
+                      </div>
                       <div className="space-y-4">
-                        <input
-                          autoFocus
-                          value={tempEnvUrl}
-                          onChange={(e) => setTempEnvUrl(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && saveEnvUrl()}
-                          className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-xs font-bold text-gray-900 dark:text-white outline-none focus:border-indigo-400 transition-colors"
-                        />
-                        <div className="flex gap-2">
-                          <button onClick={saveEnvUrl} className="flex-1 py-1.5 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-lg shadow-lg shadow-indigo-600/20">Save</button>
-                          <button onClick={() => setEditingEnv(null)} className="flex-1 py-1.5 bg-gray-200 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[9px] font-black uppercase rounded-lg hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors">Cancel</button>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2 transition-colors">
+                            <Package className="w-3 h-3" /> Package Name
+                          </label>
+                          <input
+                            type="text"
+                            value={activeProject.mobileConfig?.androidPackage || ''}
+                            onChange={(e) => updateMobileConfig('androidPackage', e.target.value)}
+                            placeholder="e.g., com.company.appname"
+                            className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-3 text-sm text-gray-900 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all mono shadow-sm dark:shadow-none"
+                          />
                         </div>
                       </div>
-                    ) : (
-                      <>
-                        <div className="w-full bg-transparent text-xs font-bold text-gray-700 dark:text-gray-300 truncate mb-4 transition-colors" title={activeProject?.environments?.[env] || 'Not Configured'}>
-                          {activeProject?.environments?.[env] || 'Not Configured'}
+                    </div>
+
+                    <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-gray-800 rounded-[2.5rem] p-8 shadow-sm transition-colors">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-gray-100 dark:bg-white/10 rounded-xl text-gray-500 dark:text-gray-300 transition-colors">
+                          <Apple className="w-4 h-4" />
                         </div>
-                        <button
-                          onClick={() => startEditEnv(env, activeProject?.environments?.[env] || '')}
-                          className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-1.5 hover:underline transition-colors"
-                        >
-                          <Edit3 className="w-3 h-3" /> Change Entry
-                        </button>
-                      </>
-                    )}
+                        <h4 className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">iOS Identification</h4>
+                      </div>
+                      <div className="space-y-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2 transition-colors">
+                            <Fingerprint className="w-3 h-3" /> Bundle Identifier
+                          </label>
+                          <input
+                            type="text"
+                            value={activeProject.mobileConfig?.iosBundleId || ''}
+                            onChange={(e) => updateMobileConfig('iosBundleId', e.target.value)}
+                            placeholder="e.g., io.company.appname"
+                            className="w-full bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-3 text-sm text-gray-900 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all mono shadow-sm dark:shadow-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                ))}
+
+                  <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-gray-800 rounded-[2.5rem] p-8 shadow-sm flex items-center justify-between transition-colors">
+                    <div className="flex items-center gap-6">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2 transition-colors">
+                          <Hash className="w-3 h-3" /> Version Policy
+                        </label>
+                        <input
+                          type="text"
+                          value={activeProject.mobileConfig?.appVersion || ''}
+                          onChange={(e) => updateMobileConfig('appVersion', e.target.value)}
+                          placeholder="e.g., 1.2.0-beta"
+                          className="bg-white dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-3 text-sm text-gray-900 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all w-48 shadow-sm dark:shadow-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="p-4 bg-indigo-50 dark:bg-indigo-600/5 border border-indigo-100 dark:border-indigo-500/10 rounded-2xl flex items-center gap-3 max-w-md transition-colors">
+                      <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0 transition-colors" />
+                      <p className="text-[10px] text-gray-500 italic leading-relaxed text-balance transition-colors">
+                        "상기 식별자는 Oracle 에이전트가 전 세계 디바이스 팜에서 타겟 앱을 식별하고 자동 실행하는 데 사용되는 핵심 메타데이터입니다."
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 1.3 Active Workspace Environment Station */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Server className="w-4 h-4 text-indigo-500 dark:text-indigo-400 transition-colors" />
+                    <h4 className="text-[11px] font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">1.3 Active Workspace Environment Infrastructure</h4>
+                  </div>
+                  <span className="px-3 py-1 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-[10px] font-black text-gray-500 uppercase tracking-tighter transition-colors italic">Domain Cluster: {activeProject?.domain}</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {(['Development', 'Staging', 'Production'] as ProjectEnvironment[]).map(env => (
+                    <div key={env} className={`p-5 bg-white dark:bg-white/5 border rounded-2xl transition-all shadow-sm dark:shadow-none ${editingEnv === env ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-gray-200 dark:border-gray-800'}`}>
+                      <div className="text-[10px] font-black text-gray-500 dark:text-gray-600 uppercase mb-3 flex items-center gap-2 transition-colors">
+                        <Globe className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-500" /> {env} Connection
+                      </div>
+
+                      {editingEnv === env ? (
+                        <div className="space-y-4">
+                          <input
+                            autoFocus
+                            value={tempEnvUrl}
+                            onChange={(e) => setTempEnvUrl(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && saveEnvUrl()}
+                            className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-xs font-bold text-gray-900 dark:text-white outline-none focus:border-indigo-400 transition-colors"
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={saveEnvUrl} className="flex-1 py-1.5 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-lg shadow-lg shadow-indigo-600/20">Save</button>
+                            <button onClick={() => setEditingEnv(null)} className="flex-1 py-1.5 bg-gray-200 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[9px] font-black uppercase rounded-lg hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="w-full bg-transparent text-xs font-bold text-gray-700 dark:text-gray-300 truncate mb-4 transition-colors" title={activeProject?.environments?.[env] || 'Not Configured'}>
+                            {activeProject?.environments?.[env] || 'Not Configured'}
+                          </div>
+                          <button
+                            onClick={() => startEditEnv(env, activeProject?.environments?.[env] || '')}
+                            className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-1.5 hover:underline transition-colors"
+                          >
+                            <Edit3 className="w-3 h-3" /> Connect Entry
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Category Management */}
-            <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] overflow-hidden shadow-xl transition-colors">
-              <div className="p-8 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/20 flex items-center justify-between transition-colors">
-                <div className="flex items-center gap-3">
-                  <Network className="w-5 h-5 text-indigo-500 dark:text-indigo-400 transition-colors" />
-                  <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Project Taxonomy (Categories)</h3>
+            {/* --- Section 2: Project Taxonomy & Organization --- */}
+            <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[3rem] p-10 shadow-sm transition-colors space-y-12">
+              <div className="flex items-center gap-4 border-b border-gray-100 dark:border-gray-800 pb-8 transition-colors">
+                <div className="p-3 bg-amber-500 rounded-2xl text-white shadow-xl shadow-amber-500/20">
+                  <Network className="w-6 h-6" />
                 </div>
-                <div className="flex items-center gap-3">
+                <div>
+                  <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight italic transition-colors">
+                    2. Project Taxonomy & Organization
+                  </h3>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest mt-1">
+                    Functional Module Classification & Domain Responsibility Mapping
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Package className="w-4 h-4 text-amber-500 transition-colors" />
+                    <h4 className="text-[11px] font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">2.1 Module Categories</h4>
+                  </div>
                   <button onClick={() => handleOpenCategoryModal(null)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black rounded-xl uppercase flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition-all">
                     <Plus className="w-3.5 h-3.5" /> Define Category
                   </button>
                 </div>
-              </div>
-              <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-gray-50 dark:bg-gray-900/50 text-[10px] font-black uppercase text-gray-500 border-b border-gray-200 dark:border-gray-800 transition-colors">
-                    <tr>
-                      <th className="px-8 py-4">Category Name</th>
-                      <th className="px-8 py-4">Role/Purpose</th>
-                      <th className="px-8 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-800 transition-colors">
-                    {(activeProject?.categories || []).map((cat) => {
-                      const manager = users.find(u => u.id === cat.managerId);
-                      const parent = (activeProject?.categories || []).find(c => c.id === cat.parentId);
-                      return (
-                        <tr key={cat.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
-                          <td className="px-8 py-5">
-                            <div className="flex flex-col">
-                              <span className="text-indigo-600 dark:text-indigo-400 font-bold transition-colors">{cat.name}</span>
-                              {parent && <span className="text-[10px] text-gray-400 mt-0.5">Sub of: {parent.name}</span>}
-                            </div>
-                          </td>
-                          <td className="px-8 py-5 text-gray-500 italic transition-colors">
-                            <div className="flex flex-col">
-                              <span className="text-xs truncate max-w-[200px]">{cat.description || "Primary Module/Vertical"}</span>
-                              {manager && <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-1">Mgr: {manager.name}</span>}
-                            </div>
-                          </td>
-                          <td className="px-8 py-5 text-right">
-                            <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => handleOpenCategoryModal(cat)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 transition-colors" title="Edit Category"><Edit3 className="w-4 h-4" /></button>
-                              <button onClick={() => handleDeleteCategory(cat.id)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-gray-400 hover:text-red-500 transition-colors" disabled={cat.name === 'Common'} title={cat.name === 'Common' ? "System default cannot be deleted" : "Delete Category"}><Trash2 className={`w-4 h-4 ${cat.name === 'Common' ? 'opacity-30 cursor-not-allowed' : ''}`} /></button>
-                            </div>
-                          </td>
+
+                <div className="border border-gray-200 dark:border-gray-800 rounded-[2rem] overflow-hidden shadow-xl transition-colors bg-white dark:bg-gray-950/10">
+                  <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-50 dark:bg-gray-900/50 text-[10px] font-black uppercase text-gray-500 border-b border-gray-200 dark:border-gray-800 transition-colors">
+                        <tr>
+                          <th className="px-8 py-4">Category Name</th>
+                          <th className="px-8 py-4">Role/Purpose</th>
+                          <th className="px-8 py-4 text-right">Actions</th>
                         </tr>
-                      );
-                    })}
-                    {(!activeProject?.categories || activeProject.categories.length === 0) && (
-                      <tr><td colSpan={3} className="px-8 py-20 text-center text-gray-400 dark:text-gray-600 font-bold uppercase text-[10px] transition-colors">No categories defined</td></tr>
-                    )}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 dark:divide-gray-800 transition-colors">
+                        {(activeProject?.categories || []).map((cat) => {
+                          const manager = users.find(u => u.id === cat.managerId);
+                          const parent = (activeProject?.categories || []).find(c => c.id === cat.parentId);
+                          return (
+                            <tr key={cat.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
+                              <td className="px-8 py-5">
+                                <div className="flex flex-col">
+                                  <span className="text-indigo-600 dark:text-indigo-400 font-bold transition-colors">{cat.name}</span>
+                                  {parent && <span className="text-[10px] text-gray-400 mt-0.5">Sub of: {parent.name}</span>}
+                                </div>
+                              </td>
+                              <td className="px-8 py-5 text-gray-500 italic transition-colors">
+                                <div className="flex flex-col">
+                                  <span className="text-xs truncate max-w-[200px]">{cat.description || "Primary Module/Vertical"}</span>
+                                  {manager && <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-1">Mgr: {manager.name}</span>}
+                                </div>
+                              </td>
+                              <td className="px-8 py-5 text-right">
+                                <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => handleOpenCategoryModal(cat)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 transition-colors" title="Edit Category"><Edit3 className="w-4 h-4" /></button>
+                                  <button onClick={() => handleDeleteCategory(cat.id)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-gray-400 hover:text-red-500 transition-colors" disabled={cat.name === 'Common'} title={cat.name === 'Common' ? "System default cannot be deleted" : "Delete Category"}><Trash2 className={`w-4 h-4 ${cat.name === 'Common' ? 'opacity-30 cursor-not-allowed' : ''}`} /></button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {(!activeProject?.categories || activeProject.categories.length === 0) && (
+                          <tr><td colSpan={3} className="px-8 py-20 text-center text-gray-400 dark:text-gray-600 font-bold uppercase text-[10px] transition-colors">No categories defined</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

@@ -63,6 +63,8 @@ export interface TestAction {
   parameters: { name: string; type: string; required: boolean; description: string }[];
   platform: 'WEB' | 'APP' | 'COMMON';
   is_active: boolean;
+  associatedObjectIds?: string[];
+  associatedDatasetIds?: string[];
 }
 
 export interface TestDataset {
@@ -70,7 +72,9 @@ export interface TestDataset {
   projectId: string;
   name: string;
   description?: string;
-  data: { key: string; value: string; type: string; description?: string }[];
+  fields: { key: string; type: string; description?: string }[];
+  records: Record<string, string>[];
+  data?: { key: string; value: string; type: string; description?: string }[]; // Deprecated
   platform: 'WEB' | 'APP' | 'COMMON';
   classification: 'VALID' | 'INVALID' | 'SECURITY' | 'EDGE_CASE';
   is_active: boolean;
@@ -155,6 +159,16 @@ export interface ProjectAccess {
   accessRole: UserRole;
 }
 
+export interface RolePermission {
+  id: string;
+  category: string;
+  feature: string;
+  adminAllowed: boolean;
+  managerAllowed: boolean;
+  qaEngineerAllowed: boolean;
+  viewerAllowed: boolean;
+}
+
 export interface PipelineStep {
   id: string;
   label: string;
@@ -205,6 +219,10 @@ export interface Persona {
   skillLevel: 'Novice' | 'Intermediate' | 'Expert';
   speed: 'Slow' | 'Moderate' | 'Fast';
   goal: string;
+  motivation?: string;
+  currentState?: string;
+  type: 'SYSTEM' | 'USER';
+  domain?: string;
   isActive: boolean;
   advancedLogic: string[];
 }

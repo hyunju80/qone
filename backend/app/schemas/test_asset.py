@@ -50,7 +50,9 @@ class TestActionResponse(TestActionBase):
 class TestDatasetBase(BaseModel):
     name: str
     description: Optional[str] = None
-    data: List[Dict[str, Any]] = []
+    fields: List[Dict[str, Any]] = []
+    records: List[Dict[str, Any]] = []
+    data: Optional[List[Dict[str, Any]]] = [] # Deprecated
     classification: str
     platform: str = "WEB"
     is_active: bool = True

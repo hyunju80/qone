@@ -165,8 +165,8 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
     let platformMatch = platformFilter === 'ALL' || script.platform === platformFilter;
 
     // Origin Filter
-    let originMatch = filter === 'ALL' || 
-       (filter === 'AI_GEN' ? (script.origin === ScriptOrigin.AI || script.origin === ScriptOrigin.AI_EXPLORATION) : false);
+    let originMatch = filter === 'ALL' ||
+      (filter === 'AI_GEN' ? (script.origin === ScriptOrigin.AI || script.origin === ScriptOrigin.AI_EXPLORATION) : false);
 
     // Favorite Filter
     let favoriteMatch = !showFavoritesOnly || script.isFavorite;
@@ -486,8 +486,8 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
     <div className="p-8 max-w-6xl mx-auto h-full overflow-y-auto relative custom-scrollbar">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1 transition-colors">Asset Library</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm transition-colors">Step Flow와 AI로 생성된 Test Asset 리스트입니다.</p>
+          <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter mb-2 transition-colors">Intelligent Asset Library</h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm font-medium uppercase tracking-widest transition-colors">Comprehensive repository of test assets generated via Step Flow and AI exploration.</p>
         </div>
         {/* 
         <button
@@ -831,250 +831,119 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
 
                   <div className="flex-1 overflow-auto bg-gray-50 dark:bg-[#0c0e12] relative custom-scrollbar transition-colors">
                     {activeViewerTab === 'scenario' ? (
-                <div className="p-8 space-y-8 overflow-y-auto custom-scrollbar">
-                  {(() => {
-                    const scenario = scenarios.find(s => s.goldenScriptId === viewingScript.id);
-                    if (!scenario) return (
-                      <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800/50 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center text-center">
-                        <FileCode className="w-12 h-12 text-gray-400 mb-4 opacity-50" />
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">No Linked Scenario found</p>
-                      </div>
-                    );
-                    return (
-                      <>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Scenario Title</label>
-                          <div className="text-lg font-bold text-gray-900 dark:text-white transition-colors">{scenario.title}</div>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors">{scenario.description}</p>
-                        </div>
+                      <div className="p-8 space-y-8 overflow-y-auto custom-scrollbar">
+                        {(() => {
+                          const scenario = scenarios.find(s => s.goldenScriptId === viewingScript.id);
+                          if (!scenario) return (
+                            <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800/50 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center text-center">
+                              <FileCode className="w-12 h-12 text-gray-400 mb-4 opacity-50" />
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">No Linked Scenario found</p>
+                            </div>
+                          );
+                          return (
+                            <>
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Scenario Title</label>
+                                <div className="text-lg font-bold text-gray-900 dark:text-white transition-colors">{scenario.title}</div>
+                                <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors">{scenario.description}</p>
+                              </div>
 
-                        <div className="space-y-4">
-                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Test Cases / Steps</label>
-                          <div className="space-y-4">
-                            {scenario.testCases.map((tc, idx) => (
-                              <div key={tc.id || idx} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl p-6 transition-colors shadow-sm">
-                                <div className="flex items-center justify-between mb-4">
-                                  <h4 className="font-bold text-gray-900 dark:text-white text-sm transition-colors">{tc.title}</h4>
-                                  <span className="text-[10px] bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-gray-500 dark:text-gray-400 uppercase transition-colors">{tc.status}</span>
-                                </div>
-                                <div className="space-y-3">
-                                  {tc.steps.map((step, sIdx) => (
-                                    <div key={sIdx} className="flex gap-3 text-sm text-gray-600 dark:text-gray-300 transition-colors">
-                                      <span className="text-gray-500 dark:text-gray-600 font-mono text-xs w-4 transition-colors">{sIdx + 1}.</span>
-                                      <span>{step}</span>
+                              <div className="space-y-4">
+                                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Test Cases / Steps</label>
+                                <div className="space-y-4">
+                                  {scenario.testCases.map((tc, idx) => (
+                                    <div key={tc.id || idx} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl p-6 transition-colors shadow-sm">
+                                      <div className="flex items-center justify-between mb-4">
+                                        <h4 className="font-bold text-gray-900 dark:text-white text-sm transition-colors">{tc.title}</h4>
+                                        <span className="text-[10px] bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-gray-500 dark:text-gray-400 uppercase transition-colors">{tc.status}</span>
+                                      </div>
+                                      <div className="space-y-3">
+                                        {tc.steps.map((step, sIdx) => (
+                                          <div key={sIdx} className="flex gap-3 text-sm text-gray-600 dark:text-gray-300 transition-colors">
+                                            <span className="text-gray-500 dark:text-gray-600 font-mono text-xs w-4 transition-colors">{sIdx + 1}.</span>
+                                            <span>{step}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800 transition-colors">
+                                        <span className={`text-[10px] font-black ${t.text} uppercase tracking-widest block mb-1 transition-colors`}>Expected Result</span>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors">{tc.expectedResult}</p>
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
-                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800 transition-colors">
-                                  <span className={`text-[10px] font-black ${t.text} uppercase tracking-widest block mb-1 transition-colors`}>Expected Result</span>
-                                  <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors">{tc.expectedResult}</p>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ) : activeViewerTab === 'context' ? (
+                      <div className="p-8 space-y-10">
+                        <div className="space-y-4">
+                          <div className="text-[10px] font-black text-gray-600 uppercase tracking-widest flex items-center gap-2">
+                            <UserCheck className={`w-4 h-4 ${t.textLight}`} /> Mapped Agent Persona
+                          </div>
+
+                          {viewingScript.persona ? (
+                            <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 relative overflow-hidden animate-in fade-in duration-300 transition-colors">
+                              <div className="absolute top-0 right-0 p-4 opacity-5"><Bot className="w-20 h-20" /></div>
+                              <div className="flex items-center gap-3 mb-2">
+                                <h4 className="text-lg font-bold text-gray-900 dark:text-white transition-colors">{viewingScript.persona.name}</h4>
+                                <span className={`px-2 py-0.5 ${t.tag} text-[8px] font-black uppercase rounded tracking-widest transition-colors`}>{viewingScript.persona.skillLevel}</span>
+                              </div>
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-4 transition-colors">{viewingScript.persona.description}</p>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <span className="text-[9px] font-black text-gray-500 dark:text-gray-600 uppercase block mb-1 hover:text-gray-700 dark:hover:text-gray-400 transition-colors">Behavioral Goal</span>
+                                  <p className="text-[10px] text-gray-600 dark:text-gray-300 italic transition-colors">"{viewingScript.persona.goal}"</p>
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-black text-gray-500 dark:text-gray-600 uppercase block mb-1 hover:text-gray-700 dark:hover:text-gray-400 transition-colors">Active Traits</span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {viewingScript.persona.traits.map((t, idx) => (
+                                      <span key={idx} className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-[8px] font-bold text-gray-500 rounded uppercase transition-colors">{t}</span>
+                                    ))}
+                                  </div>
                                 </div>
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              ) : activeViewerTab === 'context' ? (
-                <div className="p-8 space-y-10">
-                  <div className="space-y-4">
-                    <div className="text-[10px] font-black text-gray-600 uppercase tracking-widest flex items-center gap-2">
-                      <UserCheck className={`w-4 h-4 ${t.textLight}`} /> Mapped Agent Persona
-                    </div>
-
-                    {viewingScript.persona ? (
-                      <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 relative overflow-hidden animate-in fade-in duration-300 transition-colors">
-                        <div className="absolute top-0 right-0 p-4 opacity-5"><Bot className="w-20 h-20" /></div>
-                        <div className="flex items-center gap-3 mb-2">
-                          <h4 className="text-lg font-bold text-gray-900 dark:text-white transition-colors">{viewingScript.persona.name}</h4>
-                          <span className={`px-2 py-0.5 ${t.tag} text-[8px] font-black uppercase rounded tracking-widest transition-colors`}>{viewingScript.persona.skillLevel}</span>
-                        </div>
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-4 transition-colors">{viewingScript.persona.description}</p>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <span className="text-[9px] font-black text-gray-500 dark:text-gray-600 uppercase block mb-1 hover:text-gray-700 dark:hover:text-gray-400 transition-colors">Behavioral Goal</span>
-                            <p className="text-[10px] text-gray-600 dark:text-gray-300 italic transition-colors">"{viewingScript.persona.goal}"</p>
-                          </div>
-                          <div>
-                            <span className="text-[9px] font-black text-gray-500 dark:text-gray-600 uppercase block mb-1 hover:text-gray-700 dark:hover:text-gray-400 transition-colors">Active Traits</span>
-                            <div className="flex flex-wrap gap-1">
-                              {viewingScript.persona.traits.map((t, idx) => (
-                                <span key={idx} className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-[8px] font-bold text-gray-500 rounded uppercase transition-colors">{t}</span>
-                              ))}
                             </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800/50 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center text-center animate-in fade-in duration-300 transition-colors">
-                        <UserX className="w-12 h-12 text-gray-700 mb-4" />
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">No Agent Persona Assigned</p>
-                        <p className="text-[10px] text-gray-600 mt-2 leading-relaxed">This script executes under default system context without simulated user behavior traits.</p>
-                      </div>
-                    )}
-                  </div>
-
-                    <div className="text-[10px] font-black text-gray-500 dark:text-gray-600 uppercase tracking-widest flex items-center justify-between transition-colors">
-                      <div className="flex items-center gap-2">
-                        <Database className={`w-4 h-4 ${t.text}`} /> Bound Dataset (Synthetic)
-                      </div>
-                      {!isEditingDataset ? (
-                        <button
-                          onClick={() => {
-                            setEditedDataset(viewingScript.dataset ? [...viewingScript.dataset] : []);
-                            setIsEditingDataset(true);
-                          }}
-                          className={`text-[10px] font-bold ${t.text} hover:opacity-80 uppercase tracking-wider flex items-center gap-1 transition-colors ${t.bgLight} dark:${t.bgDeep} px-2 py-1 rounded`}
-                        >
-                          <Edit2 className="w-3 h-3" /> Edit Dataset
-                        </button>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setIsEditingDataset(false)}
-                            className="text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 uppercase tracking-wider transition-colors px-2 py-1"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={async () => {
-                              const updatedScript = { ...viewingScript, dataset: editedDataset };
-                              setViewingScript(updatedScript);
-                              await handleUpdateScript(updatedScript);
-                              setIsEditingDataset(false);
-                            }}
-                            className={`text-[10px] font-bold text-white ${t.bg} hover:opacity-90 uppercase tracking-wider flex items-center gap-1 transition-colors px-2 py-1 rounded shadow-sm`}
-                          >
-                            <Save className="w-3 h-3" /> Save Changes
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {isEditingDataset ? (
-                      <div className="space-y-4">
-                        <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden shadow-sm transition-colors">
-                          <div className="p-4 grid grid-cols-4 gap-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-[9px] font-black text-gray-400 uppercase tracking-widest transition-colors">
-                            <span>Field (ID)</span>
-                            <span>Value</span>
-                            <span>Expected</span>
-                            <span className="text-right pr-8">Type / Action</span>
-                          </div>
-                          <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                            {editedDataset.map((row, idx) => (
-                              <div key={row.id} className="p-3 grid grid-cols-4 gap-4 items-center">
-                                <input
-                                  type="text"
-                                  value={row.field}
-                                  onChange={e => updateEditedDatasetItem(idx, 'field', e.target.value)}
-                                  className={`bg-transparent border-b border-transparent ${t.ring} outline-none text-[11px] font-bold ${t.text} mono transition-colors`}
-                                  placeholder="FIELD_ID"
-                                />
-                                <input
-                                  type="text"
-                                  value={row.value || ''}
-                                  onChange={e => updateEditedDatasetItem(idx, 'value', e.target.value)}
-                                  className={`bg-transparent border-b border-transparent ${t.ring} outline-none text-[11px] text-gray-900 dark:text-blue-300 mono transition-colors`}
-                                  placeholder="value"
-                                />
-                                <input
-                                  type="text"
-                                  value={row.expected_result || ''}
-                                  onChange={e => updateEditedDatasetItem(idx, 'expected_result', e.target.value)}
-                                  className={`bg-transparent border-b border-transparent ${t.ring} outline-none text-[11px] text-emerald-600 dark:text-emerald-400 mono transition-colors`}
-                                  placeholder="expected"
-                                />
-                                <div className="flex justify-end gap-2">
-                                  <select
-                                    value={row.type}
-                                    onChange={e => updateEditedDatasetItem(idx, 'type', e.target.value as any)}
-                                    className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-1 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase outline-none transition-colors"
-                                  >
-                                    <option value={DataType.VALID}>Valid</option>
-                                    <option value={DataType.INVALID}>Invalid</option>
-                                    <option value={DataType.SECURITY}>Security</option>
-                                  </select>
-                                  <button onClick={() => removeEditedDatasetRow(idx)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                                </div>
-                              </div>
-                            ))}
-                            <button
-                              onClick={addEditedDatasetRow}
-                              className={`w-full py-4 text-[10px] font-black ${t.text} ${t.hover} dark:hover:bg-white/5 uppercase tracking-widest transition-all flex items-center justify-center gap-2`}
-                            >
-                              <Plus className="w-4 h-4" /> Add Synthetic Vector
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden shadow-2xl transition-colors">
-                        <table className="w-full text-left text-[11px] table-fixed">
-                          <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800 text-[9px] font-black uppercase text-gray-500 transition-colors">
-                            <tr>
-                              <th className="px-5 py-3 w-[140px]">Field</th>
-                              <th className="px-5 py-3">Value</th>
-                              <th className="px-5 py-3 w-[180px]">Expected</th>
-                              <th className="px-5 py-3 text-right w-[80px]">Type</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-200 dark:divide-gray-800 transition-colors">
-                            {viewingScript.dataset && viewingScript.dataset.length > 0 ? viewingScript.dataset.map((row) => (
-                              <tr key={row.id} className={`${t.hover} dark:hover:bg-white/5 transition-colors`}>
-                                <td className="px-5 py-4 font-bold text-gray-700 dark:text-gray-300 mono transition-colors whitespace-nowrap overflow-hidden text-ellipsis">{row.field}</td>
-                                <td className={`px-5 py-4 ${t.text} dark:text-blue-300 mono transition-colors break-all`}>{row.value}</td>
-                                <td className="px-5 py-4 text-emerald-600 dark:text-emerald-400 font-bold transition-colors break-all">{row.expected_result || '-'}</td>
-                                <td className="px-5 py-4 text-right">
-                                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${row.type === DataType.VALID ? 'bg-green-600/10 text-green-500' : 'bg-red-600/10 text-red-500'
-                                    }`}>{row.type}</span>
-                                </td>
-                              </tr>
-                            )) : (
-                              <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-600 italic">No dataset mapping found for this asset.</td></tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                </div>
-              ) : activeViewerTab === 'steps' ? (
-                <div className="p-8 space-y-6">
-                  {viewingScript.steps && viewingScript.steps.length > 0 ? (
-                    <div>
-                      <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center justify-between">
-                        <span>Steps ({viewingScript.steps.length})</span>
-                        <div className="flex items-center gap-3">
-                          {viewingScript.platform && (
-                            <span className={`text-[10px] ${t.bgLight} dark:${t.bgDeep} ${t.text} px-2 py-0.5 rounded uppercase border ${t.borderLight} dark:border-gray-800`}>
-                              {viewingScript.platform}
-                            </span>
+                          ) : (
+                            <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800/50 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center text-center animate-in fade-in duration-300 transition-colors">
+                              <UserX className="w-12 h-12 text-gray-700 mb-4" />
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">No Agent Persona Assigned</p>
+                              <p className="text-[10px] text-gray-600 mt-2 leading-relaxed">This script executes under default system context without simulated user behavior traits.</p>
+                            </div>
                           )}
-                          {!isEditingSteps ? (
+                        </div>
+
+                        <div className="text-[10px] font-black text-gray-500 dark:text-gray-600 uppercase tracking-widest flex items-center justify-between transition-colors">
+                          <div className="flex items-center gap-2">
+                            <Database className={`w-4 h-4 ${t.text}`} /> Bound Dataset (Synthetic)
+                          </div>
+                          {!isEditingDataset ? (
                             <button
                               onClick={() => {
-                                setEditedSteps(JSON.parse(JSON.stringify(viewingScript.steps || [])));
-                                setIsEditingSteps(true);
+                                setEditedDataset(viewingScript.dataset ? [...viewingScript.dataset] : []);
+                                setIsEditingDataset(true);
                               }}
                               className={`text-[10px] font-bold ${t.text} hover:opacity-80 uppercase tracking-wider flex items-center gap-1 transition-colors ${t.bgLight} dark:${t.bgDeep} px-2 py-1 rounded`}
                             >
-                              <Edit2 className="w-3 h-3" /> Edit Steps
+                              <Edit2 className="w-3 h-3" /> Edit Dataset
                             </button>
                           ) : (
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => setIsEditingSteps(false)}
+                                onClick={() => setIsEditingDataset(false)}
                                 className="text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 uppercase tracking-wider transition-colors px-2 py-1"
                               >
                                 Cancel
                               </button>
                               <button
                                 onClick={async () => {
-                                  const updatedScript = { ...viewingScript, steps: editedSteps };
+                                  const updatedScript = { ...viewingScript, dataset: editedDataset };
                                   setViewingScript(updatedScript);
                                   await handleUpdateScript(updatedScript);
-                                  setIsEditingSteps(false);
+                                  setIsEditingDataset(false);
                                 }}
                                 className={`text-[10px] font-bold text-white ${t.bg} hover:opacity-90 uppercase tracking-wider flex items-center gap-1 transition-colors px-2 py-1 rounded shadow-sm`}
                               >
@@ -1083,173 +952,304 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                             </div>
                           )}
                         </div>
-                      </h4>
-                      <div className="space-y-3">
-                        {(isEditingSteps ? editedSteps : viewingScript.steps).map((step, idx) => (
-                          <div key={idx} className={`bg-white dark:bg-[#16191f] border rounded-xl p-4 transition-all ${isEditingSteps ? `${t.border} dark:border-opacity-50 shadow-sm` : `border-gray-200 dark:border-gray-800 hover:${t.border}/50`}`}>
-                            <div className="flex items-start gap-3">
-                              <div className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">
-                                {idx + 1}
+
+                        {isEditingDataset ? (
+                          <div className="space-y-4">
+                            <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden shadow-sm transition-colors">
+                              <div className="p-4 grid grid-cols-4 gap-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-[9px] font-black text-gray-400 uppercase tracking-widest transition-colors">
+                                <span>Field (ID)</span>
+                                <span>Value</span>
+                                <span>Expected</span>
+                                <span className="text-right pr-8">Type / Action</span>
                               </div>
-                              <div className="flex-1 min-w-0">
-                                {isEditingSteps ? (
-                                  <div className="space-y-3">
-                                    <div className="flex items-center gap-2">
-                                      <select
-                                        value={step.action || ''}
-                                        onChange={(e) => {
-                                          const newSteps = [...editedSteps];
-                                          newSteps[idx].action = e.target.value;
-                                          setEditedSteps(newSteps);
-                                        }}
-                                        className={`text-[10px] font-black uppercase tracking-wider ${t.text} ${t.bgLight} dark:${t.bgDeep} px-1.5 py-1 rounded border ${t.borderLight} dark:border-opacity-30 outline-none`}
-                                      >
-                                        <option value="navigate">NAVIGATE</option>
-                                        <option value="click">CLICK</option>
-                                        <option value="type">TYPE</option>
-                                        <option value="input">INPUT</option>
-                                        <option value="wait">WAIT</option>
-                                        <option value="finish">FINISH</option>
-                                      </select>
-                                      <input
-                                        type="text"
-                                        placeholder="Step Name"
-                                        value={step.stepName || ''}
-                                        onChange={(e) => {
-                                          const newSteps = [...editedSteps];
-                                          newSteps[idx].stepName = e.target.value;
-                                          setEditedSteps(newSteps);
-                                        }}
-                                        className={`flex-1 text-xs font-bold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 ${t.ring} outline-none py-0.5`}
-                                      />
-                                    </div>
+                              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {editedDataset.map((row, idx) => (
+                                  <div key={row.id} className="p-3 grid grid-cols-4 gap-4 items-center">
                                     <input
                                       type="text"
-                                      placeholder="Description"
-                                      value={step.description || ''}
-                                      onChange={(e) => {
-                                        const newSteps = [...editedSteps];
-                                        newSteps[idx].description = e.target.value;
-                                        setEditedSteps(newSteps);
-                                      }}
-                                      className={`w-full text-[11px] text-gray-600 dark:text-gray-400 bg-transparent border-b border-gray-200 dark:border-gray-700 ${t.ring} outline-none py-0.5`}
+                                      value={row.field}
+                                      onChange={e => updateEditedDatasetItem(idx, 'field', e.target.value)}
+                                      className={`bg-transparent border-b border-transparent ${t.ring} outline-none text-[11px] font-bold ${t.text} mono transition-colors`}
+                                      placeholder="FIELD_ID"
                                     />
-                                    <div className="grid grid-cols-2 gap-2 text-[10px]">
-                                      <div>
-                                        <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
-                                        <select
-                                          value={step.selectorType || ''}
-                                          onChange={(e) => {
-                                            const newSteps = [...editedSteps];
-                                            newSteps[idx].selectorType = e.target.value;
-                                            setEditedSteps(newSteps);
-                                          }}
-                                          className="w-full bg-gray-50 dark:bg-gray-900/50 p-1.5 rounded border border-gray-200 dark:border-gray-700 outline-none font-mono text-gray-700 dark:text-gray-300"
-                                        >
-                                          <option value="CSS">CSS</option>
-                                          <option value="XPATH">XPATH</option>
-                                          <option value="ID">ID</option>
-                                          <option value="ACCESSIBILITY_ID">ACCESSIBILITY ID</option>
-                                          <option value="TEXT">TEXT</option>
-                                        </select>
-                                      </div>
-                                      <div>
-                                        <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
-                                        <input
-                                          type="text"
-                                          value={step.selectorValue || ''}
-                                          onChange={(e) => {
-                                            const newSteps = [...editedSteps];
-                                            newSteps[idx].selectorValue = e.target.value;
-                                            setEditedSteps(newSteps);
-                                          }}
-                                          className="w-full bg-gray-50 dark:bg-gray-900/50 p-1.5 rounded border border-gray-200 dark:border-gray-700 outline-none font-mono text-gray-700 dark:text-gray-300"
-                                        />
-                                      </div>
-                                    </div>
-                                    <div className="mt-2 text-[10px]">
-                                      <span className={`text-[8px] ${t.textLight} uppercase tracking-tighter block mb-0.5`}>Input Value</span>
-                                      <input
-                                        type="text"
-                                        value={step.inputValue || ''}
-                                        onChange={(e) => {
-                                          const newSteps = [...editedSteps];
-                                          newSteps[idx].inputValue = e.target.value;
-                                          setEditedSteps(newSteps);
-                                        }}
-                                        className={`w-full ${t.bgMuted} dark:${t.bgDeep2} p-1.5 rounded-lg border ${t.borderMuted} dark:border-gray-800 outline-none font-mono ${t.text} dark:text-blue-300`}
-                                        placeholder="e.g. {{검색어}}"
-                                      />
-                                    </div>
-                                    <div className="mt-2 text-[10px]">
-                                      <span className="text-blue-500 uppercase tracking-tighter text-[8px] mb-0.5 flex items-center gap-1">
-                                        <CheckCircle2 className="w-2.5 h-2.5" /> Rule Assertion
-                                      </span>
-                                      <input
-                                        type="text"
-                                        value={step.assertText || ''}
-                                        onChange={(e) => {
-                                          const newSteps = [...editedSteps];
-                                          newSteps[idx].assertText = e.target.value;
-                                          setEditedSteps(newSteps);
-                                        }}
-                                        className="w-full bg-blue-50/50 dark:bg-blue-500/10 p-1.5 rounded-lg border border-blue-200 dark:border-blue-500/30 outline-none font-mono text-gray-900 dark:text-white"
-                                        placeholder="e.g. {{검색어_expected}}"
-                                      />
+                                    <input
+                                      type="text"
+                                      value={row.value || ''}
+                                      onChange={e => updateEditedDatasetItem(idx, 'value', e.target.value)}
+                                      className={`bg-transparent border-b border-transparent ${t.ring} outline-none text-[11px] text-gray-900 dark:text-blue-300 mono transition-colors`}
+                                      placeholder="value"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={row.expected_result || ''}
+                                      onChange={e => updateEditedDatasetItem(idx, 'expected_result', e.target.value)}
+                                      className={`bg-transparent border-b border-transparent ${t.ring} outline-none text-[11px] text-emerald-600 dark:text-emerald-400 mono transition-colors`}
+                                      placeholder="expected"
+                                    />
+                                    <div className="flex justify-end gap-2">
+                                      <select
+                                        value={row.type}
+                                        onChange={e => updateEditedDatasetItem(idx, 'type', e.target.value as any)}
+                                        className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-1 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase outline-none transition-colors"
+                                      >
+                                        <option value={DataType.VALID}>Valid</option>
+                                        <option value={DataType.INVALID}>Invalid</option>
+                                        <option value={DataType.SECURITY}>Security</option>
+                                      </select>
+                                      <button onClick={() => removeEditedDatasetRow(idx)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                                     </div>
                                   </div>
-                                ) : (
-                                  <>
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className={`text-[10px] font-black uppercase tracking-wider ${t.text} ${t.bgLight} dark:${t.bgDeep} px-1.5 py-0.5 rounded border ${t.borderLight} dark:border-opacity-20`}>
-                                        {step.action || 'Unknown'}
-                                      </span>
-                                      {step.stepName && <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{step.stepName}</span>}
-                                    </div>
-                                    <p className="text-[11px] text-gray-600 dark:text-gray-400 mb-2 truncate">
-                                      {step.description || "No description"}
-                                    </p>
-                                    <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-100 dark:border-gray-800">
-                                      <div>
-                                        <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
-                                        <span className="font-mono text-gray-700 dark:text-gray-300">{step.selectorType || '-'}</span>
-                                      </div>
-                                      <div>
-                                        <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
-                                        <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue}>{step.selectorValue || '-'}</span>
-                                      </div>
-                                    </div>
-                                    {step.inputValue && (
-                                      <div className={`mt-2 text-[10px] ${t.bgLight} dark:${t.bgDeep} p-2 rounded-lg border ${t.borderLight} dark:border-opacity-30 transition-colors`}>
-                                        <span className={`text-[8px] ${t.textLight} uppercase tracking-tighter block mb-0.5`}>Input Value</span>
-                                        <span className={`font-mono ${t.text} dark:text-blue-300`}>{step.inputValue}</span>
-                                      </div>
-                                    )}
-                                    {step.assertText && (
-                                      <div className="mt-2 text-[10px] bg-blue-50 dark:bg-blue-500/10 p-2 rounded-lg border border-blue-200 dark:border-blue-500/30 transition-colors flex flex-col">
-                                        <span className="text-blue-500 uppercase tracking-tighter text-[8px] mb-0.5 flex items-center gap-1">
-                                          <CheckCircle2 className="w-2.5 h-2.5" /> Rule Assertion
-                                        </span>
-                                        <span className="font-mono text-gray-900 dark:text-white">"{step.assertText}"</span>
-                                      </div>
-                                    )}
-                                  </>
-                                )}
+                                ))}
+                                <button
+                                  onClick={addEditedDatasetRow}
+                                  className={`w-full py-4 text-[10px] font-black ${t.text} ${t.hover} dark:hover:bg-white/5 uppercase tracking-widest transition-all flex items-center justify-center gap-2`}
+                                >
+                                  <Plus className="w-4 h-4" /> Add Synthetic Vector
+                                </button>
                               </div>
                             </div>
                           </div>
-                        ))}
+                        ) : (
+                          <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden shadow-2xl transition-colors">
+                            <table className="w-full text-left text-[11px] table-fixed">
+                              <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800 text-[9px] font-black uppercase text-gray-500 transition-colors">
+                                <tr>
+                                  <th className="px-5 py-3 w-[140px]">Field</th>
+                                  <th className="px-5 py-3">Value</th>
+                                  <th className="px-5 py-3 w-[180px]">Expected</th>
+                                  <th className="px-5 py-3 text-right w-[80px]">Type</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200 dark:divide-gray-800 transition-colors">
+                                {viewingScript.dataset && viewingScript.dataset.length > 0 ? viewingScript.dataset.map((row) => (
+                                  <tr key={row.id} className={`${t.hover} dark:hover:bg-white/5 transition-colors`}>
+                                    <td className="px-5 py-4 font-bold text-gray-700 dark:text-gray-300 mono transition-colors whitespace-nowrap overflow-hidden text-ellipsis">{row.field}</td>
+                                    <td className={`px-5 py-4 ${t.text} dark:text-blue-300 mono transition-colors break-all`}>{row.value}</td>
+                                    <td className="px-5 py-4 text-emerald-600 dark:text-emerald-400 font-bold transition-colors break-all">{row.expected_result || '-'}</td>
+                                    <td className="px-5 py-4 text-right">
+                                      <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${row.type === DataType.VALID ? 'bg-green-600/10 text-green-500' : 'bg-red-600/10 text-red-500'
+                                        }`}>{row.type}</span>
+                                    </td>
+                                  </tr>
+                                )) : (
+                                  <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-600 italic">No dataset mapping found for this asset.</td></tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ) : (
-                    <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800/50 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center text-center">
-                      <Tags className="w-12 h-12 text-gray-400 mb-4 opacity-50" />
-                      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">No detailed steps recorded</p>
-                      <p className="text-[10px] text-gray-600 mt-2 leading-relaxed">This script does not have native step-by-step metadata available for execution tracking.</p>
-                    </div>
-                  )}
-                </div>
-              ) : null}
+                    ) : activeViewerTab === 'steps' ? (
+                      <div className="p-8 space-y-6">
+                        {viewingScript.steps && viewingScript.steps.length > 0 ? (
+                          <div>
+                            <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center justify-between">
+                              <span>Steps ({viewingScript.steps.length})</span>
+                              <div className="flex items-center gap-3">
+                                {viewingScript.platform && (
+                                  <span className={`text-[10px] ${t.bgLight} dark:${t.bgDeep} ${t.text} px-2 py-0.5 rounded uppercase border ${t.borderLight} dark:border-gray-800`}>
+                                    {viewingScript.platform}
+                                  </span>
+                                )}
+                                {!isEditingSteps ? (
+                                  <button
+                                    onClick={() => {
+                                      setEditedSteps(JSON.parse(JSON.stringify(viewingScript.steps || [])));
+                                      setIsEditingSteps(true);
+                                    }}
+                                    className={`text-[10px] font-bold ${t.text} hover:opacity-80 uppercase tracking-wider flex items-center gap-1 transition-colors ${t.bgLight} dark:${t.bgDeep} px-2 py-1 rounded`}
+                                  >
+                                    <Edit2 className="w-3 h-3" /> Edit Steps
+                                  </button>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => setIsEditingSteps(false)}
+                                      className="text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 uppercase tracking-wider transition-colors px-2 py-1"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      onClick={async () => {
+                                        const updatedScript = { ...viewingScript, steps: editedSteps };
+                                        setViewingScript(updatedScript);
+                                        await handleUpdateScript(updatedScript);
+                                        setIsEditingSteps(false);
+                                      }}
+                                      className={`text-[10px] font-bold text-white ${t.bg} hover:opacity-90 uppercase tracking-wider flex items-center gap-1 transition-colors px-2 py-1 rounded shadow-sm`}
+                                    >
+                                      <Save className="w-3 h-3" /> Save Changes
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </h4>
+                            <div className="space-y-3">
+                              {(isEditingSteps ? editedSteps : viewingScript.steps).map((step, idx) => (
+                                <div key={idx} className={`bg-white dark:bg-[#16191f] border rounded-xl p-4 transition-all ${isEditingSteps ? `${t.border} dark:border-opacity-50 shadow-sm` : `border-gray-200 dark:border-gray-800 hover:${t.border}/50`}`}>
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">
+                                      {idx + 1}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      {isEditingSteps ? (
+                                        <div className="space-y-3">
+                                          <div className="flex items-center gap-2">
+                                            <select
+                                              value={step.action || ''}
+                                              onChange={(e) => {
+                                                const newSteps = [...editedSteps];
+                                                newSteps[idx].action = e.target.value;
+                                                setEditedSteps(newSteps);
+                                              }}
+                                              className={`text-[10px] font-black uppercase tracking-wider ${t.text} ${t.bgLight} dark:${t.bgDeep} px-1.5 py-1 rounded border ${t.borderLight} dark:border-opacity-30 outline-none`}
+                                            >
+                                              <option value="navigate">NAVIGATE</option>
+                                              <option value="click">CLICK</option>
+                                              <option value="type">TYPE</option>
+                                              <option value="input">INPUT</option>
+                                              <option value="wait">WAIT</option>
+                                              <option value="finish">FINISH</option>
+                                            </select>
+                                            <input
+                                              type="text"
+                                              placeholder="Step Name"
+                                              value={step.stepName || ''}
+                                              onChange={(e) => {
+                                                const newSteps = [...editedSteps];
+                                                newSteps[idx].stepName = e.target.value;
+                                                setEditedSteps(newSteps);
+                                              }}
+                                              className={`flex-1 text-xs font-bold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 ${t.ring} outline-none py-0.5`}
+                                            />
+                                          </div>
+                                          <input
+                                            type="text"
+                                            placeholder="Description"
+                                            value={step.description || ''}
+                                            onChange={(e) => {
+                                              const newSteps = [...editedSteps];
+                                              newSteps[idx].description = e.target.value;
+                                              setEditedSteps(newSteps);
+                                            }}
+                                            className={`w-full text-[11px] text-gray-600 dark:text-gray-400 bg-transparent border-b border-gray-200 dark:border-gray-700 ${t.ring} outline-none py-0.5`}
+                                          />
+                                          <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                            <div>
+                                              <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
+                                              <select
+                                                value={step.selectorType || ''}
+                                                onChange={(e) => {
+                                                  const newSteps = [...editedSteps];
+                                                  newSteps[idx].selectorType = e.target.value;
+                                                  setEditedSteps(newSteps);
+                                                }}
+                                                className="w-full bg-gray-50 dark:bg-gray-900/50 p-1.5 rounded border border-gray-200 dark:border-gray-700 outline-none font-mono text-gray-700 dark:text-gray-300"
+                                              >
+                                                <option value="CSS">CSS</option>
+                                                <option value="XPATH">XPATH</option>
+                                                <option value="ID">ID</option>
+                                                <option value="ACCESSIBILITY_ID">ACCESSIBILITY ID</option>
+                                                <option value="TEXT">TEXT</option>
+                                              </select>
+                                            </div>
+                                            <div>
+                                              <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
+                                              <input
+                                                type="text"
+                                                value={step.selectorValue || ''}
+                                                onChange={(e) => {
+                                                  const newSteps = [...editedSteps];
+                                                  newSteps[idx].selectorValue = e.target.value;
+                                                  setEditedSteps(newSteps);
+                                                }}
+                                                className="w-full bg-gray-50 dark:bg-gray-900/50 p-1.5 rounded border border-gray-200 dark:border-gray-700 outline-none font-mono text-gray-700 dark:text-gray-300"
+                                              />
+                                            </div>
+                                          </div>
+                                          <div className="mt-2 text-[10px]">
+                                            <span className={`text-[8px] ${t.textLight} uppercase tracking-tighter block mb-0.5`}>Input Value</span>
+                                            <input
+                                              type="text"
+                                              value={step.inputValue || ''}
+                                              onChange={(e) => {
+                                                const newSteps = [...editedSteps];
+                                                newSteps[idx].inputValue = e.target.value;
+                                                setEditedSteps(newSteps);
+                                              }}
+                                              className={`w-full ${t.bgMuted} dark:${t.bgDeep2} p-1.5 rounded-lg border ${t.borderMuted} dark:border-gray-800 outline-none font-mono ${t.text} dark:text-blue-300`}
+                                              placeholder="e.g. {{search_query}}"
+                                            />
+                                          </div>
+                                          <div className="mt-2 text-[10px]">
+                                            <span className="text-blue-500 uppercase tracking-tighter text-[8px] mb-0.5 flex items-center gap-1">
+                                              <CheckCircle2 className="w-2.5 h-2.5" /> Rule Assertion
+                                            </span>
+                                            <input
+                                              type="text"
+                                              value={step.assertText || ''}
+                                              onChange={(e) => {
+                                                const newSteps = [...editedSteps];
+                                                newSteps[idx].assertText = e.target.value;
+                                                setEditedSteps(newSteps);
+                                              }}
+                                              className="w-full bg-blue-50/50 dark:bg-blue-500/10 p-1.5 rounded-lg border border-blue-200 dark:border-blue-500/30 outline-none font-mono text-gray-900 dark:text-white"
+                                              placeholder="e.g. {{search_query_expected}}"
+                                            />
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className={`text-[10px] font-black uppercase tracking-wider ${t.text} ${t.bgLight} dark:${t.bgDeep} px-1.5 py-0.5 rounded border ${t.borderLight} dark:border-opacity-20`}>
+                                              {step.action || 'Unknown'}
+                                            </span>
+                                            {step.stepName && <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{step.stepName}</span>}
+                                          </div>
+                                          <p className="text-[11px] text-gray-600 dark:text-gray-400 mb-2 truncate">
+                                            {step.description || "No description"}
+                                          </p>
+                                          <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-100 dark:border-gray-800">
+                                            <div>
+                                              <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Type</span>
+                                              <span className="font-mono text-gray-700 dark:text-gray-300">{step.selectorType || '-'}</span>
+                                            </div>
+                                            <div>
+                                              <span className="text-gray-400 uppercase tracking-tighter block text-[8px]">Locator Value</span>
+                                              <span className="font-mono text-gray-700 dark:text-gray-300 truncate" title={step.selectorValue}>{step.selectorValue || '-'}</span>
+                                            </div>
+                                          </div>
+                                          {step.inputValue && (
+                                            <div className={`mt-2 text-[10px] ${t.bgLight} dark:${t.bgDeep} p-2 rounded-lg border ${t.borderLight} dark:border-opacity-30 transition-colors`}>
+                                              <span className={`text-[8px] ${t.textLight} uppercase tracking-tighter block mb-0.5`}>Input Value</span>
+                                              <span className={`font-mono ${t.text} dark:text-blue-300`}>{step.inputValue}</span>
+                                            </div>
+                                          )}
+                                          {step.assertText && (
+                                            <div className="mt-2 text-[10px] bg-blue-50 dark:bg-blue-500/10 p-2 rounded-lg border border-blue-200 dark:border-blue-500/30 transition-colors flex flex-col">
+                                              <span className="text-blue-500 uppercase tracking-tighter text-[8px] mb-0.5 flex items-center gap-1">
+                                                <CheckCircle2 className="w-2.5 h-2.5" /> Rule Assertion
+                                              </span>
+                                              <span className="font-mono text-gray-900 dark:text-white">"{step.assertText}"</span>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800/50 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center text-center">
+                            <Tags className="w-12 h-12 text-gray-400 mb-4 opacity-50" />
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">No detailed steps recorded</p>
+                            <p className="text-[10px] text-gray-600 mt-2 leading-relaxed">This script does not have native step-by-step metadata available for execution tracking.</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 </>
               );

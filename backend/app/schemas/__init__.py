@@ -1,5 +1,5 @@
 from .token import Token, TokenPayload
-from .user import User, UserCreate, UserUpdate, UserInDB, UserInvite, UserPasswordUpdate
+from .user import User, UserCreate, UserUpdate, UserInDB, UserInvite, UserPasswordUpdate, PermissionMatrix, PermissionMatrixCreate, PermissionMatrixUpdate
 from .customer import Customer, CustomerCreate, CustomerUpdate
 from .project import Project, ProjectCreate, ProjectUpdate
 from .test_script import TestScript, TestScriptCreate, TestScriptUpdate

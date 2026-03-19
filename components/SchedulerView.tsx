@@ -44,6 +44,7 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
    const [scriptSearch, setScriptSearch] = useState('');
    const [showSelectedOnly, setShowSelectedOnly] = useState(false);
    const [showCronPresets, setShowCronPresets] = useState(false);
+   const [triggerFilter, setTriggerFilter] = useState<'ALL' | 'SCHEDULE' | 'DEPLOYMENT'>('ALL');
 
    const handleEdit = (sch: TestSchedule) => {
       setForm({ ...sch });
@@ -137,18 +138,20 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
       switch (strategy) {
          case 'DEPLOYMENT':
             return <span className="px-2 py-0.5 bg-purple-600/10 text-purple-400 border border-purple-500/20 rounded text-[8px] font-black uppercase flex items-center gap-1"><GitBranch className="w-2 h-2" /> Deployment Trigger</span>;
-         case 'BOTH':
-            return <span className="px-2 py-0.5 bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 rounded text-[8px] font-black uppercase flex items-center gap-1"><Sparkles className="w-2 h-2" /> Hybrid Policy</span>;
          default:
             return <span className="px-2 py-0.5 bg-gray-800 text-gray-400 border border-gray-700 rounded text-[8px] font-black uppercase flex items-center gap-1"><Clock className="w-2 h-2" /> Scheduled</span>;
       }
    };
 
    const filteredSchedules = schedules.filter(sch => {
+      // 1. Trigger Filter
+      if (triggerFilter !== 'ALL' && sch.triggerStrategy !== triggerFilter) return false;
+
+      // 2. Search Query
       if (!searchQuery) return true;
       const query = searchQuery.toLowerCase();
       const nameMatch = sch.name.toLowerCase().includes(query);
-      const scriptMatch = sch.scriptIds.some(sid => {
+      const scriptMatch = (sch.scriptIds || []).some(sid => {
          const script = scripts.find(s => s.id === sid);
          return script && script.name.toLowerCase().includes(query);
       });
@@ -160,13 +163,13 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
          <div className="flex items-center justify-between mb-10">
             <div>
                <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter mb-2 transition-colors">Smart Scheduler</h2>
-               <p className="text-gray-500 dark:text-gray-400 text-sm font-medium uppercase tracking-widest transition-colors">Autonomous planning & incident orchestration policies.</p>
+               <p className="text-gray-500 dark:text-gray-400 text-sm font-medium uppercase tracking-widest transition-colors">Scheduled & Deployment-based Autonomous orchestration policies.</p>
             </div>
             <button
                onClick={() => { setEditingId(null); setForm({ name: '', scriptIds: [], cronExpression: '0 0 * * *', frequencyLabel: '매일 자정', isActive: true, priority: 'Normal', triggerStrategy: 'SCHEDULE', alertConfig: { channels: ['slack'], criticalOnly: false, failureThreshold: 1 } }); setScriptSearch(''); setShowSelectedOnly(false); setShowModal(true); }}
                className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-2xl flex items-center gap-2 transition-all shadow-xl shadow-indigo-600/20 text-xs font-black uppercase"
             >
-               <Plus className="w-4 h-4" /> Create New Batch Job
+               <Plus className="w-4 h-4" /> New Batch Job
             </button>
          </div>
 
@@ -175,11 +178,23 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                <input
                   type="text"
-                  placeholder="Search by schedule or script name..."
+                  placeholder="Search by schedule or asset name..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-colors"
                />
+            </div>
+
+            <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
+               {(['ALL', 'SCHEDULE', 'DEPLOYMENT'] as const).map((t) => (
+                  <button
+                     key={t}
+                     onClick={() => setTriggerFilter(t)}
+                     className={`px-3 py-1.5 rounded-md transition-all flex items-center justify-center ${triggerFilter === t ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'}`}
+                  >
+                     <span className="text-[10px] font-black uppercase tracking-wider">{t === 'SCHEDULE' ? 'Scheduled' : t === 'DEPLOYMENT' ? 'Deployment' : 'All'}</span>
+                  </button>
+               ))}
             </div>
          </div>
 
@@ -228,7 +243,7 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
                         <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl p-3 transition-colors">
                            <div className="text-[9px] font-black text-gray-600 uppercase mb-2 flex items-center justify-between">
                               <span>Target Assets</span>
-                              <span className="text-indigo-600 dark:text-indigo-400 font-bold transition-colors">{sch.scriptIds.length} Scripts</span>
+                              <span className="text-indigo-600 dark:text-indigo-400 font-bold transition-colors">{sch.scriptIds.length} Assets</span>
                            </div>
                            <div className="flex flex-wrap gap-1.5">
                               {sch.scriptIds.slice(0, 3).map(sid => (
@@ -284,7 +299,7 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
                <div className="w-16 h-16 rounded-[2rem] bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 flex items-center justify-center mb-4 group-hover:scale-110 transition-all group-hover:border-indigo-500/30 group-hover:shadow-[0_0_20px_rgba(99,102,241,0.1)]">
                   <Plus className="w-8 h-8 text-gray-700 group-hover:text-indigo-400" />
                </div>
-               <p className="text-xs font-black text-gray-500 dark:text-gray-600 uppercase tracking-widest group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Initialize Batch Policy</p>
+               <p className="text-xs font-black text-gray-500 dark:text-gray-600 uppercase tracking-widest group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Create New Orchestration</p>
             </div>
          </div>
 
@@ -401,7 +416,7 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
                            <CalendarClock className="w-8 h-8" />
                         </div>
                         <div>
-                           <h3 className="text-xl font-black text-gray-900 dark:text-white tracking-tight transition-colors">{editingId ? 'Modify Orchestration Job' : 'Initialize Autonomous Job'}</h3>
+                           <h3 className="text-xl font-black text-gray-900 dark:text-white tracking-tight transition-colors">{editingId ? 'Modify Orchestration Job' : 'Create New Orchestration'}</h3>
                            <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-1">Configure frequency, test assets, and incident policies.</p>
                         </div>
                      </div>
@@ -442,12 +457,6 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
                                  >
                                     <GitBranch className="w-4 h-4" /> Post-Deployment
                                  </button>
-                                 <button
-                                    onClick={() => setForm({ ...form, triggerStrategy: 'BOTH' })}
-                                    className={`flex-1 py-3 px-2 rounded-xl text-[9px] font-black uppercase transition-all flex flex-col items-center gap-1.5 ${form.triggerStrategy === 'BOTH' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}
-                                 >
-                                    <Sparkles className="w-4 h-4" /> Hybrid Loop
-                                 </button>
                               </div>
 
                               {form.triggerStrategy !== 'SCHEDULE' && (
@@ -460,7 +469,7 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
                               )}
                            </div>
 
-                           {(form.triggerStrategy === 'SCHEDULE' || form.triggerStrategy === 'BOTH') && (
+                           {form.triggerStrategy === 'SCHEDULE' && (
                               <div className="space-y-4 animate-in slide-in-from-top-2">
                                  <div className="flex items-center justify-between">
                                     <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Time Frequency (CRON)</label>
@@ -548,8 +557,8 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
                         <div className="space-y-8">
                            <div className="space-y-3">
                               <div className="flex items-center justify-between mb-2">
-                                 <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Script Selection</label>
-                                 <span className="text-[10px] font-black text-indigo-400 uppercase tracking-tighter">{form.scriptIds?.length} Selected</span>
+                                 <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Test Asset Selection</label>
+                                 <span className="text-[10px] font-black text-indigo-400 uppercase tracking-tighter">{form.scriptIds?.length} Assets Selected</span>
                               </div>
 
                               {/* Search & Filter Controls */}
@@ -558,7 +567,7 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
                                     type="text"
                                     value={scriptSearch}
                                     onChange={(e) => setScriptSearch(e.target.value)}
-                                    placeholder="Search scripts..."
+                                    placeholder="Search assets..."
                                     className="flex-1 bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-gray-300 focus:border-indigo-500 outline-none transition-colors placeholder:text-gray-400 dark:placeholder:text-gray-600"
                                  />
                                  <button
@@ -600,7 +609,7 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
                                     return matchesSearch;
                                  }).length === 0 && (
                                        <div className="text-center py-10 text-gray-400 dark:text-gray-600 text-xs text-uppercase tracking-widest font-bold">
-                                          No matching scripts found
+                                          No matching assets found
                                        </div>
                                     )}
                               </div>
@@ -611,7 +620,10 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
                      <div className="p-8 bg-indigo-600/5 border border-indigo-500/10 rounded-[2.5rem] space-y-6">
                         <div className="flex items-center gap-3">
                            <Bell className="w-6 h-6 text-amber-500" />
-                           <h4 className="text-xs font-black text-amber-500 uppercase tracking-[0.2em]">Incident Orchestration Policy</h4>
+                           <div>
+                              <h4 className="text-xs font-black text-amber-500 uppercase tracking-[0.2em]">Incident Orchestration Policy</h4>
+                              <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-widest font-bold transition-colors">Define how the system responds to test failures and triggers alerts.</p>
+                           </div>
                         </div>
                         <div className="grid grid-cols-3 gap-8">
                            <div className="space-y-3">
@@ -672,7 +684,7 @@ const SchedulerView: React.FC<SchedulerViewProps> = ({
                         className="px-14 py-4 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black rounded-2xl transition-all uppercase tracking-widest shadow-xl shadow-indigo-600/30 flex items-center gap-2"
                      >
                         <CheckCircle2 className="w-4 h-4" />
-                        {editingId ? 'Save Orchestration' : 'Initialize Autonomous Loop'}
+                        {editingId ? 'Save Changes' : 'Save Orchestration Job'}
                      </button>
                   </div>
                </div>

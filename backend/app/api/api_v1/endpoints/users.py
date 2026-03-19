@@ -138,3 +138,51 @@ def update_user(
         
     user = crud.user.update(db, db_obj=user, obj_in=user_in)
     return user
+
+@router.get("/permissions", response_model=List[schemas.PermissionMatrix])
+def read_permissions(
+    db: Session = Depends(deps.get_db),
+    current_user: models.User = Depends(deps.get_current_active_user),
+) -> Any:
+    """
+    Retrieve permission matrix.
+    """
+    if not current_user.is_saas_super_admin and current_user.role != "Admin":
+         raise HTTPException(
+            status_code=403,
+            detail="Only Admins can view the permission matrix",
+        )
+    # Order by category and then feature to keep UI stable
+    return db.query(models.PermissionMatrix).order_by(models.PermissionMatrix.category, models.PermissionMatrix.feature).all()
+
+@router.put("/permissions/{permission_id}", response_model=schemas.PermissionMatrix)
+def update_permission(
+    *,
+    db: Session = Depends(deps.get_db),
+    permission_id: str,
+    permission_in: schemas.PermissionMatrixUpdate,
+    current_user: models.User = Depends(deps.get_current_active_user),
+) -> Any:
+    """
+    Update a permission row.
+    """
+    if not current_user.is_saas_super_admin and current_user.role != "Admin":
+         raise HTTPException(
+            status_code=403,
+            detail="Only Admins can update the permission matrix",
+        )
+    permission = db.query(models.PermissionMatrix).filter(models.PermissionMatrix.id == permission_id).first()
+    if not permission:
+        raise HTTPException(
+            status_code=404,
+            detail="Permission not found",
+        )
+    
+    update_data = permission_in.dict(exclude_unset=True)
+    for field in update_data:
+        setattr(permission, field, update_data[field])
+    
+    db.add(permission)
+    db.commit()
+    db.refresh(permission)
+    return permission

@@ -97,41 +97,71 @@ const ObjectRepository: React.FC<ObjectRepositoryProps> = ({ activeProject, onAl
                 </button>
             </div>
 
-            <div className="flex-1 overflow-auto bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm">
-                <table className="w-full text-left">
-                    <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
-                        <tr>
-                            <th className="px-6 py-3 text-xs font-black text-gray-500 uppercase tracking-wider w-1/5">Name</th>
-                            <th className="px-6 py-3 text-xs font-black text-gray-500 uppercase tracking-wider w-[10%]">Type</th>
-                            <th className="px-6 py-3 text-xs font-black text-gray-500 uppercase tracking-wider w-1/4">Value</th>
-                            <th className="px-6 py-3 text-xs font-black text-gray-500 uppercase tracking-wider">Description</th>
-                            <th className="px-6 py-3 text-xs font-black text-gray-500 uppercase tracking-wider w-[10%]">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                        {filteredObjects.map(obj => (
-                            <tr key={obj.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors">
-                                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white text-sm">{obj.name}</td>
-                                <td className="px-6 py-4 text-xs text-gray-500 uppercase font-bold">{obj.selector_type}</td>
-                                <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 font-mono truncate max-w-[200px]" title={obj.value}>{obj.value}</td>
-                                <td className="px-6 py-4 text-xs text-gray-500 dark:text-gray-400 italic truncate max-w-xs" title={obj.description}>{obj.description || '-'}</td>
-                                <td className="px-6 py-4 flex gap-2">
-                                    <button onClick={() => { setCurrentObject(obj); setIsEditing(true); }} className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors"><Edit3 className="w-4 h-4" /></button>
-                                </td>
-                            </tr>
-                        ))}
-                        {filteredObjects.length === 0 && (
-                            <tr>
-                                <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                                    <div className="flex flex-col items-center gap-2">
-                                        <Target className="w-8 h-8 opacity-20" />
-                                        <p className="text-sm">No objects found.</p>
+            <div className="flex-1 overflow-auto pb-20">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredObjects.map(obj => (
+                        <div
+                            key={obj.id}
+                            className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl p-5 hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer group relative flex flex-col h-48"
+                        >
+                            <div className="flex justify-between items-start mb-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl text-indigo-600 dark:text-indigo-400">
+                                        <Target className="w-5 h-5" />
                                     </div>
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+                                    <div className="min-w-0">
+                                        <h3 className="font-bold text-gray-900 dark:text-white truncate pr-6">{obj.name}</h3>
+                                        <div className="flex gap-2 mt-1">
+                                            <span className="text-[8px] font-black uppercase bg-gray-100 dark:bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded tracking-widest">
+                                                {obj.platform}
+                                            </span>
+                                            <span className="text-[8px] font-black uppercase bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded tracking-widest">
+                                                {obj.selector_type}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setCurrentObject(obj); setIsEditing(true); }}
+                                    className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors opacity-0 group-hover:opacity-100"
+                                >
+                                    <Edit3 className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 min-h-0 mb-4">
+                                <p className="text-[10px] text-gray-500 dark:text-gray-400 italic line-clamp-2 mb-2">
+                                    {obj.description || 'No description provided.'}
+                                </p>
+                                <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-2 font-mono text-[10px] text-gray-600 dark:text-gray-400 truncate border border-gray-100 dark:border-gray-800/50">
+                                    {obj.value}
+                                </div>
+                            </div>
+
+                            {/* Linkage Info */}
+                            <div className="flex items-center gap-2 text-[8px] font-black text-gray-400 uppercase tracking-widest mt-auto border-t border-gray-50 dark:border-gray-800 pt-3">
+                                {obj.usage_count > 0 ? (
+                                    <>
+                                        <CheckCircle2 className="w-3 h-3 text-green-500" />
+                                        Active in {obj.usage_count} Actions
+                                    </>
+                                ) : (
+                                    <>
+                                        <X className="w-3 h-3 text-gray-300" />
+                                        Not used in any actions
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                    {filteredObjects.length === 0 && (
+                        <div className="col-span-full py-20 flex flex-col items-center justify-center text-center opacity-50">
+                            <Target className="w-12 h-12 mb-4 opacity-10" />
+                            <p className="text-sm font-black uppercase tracking-widest">No objects found</p>
+                            <p className="text-xs mt-1">Try a different search term or platform filter.</p>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {isEditing && (

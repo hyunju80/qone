@@ -39,3 +39,26 @@ class UserInvite(BaseModel):
 class UserPasswordUpdate(BaseModel):
     current_password: str
     new_password: str
+
+class PermissionMatrixBase(BaseModel):
+    category: str
+    feature: str
+    admin_allowed: bool = True
+    manager_allowed: bool = True
+    qa_engineer_allowed: bool = True
+    viewer_allowed: bool = False
+
+class PermissionMatrixCreate(PermissionMatrixBase):
+    pass
+
+class PermissionMatrixUpdate(BaseModel):
+    admin_allowed: Optional[bool] = None
+    manager_allowed: Optional[bool] = None
+    qa_engineer_allowed: Optional[bool] = None
+    viewer_allowed: Optional[bool] = None
+
+class PermissionMatrix(PermissionMatrixBase):
+    id: str
+    
+    class Config:
+        from_attributes = True

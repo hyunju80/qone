@@ -1,5 +1,5 @@
 import api from './client';
-import { User } from '../types';
+import { User, RolePermission } from '../types';
 
 export const usersApi = {
     getAll: async () => {
@@ -43,6 +43,24 @@ export const usersApi = {
             current_password: current,
             new_password: newPass
         });
+        return response.data;
+    },
+
+    getPermissions: async () => {
+        const response = await api.get<any[]>('/users/permissions');
+        return response.data.map(p => ({
+            id: p.id,
+            category: p.category,
+            feature: p.feature,
+            adminAllowed: p.admin_allowed,
+            managerAllowed: p.manager_allowed,
+            qaEngineerAllowed: p.qa_engineer_allowed,
+            viewerAllowed: p.viewer_allowed
+        } as RolePermission));
+    },
+
+    updatePermission: async (id: string, data: any) => {
+        const response = await api.put(`/users/permissions/${id}`, data);
         return response.data;
     }
 };

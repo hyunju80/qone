@@ -12,7 +12,10 @@ class Persona(Base):
     traits = Column(JSON, default=[])
     skill_level = Column(String)
     speed = Column(String)
-    goal = Column(String)
+    motivation = Column(String, nullable=True)
+    current_state = Column(String, nullable=True)
+    type = Column(String, default='USER') # SYSTEM, USER
+    domain = Column(String, nullable=True) # General, Finance, etc.
     is_active = Column(Boolean, default=True)
     advanced_logic = Column(JSON, default=[])
     
@@ -177,7 +180,9 @@ class TestDataset(Base):
     project_id = Column(String, ForeignKey("project.id"))
     name = Column(String, index=True)
     description = Column(String, nullable=True)
-    data = Column(JSON, default=[]) # [{key, value, type, description}]
+    fields = Column(JSON, default=[]) # [{key, type, description}]
+    records = Column(JSON, default=[]) # List[Record<string, string>]
+    data = Column(JSON, default=[]) # [{key, value, type, description}] - Deprecated
     classification = Column(String) # VALID, INVALID, SECURITY, EDGE_CASE
     platform = Column(String, default="WEB") # WEB, APP
     is_active = Column(Boolean, default=True)

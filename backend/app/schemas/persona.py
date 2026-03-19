@@ -9,6 +9,10 @@ class PersonaBase(BaseModel):
     skill_level: Optional[str] = "Intermediate"
     speed: Optional[str] = "Moderate"
     goal: Optional[str] = None
+    motivation: Optional[str] = None
+    current_state: Optional[str] = None
+    type: Optional[str] = "USER" # SYSTEM, USER
+    domain: Optional[str] = "General" # General, Finance, etc.
     is_active: Optional[bool] = True
     advanced_logic: Optional[List[str]] = []
     project_id: Optional[str] = None # can be 'global' or project id
