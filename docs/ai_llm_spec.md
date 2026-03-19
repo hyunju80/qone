@@ -109,6 +109,11 @@ Language: Korean.
 }
 ```
 
+#### 사용 시점 (Trigger)
+*   **UI**: 'Smart Gen' 메뉴에서 'Analyze URL' 또는 'Upload File' 버튼 클릭 시 실행.
+*   **Flow**: 입력된 정적 데이터를 바탕으로 최초의 'Test Scenario Designer' 역할을 수행하여 Intent 단위의 스텝들을 설계함.
+
+
 ---
 
 ## 3. Autonomous Exploration (자율 주행 및 검증 규격)
@@ -141,6 +146,9 @@ Task: Determine the NEXT interaction to move towards the goal.
 7. LANGUAGE: 'thought'와 'description'은 반드시 한국어(한국어)로 작성.
 8. ASSERTION PREDICTION (expected_text): 다음 화면에서 나타날 EXACT 문자열 예측.
 9. ASSERTION VERIFICATION (actual_observed_text): 현재 화면에서 발견된 이전 단계 성공의 증거(Landmark Landmark) 문자열 추출. (가장 중요)
+#### 사용 시점 (Trigger)
+*   **UI**: 'Dataset Studio'에서 특정 시나리오를 선택하고 'Generate Synthetic Data' 클릭 시.
+*   **Flow**: 해당 시나리오에서 사용할 수 있는 유효(Valid), 무효(Invalid), 보안(Security) 데이터를 생성함.
 
 Safety Instruction:
 - Never hallucinate passwords.
@@ -170,6 +178,11 @@ Safety Instruction:
   "status": "In-Progress/Completed/Failed"
 }
 ```
+
+#### 사용 시점 (Trigger)
+*   **UI**: 'AI Exploration' 메뉴에서 목표(Goal)와 페르소나 설정 후 'Start' 버튼 클릭 시 실행.
+*   **Flow**: 'Self-Driving Browser Agent'로서 매 루프마다 현재 화면을 분석하고 다음 행동을 결정하는 실시간 루프로 작동함.
+
 
 ---
 
@@ -208,6 +221,11 @@ Output Format: JSON Array of Objects with keys: 'field', 'value', 'type', 'descr
 ]
 ```
 
+#### 사용 시점 (Trigger)
+*   **UI**: 'Dataset Studio'에서 특정 시나리오를 선택하고 'Generate Synthetic Data' 클릭 시 실행.
+*   **Flow**: 해당 시나리오에서 사용할 수 있는 유효(Valid), 무효(Invalid), 보안(Security) 데이터를 생성함.
+
+
 ---
 
 ## 5. Executive Intelligence Report (경영 리포트 생성)
@@ -231,6 +249,11 @@ Write a professional, concise executive summary in Korean (한국어). The repor
 Tone: Professional, analytical, objective.
 No introductory text like "Here is the report". Start directly with single # title.
 ```
+
+#### 사용 시점 (Trigger)
+*   **UI**: 'AI Dashboard' 또는 'Reports' 메뉴에서 분석 기간 설정 후 'Generate Intelligence Report' 클릭 시 실행.
+*   **Flow**: 누적된 테스트 통계(Telemetry)를 바탕으로 경영층을 위한 인사이트 보고서를 자동 생성함.
+
 
 ---
 
@@ -270,4 +293,107 @@ graph TD
 | **핵심 LLM** | Scenario Designer (Section 2) | Self-Driving Agent (Section 3) |
 | **에이전트 역할** | 설계된 시나리오가 맞는지 **학습/검증** | 목표를 위해 스스로 **경로 탐색** |
 | **주요 가치** | 기획/설계 기반의 정밀한 테스트 생성 | 발견되지 않은 결함 및 사용자 행동 탐색 |
+
+---
+
+## 7. AI Fallback Service (Self-Healing)
+*   **파일**: `fallback_service.py`
+*   **목적**: 표준 자동화 스텝 실패 시, Vision AI가 개입하여 우회 경로를 찾고 목표를 달성함.
+
+### 7.1. Vision-AI Fallback Prompt
+```text
+You are a 'Self-Healing' Vision-AI Testing Agent.
+Goal: {goal}
+Platform: {platform}
+Current Page: {title} ({current_url})
+Context: {cred_context} / {persona_str}
+
+Previous Steps: {history_summary}
+Simplified UI Structure (XML/HTML): {xml_structure}
+
+---
+VISION FALLBACK INSTRUCTIONS:
+1. A screenshot of the current screen is attached.
+2. IF you see an important element (button, icon, input) in the image that is NOT listed in the UI Structure (XML), you MUST try to interact with it anyway.
+3. For 'action_target', you can use the literal text you see, a coordinate-based description, or a simple ID.
+4. Focus on ACHIEVEMENT OF THE GOAL. If the automation tree is broken, use your visual reasoning to bypass it.
 ```
+
+### 7.2. Output Schema
+```json
+{
+    "thought": "이유 및 전략 상세 (Korean)",
+    "action_type": "click/type/scroll/wait/finish",
+    "action_target": "CSS/XPath/Text/ID",
+    "action_value": "text to type",
+    "description": "동작 요약 (Korean)",
+    "status": "In-Progress/Completed/Failed"
+}
+```
+
+#### 사용 시점 (Trigger)
+*   **UI/Config**: 테스트 실행(Run) 설정에서 'Enable AI Fallback' 또는 'Self-Healing' 옵션이 활성화된 경우.
+*   **Flow**: 시나리오 기반의 일반 실행(Playwright/Appium)이 모든 리트라이 횟수를 소진하고도 실패했을 때, 백엔드에서 원인 해결 및 목표 달성을 위해 최후 수단으로 자동 트리거됨.
+
+
+---
+
+## 8. AI Script Generator (Playwright Code Synthesis)
+*   **진입점**: `/scripts/generate`
+*   **목적**: 시나리오 자산을 실행 가능한 Pytest/Playwright 코드로 변환.
+
+### 8.1. Expert Automation Engineer Prompt
+```text
+You are an Expert playwright Automation Engineer.
+Convert the following Test Scenarios into a flexible, robust Playwright (Python) Test Script.
+
+PROJECT CONTEXT: {request.projectContext}
+BASE URLS: {base_urls}
+USER PERSONA: {request.persona}
+
+SCENARIOS TO IMPLEMENT: {scenarios_json}
+
+[Coding Standards]
+1. Use 'playwright.sync_api' and 'pytest' style.
+2. Use Robust Locators (ID > Name > TestId > Text).
+3. IF 'selectors' field is provided in the scenario, USE THEM directly.
+4. Add comprehensive assertions (Expected Result 기반).
+```
+
+### 8.2. Output Schema
+```json
+{
+    "code": "import pytest...",
+    "tags": ["tag1", "tag2"]
+}
+```
+
+#### 사용 시점 (Trigger)
+*   **UI**: 시나리오 상세 보기 또는 리스트에서 'Code Generate' 클릭 시 실행.
+*   **Flow**: 정적으로 정의된 시나리오 문서를 실행 가능한 Python Playwright 코드로 변환함.
+
+
+---
+
+## 9. AI Auto-Categorization (Taxonomy Expert)
+*   **파일**: `asset_manager.py`
+*   **목적**: 생성된 테스트 자산을 프로젝트의 기존 카테고리 체계에 맞게 자동 분류.
+
+### 9.1. QA Taxonomy Expert Prompt
+```text
+You are a QA Taxonomy Expert.
+Target Project Category List: [{cats_str}]
+
+Exploration Goal: {goal}
+Executed Steps: {steps_summary}
+
+Based on the goal and steps, assign exactly ONE category from the provided list that best fits this test scenario.
+If none fit perfectly, pick 'Common' or the closest match.
+
+Return ONLY the name of the category.
+```
+
+#### 사용 시점 (Trigger)
+*   **UI/Internal**: 'AI Exploration' 탐색 종료 후 결과물을 'Save/Assetize' (자산화) 하는 시점.
+*   **Flow**: 탐색된 목표와 전체 스텝을 분석하여 프로젝트의 기존 카테고리 트리(Project Taxonomy) 중 가장 적합한 위치를 백엔드에서 자동 추천하고 할당함.
+
