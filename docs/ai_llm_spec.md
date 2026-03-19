@@ -9,11 +9,12 @@
 Q-ONE의 AI Generator는 Gemini 3 모델을 핵심 엔진으로 사용하여 시나리오 설계부터 실행 데이터 생성, 그리고 자율 탐색을 통한 자산화까지의 전 과정을 자동화합니다.
 
 *   **LLM Engine**: Google Gemini 3 (Flash Preview) - 멀티모달 분석(이미지+텍스트) 및 JSON Schema 출력이 핵심.
-*   **Browsing/Crawl**: 
-    *   **WEB**: Playwright (CrawlerService) - 헤드리스 브라우저 제어 및 DOM 트리 추출.
+*   **Browsing/Crawl**:
+    *   **WEB**: Step Flow (CrawlerService) - 헤드리스 브라우저 제어 및 DOM 트리 추출.
     *   **APP**: Appium (app_step_runner) - Android/iOS 네이티브 앱 UI 및 XML 소스 분석.
 *   **Vision Analysis**: 스크린샷과 최적화된 DOM 구조를 동시에 LLM에 주입하여 요소 식별 정확도 극대화.
-*   **Automation Pipeline**: `AssetManager` 서비스를 통해 AI 탐색 이력을 `Playwright/Appium` 실행 코드로 즉시 변환하고, 입력 리터럴 값을 분석하여 `{{FIELD}}` 형태의 변수를 자동 주입(Parameterization)합니다.
+*   **Final Output**: **Step Flow Asset (JSON)** - Q-ONE Step Runner에서 즉시 실행 가능한 단계별 액션 시퀀스.
+*   **Automation Pipeline**: AI Generator를 통해 생성된 고수준 시나리오는 'Auto-Verification' 과정을 통해 실제 UI와 대조되며, 최종적으로 실행 가능한 **Test Step Asset (JSON Action Sequence)**으로 자산화됩니다. 이 자산은 Step Runner에 의해 무인 실행됩니다. `{{FIELD}}` 형태의 변수를 자동 주입(Parameterization)하는 최적화가 포함됩니다.
 
 ---
 
@@ -61,9 +62,9 @@ Language: Korean.
 
 ### 2.2. Input Data (전달되는 값 상세)
 *   **Screenshot**: Base64 encoded JPEG 이미지 (멀티모달 주입).
-*   **DOM Structure**: `html_structure` (Playwright를 통해 텍스트 노드 위주로 단순화된 HTML).
+*   **DOM Structure**: `html_structure` (Step Flow를 통해 텍스트 노드 위주로 단순화된 HTML).
 *   **Context**: 사용자가 추가로 입력한 프롬프트 (예: "로그인 기능 위주로 생성해줘").
-*   **Project Categories Context**: 
+*   **Project Categories Context**:
     `This project uses the following predefined categories for taxonomy: {cats_str}. You MUST carefully assign exactly one of these categories to each generated scenario.`
 
 ### 2.3. Output Format (수신 데이터 스키마)
@@ -146,9 +147,6 @@ Task: Determine the NEXT interaction to move towards the goal.
 7. LANGUAGE: 'thought'와 'description'은 반드시 한국어(한국어)로 작성.
 8. ASSERTION PREDICTION (expected_text): 다음 화면에서 나타날 EXACT 문자열 예측.
 9. ASSERTION VERIFICATION (actual_observed_text): 현재 화면에서 발견된 이전 단계 성공의 증거(Landmark Landmark) 문자열 추출. (가장 중요)
-#### 사용 시점 (Trigger)
-*   **UI**: 'Dataset Studio'에서 특정 시나리오를 선택하고 'Generate Synthetic Data' 클릭 시.
-*   **Flow**: 해당 시나리오에서 사용할 수 있는 유효(Valid), 무효(Invalid), 보안(Security) 데이터를 생성함.
 
 Safety Instruction:
 - Never hallucinate passwords.
@@ -257,46 +255,7 @@ No introductory text like "Here is the report". Start directly with single # tit
 
 ---
 
-## 6. AI Workflow Diagrams (LLM-Based Process Flows)
-
-Q-ONE의 AI 서비스는 크게 **시나리오 중심(Scenario-Driven)**과 **목표 중심(Goal-Driven)**이라는 두 가지 워크플로우를 가지며, 이들은 최종적으로 동일한 **Autonomous Agent (Section 3)** 엔진을 공유합니다.
-
-### 6.1. Workflow 1: AI Generator (Scenario-Driven)
-```mermaid
-graph TD
-    A["URL / File / Feature Input"] --> B{{"LLM: Scenario Gen"}}
-    B -- "High-level Intents" --> C["Scenario Asset (Title, Steps, Expected)"]
-    C --> D["User Update / Approval"]
-    D --> E{{"Autonomous Agent"}}
-    E -- "Analyze-Act-Verify Loop" --> F["Oracle: Step-by-step UI Validation"]
-    F -- "Success Traces" --> G["TestScript Asset (Playwright/Appium Code)"]
-    G --> H["Regression Studio (Schedule Execution)"]
-```
-
-### 6.2. Workflow 2: AI Exploration (Goal/Persona-Driven)
-```mermaid
-graph TD
-    I["Goal & Persona Input"] --> J{{"Autonomous Agent"}}
-    J -- "Analyze-Act-Verify Loop" --> K["Oracle: UI Discovery & Landmark Prediction"]
-    K -- "Full Interaction History" --> L["AssetManager: Script Synthesis"]
-    L -- "Scenario Extraction" --> M["Scenario Asset"]
-    L -- "Code Synthesis" --> N["TestScript Asset"]
-    M & N --> O["Enterprise Asset Library"]
-```
-
-![AI Workflow Visual Diagram](./images/ai_workflow_diagram.png)
-
-### 6.3. 핵심 차이점 요약 (Key Comparison)
-| 구분 | AI Generator (Smart Gen) | AI Exploration (Discovery) |
-| :--- | :--- | :--- |
-| **출발점** | 설계서, 화면 구조 (정적 분석) | 사용자 목표, 페르소나 (동적 탐색) |
-| **핵심 LLM** | Scenario Designer (Section 2) | Self-Driving Agent (Section 3) |
-| **에이전트 역할** | 설계된 시나리오가 맞는지 **학습/검증** | 목표를 위해 스스로 **경로 탐색** |
-| **주요 가치** | 기획/설계 기반의 정밀한 테스트 생성 | 발견되지 않은 결함 및 사용자 행동 탐색 |
-
----
-
-## 7. AI Fallback Service (Self-Healing)
+## 6. AI Fallback Service (Self-Healing)
 *   **파일**: `fallback_service.py`
 *   **목적**: 표준 자동화 스텝 실패 시, Vision AI가 개입하여 우회 경로를 찾고 목표를 달성함.
 
@@ -333,19 +292,23 @@ VISION FALLBACK INSTRUCTIONS:
 
 #### 사용 시점 (Trigger)
 *   **UI/Config**: 테스트 실행(Run) 설정에서 'Enable AI Fallback' 또는 'Self-Healing' 옵션이 활성화된 경우.
-*   **Flow**: 시나리오 기반의 일반 실행(Playwright/Appium)이 모든 리트라이 횟수를 소진하고도 실패했을 때, 백엔드에서 원인 해결 및 목표 달성을 위해 최후 수단으로 자동 트리거됨.
+*   **Flow**: 시나리오 기반의 일반 실행(Step Flow/Appium)이 모든 리트라이 횟수를 소진하고도 실패했을 때, 백엔드에서 원인 해결 및 목표 달성을 위해 최후 수단으로 자동 트리거됨.
 
 
 ---
 
-## 8. AI Script Generator (Playwright Code Synthesis)
+## 8. AI Test Step Generator (테스트 스크립트 전환 프로토콜)
+*   **개요**: 생성된 시나리오와 테스트 케이스를 실제 실행 가능한 **Step Flow (단계별 액션)**로 변환합니다.
+*   **입력**: `Scenario JSON`, `Project Context`, `Persona`
+*   **출력**: **Test Step Asset (JSON Action Sequence)**
 *   **진입점**: `/scripts/generate`
-*   **목적**: 시나리오 자산을 실행 가능한 Pytest/Playwright 코드로 변환.
+*   **목적**: 시나리오 자산을 실행 가능한 JSON Action Sequence로 변환.
 
 ### 8.1. Expert Automation Engineer Prompt
 ```text
-You are an Expert playwright Automation Engineer.
-Convert the following Test Scenarios into a flexible, robust Playwright (Python) Test Script.
+        You are an Expert QA Automation Engineer.
+        Convert the following Test Scenarios into a structured **Step Flow (Action Sequence)** for the Q-ONE Step Runner.
+        Each step must be an object with: action, selector_type, selector_value, input_value, and description.
 
 PROJECT CONTEXT: {request.projectContext}
 BASE URLS: {base_urls}
@@ -353,33 +316,44 @@ USER PERSONA: {request.persona}
 
 SCENARIOS TO IMPLEMENT: {scenarios_json}
 
-[Coding Standards]
-1. Use 'playwright.sync_api' and 'pytest' style.
-2. Use Robust Locators (ID > Name > TestId > Text).
-3. IF 'selectors' field is provided in the scenario, USE THEM directly.
-4. Add comprehensive assertions (Expected Result 기반).
-```
+[Step Generation Standards]
+1. Output MUST be an array of Step objects.
+2. Each Step MUST include: 
+   - `action`: (click, type, navigate, scroll, wait, finish)
+   - `selector_type`: (css, xpath, id, text, accessibility_id)
+   - `selector_value`: Actual locator string
+   - `input_value`: Data to type or URL to navigate to
+   - `description`: Korean explanation of the step
+3. Add a 'final_assertion' step at the end based on the Expected Result.
 
 ### 8.2. Output Schema
 ```json
 {
-    "code": "import pytest...",
+    "steps": [
+        {
+            "action": "STRING",
+            "selector_type": "STRING",
+            "selector_value": "STRING",
+            "input_value": "STRING",
+            "description": "STRING"
+        }
+    ],
     "tags": ["tag1", "tag2"]
 }
 ```
 
 #### 사용 시점 (Trigger)
-*   **UI**: 시나리오 상세 보기 또는 리스트에서 'Code Generate' 클릭 시 실행.
-*   **Flow**: 정적으로 정의된 시나리오 문서를 실행 가능한 Python Playwright 코드로 변환함.
+*   **UI**: AI Generator > **Auto-Verification** 탭에서 시나리오 선택 후 **'Auto-Verify'** 및 성공 후 **'Save as Asset'** 클릭 시 실행.
+*   **Flow**: 정적으로 정의된 시나리오 문서를 에이전트가 탐색하여 실제 UI와 매핑된 JSON Action Sequence 자산으로 변환함.
 
 
 ---
 
-## 9. AI Auto-Categorization (Taxonomy Expert)
+## 8. AI Auto-Categorization (Taxonomy Expert)
 *   **파일**: `asset_manager.py`
 *   **목적**: 생성된 테스트 자산을 프로젝트의 기존 카테고리 체계에 맞게 자동 분류.
 
-### 9.1. QA Taxonomy Expert Prompt
+### 8.1. QA Taxonomy Expert Prompt
 ```text
 You are a QA Taxonomy Expert.
 Target Project Category List: [{cats_str}]
@@ -397,3 +371,41 @@ Return ONLY the name of the category.
 *   **UI/Internal**: 'AI Exploration' 탐색 종료 후 결과물을 'Save/Assetize' (자산화) 하는 시점.
 *   **Flow**: 탐색된 목표와 전체 스텝을 분석하여 프로젝트의 기존 카테고리 트리(Project Taxonomy) 중 가장 적합한 위치를 백엔드에서 자동 추천하고 할당함.
 
+---
+
+## 9. AI Workflow Diagrams (LLM-Based Process Flows)
+
+Q-ONE의 AI 서비스는 크게 **시나리오 중심(Scenario-Driven)**과 **목표 중심(Goal-Driven)**이라는 두 가지 워크플로우를 가지며, 이들은 최종적으로 동일한 **Autonomous Agent (Section 3)** 엔진을 공유합니다.
+
+### 9.1. Workflow 1: AI Generator (Scenario-Driven)
+```mermaid
+graph TD
+    A["URL / File / Feature Input"] --> B{{"LLM: Scenario Gen"}}
+    B -- "High-level Intents" --> C["Scenario Asset (Title, Steps, Expected)"]
+    C --> D["User Update / Approval"]
+    D --> E{{"Autonomous Agent"}}
+    E -- "Analyze-Act-Verify Loop" --> F["Oracle: Step-by-step UI Validation"]
+    F -- "Success Traces" --> G["Test Step Asset (Step Flow/Appium JSON Action Sequence)"]
+    G --> H["Regression Studio (Schedule Execution)"]
+```
+
+### 9.2. Workflow 2: AI Exploration (Goal/Persona-Driven)
+```mermaid
+graph TD
+    I["Goal & Persona Input"] --> J{{"Autonomous Agent"}}
+    J -- "Analyze-Act-Verify Loop" --> K["Oracle: UI Discovery & Landmark Prediction"]
+    K -- "Full Interaction History" --> L["AssetManager: Script Synthesis"]
+    L -- "Scenario Extraction" --> M["Scenario Asset"]
+    L -- "Code Synthesis" --> N["Test Step Asset"]
+    M & N --> O["Enterprise Asset Library"]
+```
+
+![AI Workflow](file:///C:/Users/hjule/.gemini/antigravity/brain/99601481-247d-4d1c-b5b3-3151d40aa764/ai_step_workflow_diagram_v2_1773887040904.png)
+
+### 9.3. 핵심 차이점 요약 (Key Comparison)
+| 구분 | AI Generator (Smart Gen) | AI Exploration (Discovery) |
+| :--- | :--- | :--- |
+| **출발점** | 설계서, 화면 구조 (정적 분석) | 사용자 목표, 페르소나 (동적 탐색) |
+| **핵심 LLM** | Scenario Designer (Section 2) | Self-Driving Agent (Section 3) |
+| **에이전트 역할** | 설계된 시나리오가 맞는지 **학습/검증** | 목표를 위해 스스로 **경로 탐색** |
+| **주요 가치** | 기획/설계 기반의 정밀한 테스트 생성 | 발견되지 않은 결함 및 사용자 행동 탐색 |

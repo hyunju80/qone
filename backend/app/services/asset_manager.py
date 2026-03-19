@@ -179,7 +179,7 @@ class AssetManager:
         
         return new_script
 
-    def convert_session_to_scenario(self, db: Session, session_or_id, project_id: str = None, platform: str = "WEB", capture_screenshots: bool = False, category: str = "Common"):
+    def convert_session_to_scenario(self, db: Session, session_or_id, project_id: str = None, platform: str = "WEB", capture_screenshots: bool = False, category: str = "Common", scenario_id: str = None):
         """
         Converts an AI Exploration Session into BOTH a Scenario and a TestScript.
         """
@@ -202,35 +202,44 @@ class AssetManager:
         # 1. Create the Script
         script = self.convert_session_to_script(db, ai_session, final_project_id, platform=platform, capture_screenshots=capture_screenshots, category=category)
 
-        # 2. Create the Scenario
-        test_cases = [{
-            "id": f"tc_{str(uuid.uuid4())[:8]}",
-            "title": f"Verified Flow: {ai_session.goal[:50]}",
-            "description": ai_session.goal,
-            "status": "completed",
-            "preCondition": f"Start at {ai_session.target_url}",
-            "inputData": "",
-            "steps": [s.get('description', '') for s in ai_session.steps_data if isinstance(s, dict)],
-            "expectedResult": "Goal achieved successfully."
-        }]
+        # 2. Handle Scenario (Update or Create)
+        if scenario_id:
+            new_scenario = db.query(Scenario).filter(Scenario.id == scenario_id).first()
+            if not new_scenario:
+                raise ValueError(f"Scenario {scenario_id} not found")
+            new_scenario.golden_script_id = script.id
+            if category:
+                new_scenario.category = category
+        else:
+            test_cases = [{
+                "id": f"tc_{str(uuid.uuid4())[:8]}",
+                "title": f"Verified Flow: {ai_session.goal[:50]}",
+                "description": ai_session.goal,
+                "status": "completed",
+                "preCondition": f"Start at {ai_session.target_url}",
+                "inputData": "",
+                "steps": [s.get('description', '') for s in ai_session.steps_data if isinstance(s, dict)],
+                "expectedResult": "Goal achieved successfully."
+            }]
 
-        new_scenario = Scenario(
-            id=str(uuid.uuid4()),
-            project_id=final_project_id,
-            title=f"AI_Exploration: {ai_session.goal[:30]}...",
-            description=f"Generated from AI Exploration session {ai_session.id}",
-            test_cases=test_cases,
-            is_approved=True,
-            platform=platform,
-            target=ai_session.target_url,
-            tags=["AI_EXPLORATION"],
-            golden_script_id=script.id,
-            persona_id=ai_session.persona_id,
-            category=category
-        )
+            new_scenario = Scenario(
+                id=str(uuid.uuid4()),
+                project_id=final_project_id,
+                title=f"AI_Exploration: {ai_session.goal[:30]}...",
+                description=f"Generated from AI Exploration session {ai_session.id}",
+                test_cases=test_cases,
+                is_approved=True,
+                platform=platform,
+                target=ai_session.target_url,
+                tags=["AI_EXPLORATION"],
+                golden_script_id=script.id,
+                persona_id=ai_session.persona_id,
+                category=category
+            )
+            db.add(new_scenario)
 
         ai_session.generated_scenario_id = new_scenario.id
-        db.add(new_scenario)
+        db.add(ai_session)
         db.commit()
         db.refresh(new_scenario)
 

@@ -196,70 +196,30 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
     const handleSaveAsAsset = async () => {
         if (!selectedScenario || steps.length === 0) return;
 
-        // Extract rule-based steps for the TestScript asset
-        const scriptSteps = steps.map(s => {
-            const isXpath = s.action_target?.startsWith('//') || s.action_target?.startsWith('(/');
-            let selectorType = isXpath ? 'XPATH' : 'CSS';
-
-            let finalSelectorValue = s.action_target || '';
-            let finalInputValue = s.action_value || '';
-            let finalAction = s.action_type;
-
-            if (s.action_type === 'open_app' || s.action_type === 'activateApp') {
-                selectorType = 'PACKAGE';
-                finalSelectorValue = '-';
-                finalInputValue = s.action_target || ''; // The package name
-                finalAction = 'activateApp';
-            } else if (platform === 'APP') {
-                if (s.action_target?.includes(':id/') || s.action_target?.startsWith('id/')) {
-                    selectorType = 'ID';
-                } else if (!isXpath && !['.', '#', '[', '/', '>', ':', '='].some(c => s.action_target?.includes(c))) {
-                    selectorType = 'TEXT';
-                } else if (!isXpath) {
-                    selectorType = 'XPATH';
-                }
-            } else {
-                if (!['.', '#', '[', '/', '>', ':', '='].some(c => s.action_target?.includes(c)) && s.action_type === 'click') {
-                    selectorType = 'TEXT';
-                }
-            }
-
-            return {
-                id: `step_auto_${Date.now()}_${Math.random().toString(36).substring(2, 9)} `,
-                stepName: `${String(finalAction).toUpperCase()} Target`,
-                action: finalAction,
-                selectorType: selectorType,
-                selectorValue: finalSelectorValue,
-                inputValue: finalInputValue,
-                description: s.description || '',
-                assertText: s.expected_text || '' // Only use explicit assertions
-            };
-        });
-
-        const payload = {
-            name: `[Verified] ${selectedScenario.title} `,
-            description: selectedScenario.description,
-            project_id: activeProject.id,
-            code: "/* Rule-based Verified script */",
-            engine: platform === 'WEB' ? 'Playwright' : 'Appium',
-            origin: ScriptOrigin.AI,
-            status: 'CERTIFIED',
-            platform,
-            steps: scriptSteps,
-            persona_id: selectedPersonaId,
-            category: selectedScenario.category || 'Common',
-            tags: ['AI'],
-            enable_ai_test: enableAiTest
-        };
+        const finalStatus = steps.some(s => s.status === 'Failed') ? 'failed' : 'passed';
+        const personaName = personas.find(p => p.id === selectedPersonaId)?.name || "AI Agent";
 
         try {
-            const newScript = await testApi.createScript(payload);
-            // Link scenario to golden script
-            await scenariosApi.update(selectedScenario.id, { golden_script_id: newScript.id });
-            onRegisterAsset(newScript);
+            // Use UNIFIED backend saving logic (same as AI Exploration)
+            await explorationApi.save({
+                session_id: sessionId || `auto_${Date.now()}`,
+                project_id: activeProject.id,
+                url: platform === 'APP' ? targetUrl : targetUrl, // Consistent field
+                goal: selectedScenario.title,
+                scenario_id: selectedScenario.id, // Linking to existing scenario
+                persona_id: selectedPersonaId,
+                persona_name: personaName,
+                history: steps,
+                final_status: finalStatus,
+                platform,
+                capture_screenshots: true
+            });
+
+            onRegisterAsset({ id: 'reloading' } as any); // Trigger parent reload
             fetchScenarios(); // Refresh list
             setSelectedScenarioId(null);
             setSteps([]);
+            setIsComplete(false);
         } catch (e) {
             console.error("Failed to save asset", e);
             alert("자산 저장에 실패했습니다.");

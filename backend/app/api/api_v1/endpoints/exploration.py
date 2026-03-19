@@ -25,6 +25,7 @@ class SaveRequest(BaseModel):
     project_id: str
     url: str
     goal: str
+    scenario_id: Optional[str] = None
     persona_id: Optional[str] = None
     persona_name: Optional[str] = None
     platform: str = "WEB"
@@ -396,7 +397,7 @@ async def save_history(req: SaveRequest):
         print(f"[DEBUG] AI Exploration Auto-categorized as: {category}")
         
         scenario, script = manager.convert_session_to_scenario(
-            db, ai_session, req.project_id, req.platform, req.capture_screenshots, category=category
+            db, ai_session, req.project_id, req.platform, req.capture_screenshots, category=category, scenario_id=req.scenario_id
         )
         
         return {"status": "saved", "scenario_id": scenario.id, "script_id": script.id, "session_id": session_id}

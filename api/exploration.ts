@@ -26,6 +26,7 @@ export interface SaveRequest {
     project_id: string;
     url: string;
     goal: string;
+    scenario_id?: string;
     persona_id?: string;
     persona_name?: string;
     history: ExplorationStep[];
