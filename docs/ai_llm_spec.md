@@ -111,7 +111,7 @@ Language: Korean.
 ```
 
 #### 사용 시점 (Trigger)
-*   **UI**: 'Smart Gen' 메뉴에서 'Analyze URL' 또는 'Upload File' 버튼 클릭 시 실행.
+*   **UI**: 'AI Generator' 메뉴에서 'UPLOAD' 또는 'MAP-BASED' 에서 'Generate Scenarios'버튼 클릭 시 실행.
 *   **Flow**: 입력된 정적 데이터를 바탕으로 최초의 'Test Scenario Designer' 역할을 수행하여 Intent 단위의 스텝들을 설계함.
 
 
@@ -249,7 +249,7 @@ No introductory text like "Here is the report". Start directly with single # tit
 ```
 
 #### 사용 시점 (Trigger)
-*   **UI**: 'AI Dashboard' 또는 'Reports' 메뉴에서 분석 기간 설정 후 'Generate Intelligence Report' 클릭 시 실행.
+*   **UI**: 'Analytics & Reports' 메뉴에서 분석 기간 설정 후 'Export Intelligence' 클릭 시 실행.
 *   **Flow**: 누적된 테스트 통계(Telemetry)를 바탕으로 경영층을 위한 인사이트 보고서를 자동 생성함.
 
 
