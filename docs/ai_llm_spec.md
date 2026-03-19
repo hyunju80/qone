@@ -325,6 +325,7 @@ SCENARIOS TO IMPLEMENT: {scenarios_json}
    - `input_value`: Data to type or URL to navigate to
    - `description`: Korean explanation of the step
 3. Add a 'final_assertion' step at the end based on the Expected Result.
+```
 
 ### 8.2. Output Schema
 ```json
@@ -400,7 +401,7 @@ graph TD
     M & N --> O["Enterprise Asset Library"]
 ```
 
-![AI Workflow](file:///C:/Users/hjule/.gemini/antigravity/brain/99601481-247d-4d1c-b5b3-3151d40aa764/ai_step_workflow_diagram_v2_1773887040904.png)
+![AI Unified Workflow](./images/ai_unified_workflow.png)
 
 ### 9.3. 핵심 차이점 요약 (Key Comparison)
 | 구분 | AI Generator (Smart Gen) | AI Exploration (Discovery) |
