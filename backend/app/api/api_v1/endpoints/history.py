@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import crud, models, schemas
+from app.schemas import self_healing
 from app.api import deps
+from app.models.test import TestScript, SelfHealingLog
 
 router = APIRouter()
 
@@ -92,3 +94,71 @@ def read_history_detail(
         }
         
     return resp
+
+@router.get("/healing/{log_id}", response_model=self_healing.SelfHealingLog)
+def read_healing_status(
+    *,
+    db: Session = Depends(deps.get_db),
+    log_id: str
+) -> Any:
+    """
+    Get status of a specific self-healing task.
+    """
+    log = db.query(SelfHealingLog).filter(SelfHealingLog.id == log_id).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Healing log not found")
+    return log
+
+@router.get("/{id}/healing-logs", response_model=List[self_healing.SelfHealingLog])
+def read_healing_logs(
+    *,
+    db: Session = Depends(deps.get_db),
+    id: str
+) -> Any:
+    """
+    Get self-healing logs for a specific history entry.
+    """
+    history = crud.history.get(db, id=id)
+    if not history:
+        raise HTTPException(status_code=404, detail="History not found")
+    
+    logs = db.query(SelfHealingLog).filter(SelfHealingLog.history_id == id).all()
+    return logs
+
+@router.get("/all/healed-assets/list", response_model=List[self_healing.SelfHealingLog])
+def read_all_healed_assets(
+    *,
+    db: Session = Depends(deps.get_db)
+) -> Any:
+    """
+    Get all unique assets that have been healed.
+    """
+    # Return all successful healings ordered by date
+    logs = db.query(SelfHealingLog).filter(SelfHealingLog.status == "success").order_by(SelfHealingLog.created_at.desc()).all()
+    return logs
+
+@router.post("/{history_id}/jira", response_model=schemas.TestHistory)
+def assign_jira(
+    *,
+    db: Session = Depends(deps.get_db),
+    history_id: str,
+    current_user: models.User = Depends(deps.get_current_active_user),
+) -> Any:
+    """
+    Assign a dummy Jira ID to a test history record.
+    """
+    history = crud.history.get(db, id=history_id)
+    if not history:
+        raise HTTPException(status_code=404, detail="History not found")
+    
+    # Generate a dummy Jira ID if not already present
+    if not history.jira_id:
+        import random
+        dummy_id = f"QONE-{random.randint(1000, 9999)}"
+        history.jira_id = dummy_id
+        db.add(history)
+        db.commit()
+        db.refresh(history)
+        print(f"DEBUG: Assigned Jira ID {dummy_id} to history {history_id}")
+    
+    return history

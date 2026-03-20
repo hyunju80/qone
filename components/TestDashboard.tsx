@@ -45,7 +45,11 @@ const TestDashboard: React.FC<TestDashboardProps> = ({ history, activeProject, o
     const availableOrigins = useMemo(() => {
         const origins = new Set<string>();
         monthlyHistory.forEach(h => {
-            if (h.scriptOrigin) origins.add(h.scriptOrigin);
+            if (h.scriptOrigin) {
+                // Group AI and AI_EXPLORATION to avoid duplicate 'AI GEN' labels in UI
+                const mappedOrigin = (h.scriptOrigin === 'AI' || h.scriptOrigin === 'AI_EXPLORATION') ? 'AI' : h.scriptOrigin;
+                origins.add(mappedOrigin);
+            }
         });
         return Array.from(origins).sort();
     }, [monthlyHistory]);
@@ -57,7 +61,8 @@ const TestDashboard: React.FC<TestDashboardProps> = ({ history, activeProject, o
         // Filter based on search and origin before grouping - Fix: use scriptOrigin
         const filteredHistory = monthlyHistory.filter(h => {
             const matchesSearch = h.scriptName.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesOrigin = originFilter === 'all' || h.scriptOrigin === originFilter;
+            const matchesOrigin = originFilter === 'all' || 
+                                 (originFilter === 'AI' ? (h.scriptOrigin === 'AI' || h.scriptOrigin === 'AI_EXPLORATION') : h.scriptOrigin === originFilter);
             return matchesSearch && matchesOrigin;
         });
 
@@ -263,7 +268,7 @@ const TestDashboard: React.FC<TestDashboardProps> = ({ history, activeProject, o
                                         }`}
                                 >
                                     <Filter className={`w-3.5 h-3.5 ${originFilter !== 'all' ? 'text-indigo-500' : ''}`} />
-                                    <span>{originFilter === 'all' ? 'All Origins' : originFilter}</span>
+                                    <span>{originFilter === 'all' ? 'All Origins' : (originFilter === 'AI' || originFilter === 'AI_EXPLORATION' ? 'AI GEN' : (originFilter === 'STEP' ? 'STEP FLOW' : originFilter))}</span>
                                     <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${showOriginDropdown ? 'rotate-180' : ''}`} />
                                 </button>
 
@@ -287,7 +292,7 @@ const TestDashboard: React.FC<TestDashboardProps> = ({ history, activeProject, o
                                                     : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300'
                                                     }`}
                                             >
-                                                {origin}
+                                                {origin === 'AI' || origin === 'AI_EXPLORATION' ? 'AI GEN' : origin === 'STEP' ? 'STEP FLOW' : origin}
                                             </button>
                                         ))}
                                     </div>
@@ -463,92 +468,114 @@ const TestDashboard: React.FC<TestDashboardProps> = ({ history, activeProject, o
                 )}
             </div>
 
-            {/* Insights Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Critical Failure Hotspots (30 Day Focus) */}
-                <div className="bg-white dark:bg-[#16191f] p-8 rounded-[2.5rem] border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none select-none">
-                        <AlertTriangle className="w-32 h-32" />
-                    </div>
-                    <h3 className="text-md font-black text-gray-900 dark:text-white mb-6 uppercase tracking-widest flex items-center gap-2">
-                        Critical Failure Hotspots (30 Days)
-                    </h3>
-                    <div className="space-y-4">
-                        {dashboardData.filter(s => s.successRate < 70).slice(0, 3).map(script => (
-                            <div key={script.name} className="flex items-center justify-between p-4 bg-red-50/50 dark:bg-red-500/5 rounded-2xl border border-red-100 dark:border-red-500/10">
-                                <div className="min-w-0">
-                                    <div className="text-xs font-black text-gray-900 dark:text-white truncate mb-1">{script.name}</div>
-                                    <div className="text-[10px] text-red-600 dark:text-red-400 font-bold uppercase tracking-widest">{100 - script.successRate}% Failure Probability</div>
-                                </div>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        const allRuns = script.dailyResults.flatMap(d => d.runs);
-                                        const failedRuns = allRuns.filter(r => r.status === 'failed');
-                                        const latestFailed = failedRuns.sort((a, b) => new Date(b.runDate).getTime() - new Date(a.runDate).getTime())[0];
-
-                                        if (latestFailed) {
-                                            onViewDetail(latestFailed);
-                                        } else if (allRuns.length > 0) {
-                                            const latestOverall = allRuns.sort((a, b) => new Date(b.runDate).getTime() - new Date(a.runDate).getTime())[0];
-                                            onViewDetail(latestOverall);
-                                        }
-                                    }}
-                                    className="px-3 py-1.5 bg-red-600 text-white text-[9px] font-black rounded-lg uppercase shadow-lg shadow-red-600/20 hover:bg-red-500 transition-colors relative z-10"
-                                >
-                                    Analyze
-                                </button>
-                            </div>
-                        ))}
-                    </div>
+            {/* Assets Needing Attention Row */}
+            <div className="bg-white dark:bg-[#16191f] p-8 rounded-[2.5rem] border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden transition-colors">
+                <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none select-none">
+                    <AlertTriangle className="w-64 h-64" />
                 </div>
+                
+                <div className="relative z-10">
+                    <div className="flex items-center justify-between mb-8">
+                        <div>
+                            <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-widest flex items-center gap-3">
+                                <Activity className="w-5 h-5 text-indigo-500" />
+                                Assets Needing Attention
+                            </h3>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter mt-1">Maintenance insights based on the last 30 days of execution data</p>
+                        </div>
+                    </div>
 
-                {/* High-Risk Unstable Assets (Lowest Stability) */}
-                <div className="bg-white dark:bg-[#16191f] p-8 rounded-[2.5rem] border border-gray-100 dark:border-gray-800 shadow-sm">
-                    <h3 className="text-md font-black text-gray-900 dark:text-white mb-6 uppercase tracking-widest flex items-center gap-2">
-                        High-Risk Unstable Assets
-                    </h3>
-                    <div className="space-y-4">
-                        {highRiskAssets.length > 0 ? (
-                            highRiskAssets.map(script => (
-                                <div
-                                    key={script.name}
-                                    className="flex items-center gap-4 group cursor-pointer"
-                                    onClick={() => {
-                                        const allRuns = script.dailyResults.flatMap(d => d.runs);
-                                        setSelectedDayRuns({
-                                            date: 'Analysis (Last 30 Days)',
-                                            scriptName: script.name,
-                                            runs: allRuns
-                                        });
-                                    }}
-                                >
-                                    <div className={`p-2 rounded-xl border shrink-0 ${script.successRate < 50 ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>
-                                        <AlertTriangle className="w-4 h-4" />
-                                    </div>
-                                    <div className="min-w-0 border-b border-gray-50 dark:border-gray-800/50 pb-3 flex-1">
-                                        <div className="flex items-center justify-between mb-0.5">
-                                            <div className="text-xs font-black text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors truncate uppercase tracking-tight">{script.name}</div>
-                                            <div className="text-[10px] font-black text-red-500 uppercase tracking-tighter">{100 - script.successRate}% Failure Rate</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="flex-1 h-1 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-red-500 transition-all duration-1000"
-                                                    style={{ width: `${100 - script.successRate}%` }}
-                                                />
-                                            </div>
-                                            <div className="text-[9px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest">{script.total} runs</div>
-                                        </div>
-                                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                        {/* Frequent Failures */}
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-4">
+                                <div>
+                                    <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest">Frequent Failures</h4>
+                                    <p className="text-[9px] text-red-500 dark:text-red-400 font-bold uppercase mt-0.5">High-usage assets with <span className="underline">consistent failure patterns</span></p>
                                 </div>
-                            ))
-                        ) : (
-                            <div className="py-12 text-center">
-                                <Activity className="w-8 h-8 text-gray-100 dark:text-gray-800 mx-auto mb-3" />
-                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">No unstable assets detected</p>
+                                <div className="px-2 py-1 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-[8px] font-black rounded uppercase border border-red-100 dark:border-red-500/20">Critical</div>
                             </div>
-                        )}
+                            
+                            <div className="space-y-4">
+                                {dashboardData.filter(s => s.successRate < 70).slice(0, 3).length > 0 ? (
+                                    dashboardData.filter(s => s.successRate < 70).slice(0, 3).map(script => (
+                                        <div key={script.name} className="flex items-center justify-between p-4 bg-red-50/30 dark:bg-red-500/5 rounded-2xl border border-red-100/50 dark:border-red-500/10 group hover:border-red-500/30 transition-all">
+                                            <div className="min-w-0 pr-4">
+                                                <div className="text-xs font-black text-gray-900 dark:text-white truncate mb-1 uppercase tracking-tight">{script.name}</div>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-[10px] text-red-600 dark:text-red-400 font-black tracking-widest uppercase">{100 - script.successRate}% Fail Rate</span>
+                                                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-tighter">{script.total} Runs</span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const allRuns = script.dailyResults.flatMap(d => d.runs);
+                                                    const latestFailed = allRuns.filter(r => r.status === 'failed').sort((a, b) => new Date(b.runDate).getTime() - new Date(a.runDate).getTime())[0];
+                                                    if (latestFailed) onViewDetail(latestFailed);
+                                                }}
+                                                className="shrink-0 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-[9px] font-black rounded-lg uppercase shadow-lg shadow-red-600/10 transition-all"
+                                            >
+                                                Analyze
+                                            </button>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="py-8 text-center bg-gray-50/50 dark:bg-gray-800/20 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700">
+                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">No frequent failures detected</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Stability Alerts */}
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-4">
+                                <div>
+                                    <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest">Stability Alerts</h4>
+                                    <p className="text-[9px] text-amber-500 dark:text-amber-400 font-bold uppercase mt-0.5">Assets with <span className="underline">unpredictable/flaky behavior</span></p>
+                                </div>
+                                <div className="px-2 py-1 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[8px] font-black rounded uppercase border border-amber-100 dark:border-amber-500/20">Warning</div>
+                            </div>
+
+                            <div className="space-y-4">
+                                {highRiskAssets.length > 0 ? (
+                                    highRiskAssets.map(script => (
+                                        <div
+                                            key={script.name}
+                                            className="flex items-center gap-4 group cursor-pointer p-2 hover:bg-gray-50 dark:hover:bg-gray-800/30 rounded-2xl transition-all"
+                                            onClick={() => {
+                                                const allRuns = script.dailyResults.flatMap(d => d.runs);
+                                                setSelectedDayRuns({ date: '30-Day Stability Analysis', scriptName: script.name, runs: allRuns });
+                                            }}
+                                        >
+                                            <div className={`p-2 rounded-xl border shrink-0 ${script.successRate < 50 ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>
+                                                <AlertTriangle className="w-4 h-4" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <div className="text-xs font-black text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors truncate uppercase tracking-tight">{script.name}</div>
+                                                    <div className="text-[9px] font-black text-red-500 uppercase tracking-tighter">{100 - script.successRate}% Unstable</div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex-1 h-1 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                                                        <div
+                                                            className={`h-full transition-all duration-1000 ${script.successRate < 50 ? 'bg-red-500' : 'bg-amber-500'}`}
+                                                            style={{ width: `${100 - script.successRate}%` }}
+                                                        />
+                                                    </div>
+                                                    <div className="text-[8px] text-gray-400 font-bold uppercase tracking-widest">{script.total} runs</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="py-8 text-center bg-gray-50/50 dark:bg-gray-800/20 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700">
+                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">All assets currently stable</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

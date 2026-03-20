@@ -628,6 +628,7 @@ const AppContent: React.FC = () => {
       case ViewMode.HISTORY:
         return <HistoryView
           history={filteredHistory}
+          scripts={filteredScripts}
           activeProject={activeProject}
           onRefresh={() => {
             if (activeProject) {

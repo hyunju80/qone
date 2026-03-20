@@ -45,6 +45,7 @@ class TestScript(Base):
     steps = Column(JSON, default=[]) # Native Step representation for Step scripts
     try_count = Column(Integer, default=1)
     enable_ai_test = Column(Boolean, default=False)
+    priority = Column(String, default='P2')
 
     project = relationship("Project", back_populates="scripts")
     persona = relationship("Persona", back_populates="scripts")
@@ -70,6 +71,7 @@ class Scenario(Base):
     tags = Column(JSON, default=[])
     try_count = Column(Integer, default=1)
     enable_ai_test = Column(Boolean, default=False)
+    priority = Column(String, default='P2')
 
     
     project = relationship("Project", back_populates="scenarios")
@@ -93,17 +95,24 @@ class TestHistory(Base):
     commit_hash = Column(String)
     schedule_id = Column(String, ForeignKey("testschedule.id"), nullable=True)
     schedule_name = Column(String)
+    failure_analysis = Column(JSON, nullable=True) # AI-generated diagnostics
     step_results = Column(JSON, default=[]) # Universal step-by-step results
+    jira_id = Column(String, nullable=True) # External Jira Issue reference
     script = relationship("TestScript", 
                           primaryjoin="TestHistory.script_id == TestScript.id",
                           foreign_keys=[script_id],
                           back_populates="history")
     schedule = relationship("TestSchedule", back_populates="history_entries")
     ai_session = relationship("AiExplorationSession", uselist=False, back_populates="history")
+    healing_logs = relationship("SelfHealingLog", back_populates="history")
 
     @property
     def script_origin(self):
         return self.script.origin if self.script else None
+
+    @property
+    def script_category(self):
+        return self.script.category if self.script else "Common"
 
 class TestSchedule(Base):
     id = Column(String, primary_key=True, index=True)
@@ -203,3 +212,17 @@ class ActionMap(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     project = relationship("Project")
+
+class SelfHealingLog(Base) :
+    __tablename__ = "selfhealinglog"
+    id = Column(String, primary_key=True, index=True)
+    history_id = Column(String, ForeignKey("testhistory.id"))
+    script_id = Column(String, ForeignKey("testscript.id"))
+    status = Column(String) # started, in_progress, success, failed
+    error_detected = Column(Text, nullable=True)
+    healing_steps = Column(JSON, default=[]) # The loop of steps AI took
+    modified_steps = Column(JSON, default=[]) # The repaired final steps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    history = relationship("TestHistory", back_populates="healing_logs")
+    script = relationship("TestScript")

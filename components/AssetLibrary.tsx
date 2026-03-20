@@ -69,7 +69,8 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
     engine: 'Playwright' as TestEngine,
     dataset: [] as TestDataRow[],
     try_count: 1,
-    enable_ai_test: false
+    enable_ai_test: false,
+    priority: 'P2'
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -313,7 +314,8 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         steps: script.steps,
         try_count: script.try_count,
         // TODO: Rename to enable_self_healing
-        enable_ai_test: script.enable_ai_test
+        enable_ai_test: script.enable_ai_test,
+        priority: script.priority
       };
 
       await testApi.updateScript(script.id, payload);
@@ -360,7 +362,8 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
       dataset: script.dataset ? [...script.dataset] : [],
       try_count: script.try_count || 1,
       // TODO: Rename to enable_self_healing
-      enable_ai_test: script.enable_ai_test || false
+      enable_ai_test: script.enable_ai_test || false,
+      priority: script.priority || 'P1'
     });
     setShowRegisterModal(true);
   };
@@ -397,7 +400,8 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
           tags: newManualScript.tags.split(',').map(t => t.trim()).filter(t => t !== ''),
           dataset: newManualScript.dataset,
           try_count: newManualScript.try_count,
-          enable_ai_test: newManualScript.enable_ai_test
+          enable_ai_test: newManualScript.enable_ai_test,
+          priority: newManualScript.priority
         });
       }
     } else {
@@ -419,7 +423,8 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
         isActive: true,
         dataset: newManualScript.dataset,
         try_count: newManualScript.try_count,
-        enable_ai_test: newManualScript.enable_ai_test
+        enable_ai_test: newManualScript.enable_ai_test,
+        priority: newManualScript.priority
       };
 
       handleRegisterManualScript(manualScript);
@@ -622,6 +627,14 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                   <Database className="w-2.5 h-2.5" /> {script.category}
                 </span>
               )}
+              <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter transition-colors border ${
+                script.priority === 'P0' ? 'bg-red-50 dark:bg-red-900/10 border-red-500 text-red-600 dark:text-red-400' : 
+                script.priority === 'P1' ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-500 text-amber-600 dark:text-amber-400' :
+                script.priority === 'P2' ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-500 text-blue-600 dark:text-blue-400' :
+                'bg-gray-50 dark:bg-gray-900/10 border-gray-200 dark:border-gray-800 text-gray-500'
+              }`}>
+                {script.priority || 'P2'}
+              </span>
               {script.tags?.map((t, idx) => (
                 <span key={idx} className="flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded text-[9px] font-bold text-gray-500 uppercase tracking-tighter transition-colors">
                   <Hash className="w-2.5 h-2.5 text-indigo-500 opacity-50" /> {t}
@@ -712,6 +725,14 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
               </span>
               <span className="flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded text-[9px] font-bold text-gray-500 uppercase tracking-tighter transition-colors">
                 {step.steps?.length || 0} STEPS
+              </span>
+              <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter transition-colors border ${
+                step.priority === 'P0' ? 'bg-red-50 dark:bg-red-900/10 border-red-500 text-red-600 dark:text-red-400' : 
+                step.priority === 'P1' ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-500 text-amber-600 dark:text-amber-400' :
+                step.priority === 'P2' ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-500 text-blue-600 dark:text-blue-400' :
+                'bg-gray-50 dark:bg-gray-900/10 border-gray-200 dark:border-gray-800 text-gray-500'
+              }`}>
+                {step.priority || 'P2'}
               </span>
               {step.category && (
                 <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-500/20 rounded text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-tighter transition-colors">
@@ -1091,6 +1112,20 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                                     <div className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">
                                       {idx + 1}
                                     </div>
+                                    {isEditingSteps && (
+                                      <button 
+                                        onClick={() => {
+                                          const newSteps = editedSteps.filter((_, i) => i !== idx);
+                                          // Re-index step_number starting from 1
+                                          const reindexedSteps = newSteps.map((s, i) => ({ ...s, step_number: i + 1 }));
+                                          setEditedSteps(reindexedSteps);
+                                        }}
+                                        className="p-1.5 text-gray-400 hover:text-red-500 transition-colors shrink-0 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30"
+                                        title="Delete Step"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
                                     <div className="flex-1 min-w-0">
                                       {isEditingSteps ? (
                                         <div className="space-y-3">
@@ -1239,7 +1274,28 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                                   </div>
                                 </div>
                               ))}
-                            </div>
+                                {isEditingSteps && (
+                                  <button
+                                    onClick={() => {
+                                      const newStep = {
+                                        step_number: editedSteps.length + 1,
+                                        action: 'click',
+                                        stepName: '',
+                                        description: '',
+                                        selectorType: 'CSS',
+                                        selectorValue: '',
+                                        inputValue: '',
+                                        assertText: '',
+                                        status: 'Completed'
+                                      };
+                                      setEditedSteps([...editedSteps, newStep]);
+                                    }}
+                                    className={`w-full py-3 mt-4 border-2 border-dashed ${t.borderLight} dark:border-gray-800 rounded-xl text-[10px] font-black ${t.text} uppercase tracking-widest hover:bg-white dark:hover:bg-white/5 transition-all flex items-center justify-center gap-2`}
+                                  >
+                                    <Plus className="w-4 h-4" /> Add New Step
+                                  </button>
+                                )}
+                              </div>
                           </div>
                         ) : (
                           <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800/50 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center text-center">
@@ -1313,21 +1369,40 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                       </div>
                     </div>
 
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <Database className="w-4 h-4 text-indigo-400" />
-                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Asset Category</label>
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Database className="w-4 h-4 text-indigo-400" />
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Asset Category</label>
+                        </div>
+                        <select
+                          value={newManualScript.category}
+                          onChange={e => setNewManualScript({ ...newManualScript, category: e.target.value })}
+                          className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-gray-700 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all appearance-none cursor-pointer"
+                        >
+                          <option value="">Select Category</option>
+                          {categories.map(cat => (
+                            <option key={cat.id} value={cat.name}>{cat.name}</option>
+                          ))}
+                        </select>
                       </div>
-                      <select
-                        value={newManualScript.category}
-                        onChange={e => setNewManualScript({ ...newManualScript, category: e.target.value })}
-                        className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-gray-700 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all appearance-none cursor-pointer"
-                      >
-                        <option value="">Select Category</option>
-                        {categories.map(cat => (
-                          <option key={cat.id} value={cat.name}>{cat.name}</option>
-                        ))}
-                      </select>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Target className="w-4 h-4 text-red-400" />
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Priority Tier</label>
+                        </div>
+                        <select
+                          value={newManualScript.priority}
+                          onChange={e => setNewManualScript({ ...newManualScript, priority: e.target.value })}
+                          className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 text-sm text-gray-700 dark:text-gray-300 focus:border-indigo-500 outline-none transition-all appearance-none cursor-pointer"
+                        >
+                          <option value="P0">P0 - Critical Path</option>
+                          <option value="P1">P1 - High Importance</option>
+                          <option value="P2">P2 - Normal Operations</option>
+                          <option value="P3">P3 - Low Impact</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                 </div>

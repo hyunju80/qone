@@ -87,13 +87,13 @@ class CrawlerService:
             
         return clean_html
 
-    async def start_session(self, session_id: str, url: str) -> Dict[str, Any]:
+    async def start_session(self, session_id: str, url: str, headless: bool = True) -> Dict[str, Any]:
         """
         Starts a persistent browser session (Async).
         """
-        return await self._run_in_bg(self._start_session_impl(session_id, url))
+        return await self._run_in_bg(self._start_session_impl(session_id, url, headless))
 
-    async def _start_session_impl(self, session_id: str, url: str) -> Dict[str, Any]:
+    async def _start_session_impl(self, session_id: str, url: str, headless: bool = True) -> Dict[str, Any]:
         # To prevent zombie browsers stealing resources on consecutive runs,
         # aggressively close ANY existing sessions before starting a new one.
         for existing_id in list(self._sessions.keys()):
@@ -103,8 +103,8 @@ class CrawlerService:
                 pass
 
         p = await async_playwright().start()
-        # Headless=False for visibility as requested
-        browser = await p.chromium.launch(headless=False)
+        # Launch with configured headless mode
+        browser = await p.chromium.launch(headless=headless)
         context = await browser.new_context(viewport={"width": 1280, "height": 800})
         page = await context.new_page()
 

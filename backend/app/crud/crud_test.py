@@ -41,10 +41,16 @@ class CRUDScenario(CRUDBase[Scenario, ScenarioCreate, ScenarioUpdate]):
 
 class CRUDTestHistory(CRUDBase[TestHistory, TestHistoryCreate, TestHistoryUpdate]):
     def get_by_script(self, db: Session, script_id: str, skip: int = 0, limit: int = 100) -> List[TestHistory]:
-        return db.query(self.model).options(joinedload(self.model.script)).filter(self.model.script_id == script_id).order_by(self.model.run_date.desc()).offset(skip).limit(limit).all()
+        return db.query(self.model).options(
+            joinedload(self.model.script),
+            joinedload(self.model.healing_logs)
+        ).filter(self.model.script_id == script_id).order_by(self.model.run_date.desc()).offset(skip).limit(limit).all()
         
     def get_by_project(self, db: Session, project_id: str, skip: int = 0, limit: int = 100) -> List[TestHistory]:
-        return db.query(self.model).options(joinedload(self.model.script)).filter(self.model.project_id == project_id).order_by(self.model.run_date.desc()).offset(skip).limit(limit).all()
+        return db.query(self.model).options(
+            joinedload(self.model.script),
+            joinedload(self.model.healing_logs)
+        ).filter(self.model.project_id == project_id).order_by(self.model.run_date.desc()).offset(skip).limit(limit).all()
 
     def create(self, db: Session, *, obj_in: TestHistoryCreate) -> TestHistory:
         import time

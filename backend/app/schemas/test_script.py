@@ -23,6 +23,7 @@ class TestScriptBase(BaseModel):
     persona_id: Optional[str] = None
     try_count: Optional[int] = 1
     enable_ai_test: Optional[bool] = False
+    priority: Optional[str] = "P2"
 
 # Creation
 class TestScriptCreate(TestScriptBase):

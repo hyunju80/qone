@@ -50,11 +50,13 @@ const mapHistory = (h: any): TestHistory => ({
     personaName: h.persona_name || h.personaName,
     failureReason: h.failure_reason || h.failureReason,
     aiSummary: h.ai_summary || h.aiSummary,
+    failureAnalysis: h.failure_analysis || h.failureAnalysis,
     deploymentVersion: h.deployment_version || h.deploymentVersion,
     commitHash: h.commit_hash || h.commitHash,
     scheduleId: h.schedule_id || h.scheduleId,
     scheduleName: h.schedule_name || h.scheduleName,
-    scriptOrigin: h.script_origin || h.scriptOrigin
+    scriptOrigin: h.script_origin || h.scriptOrigin,
+    jira_id: h.jira_id || h.jiraId
 });
 
 export const testApi = {
@@ -122,10 +124,42 @@ export const testApi = {
         const response = await api.post<TestHistory>('/history/', data);
         return response.data;
     },
+    getHistoryDetail: async (id: string): Promise<TestHistory> => {
+      const response = await api.get(`/history/${id}`);
+      return mapHistory(response.data);
+   },
+
+   retryTest: async (historyId: string): Promise<any> => {
+      return await api.post(`/run/retry/${historyId}`);
+   },
+
+   selfHealTest: async (historyId: string): Promise<any> => {
+      return await api.post(`/run/self-heal/${historyId}`);
+   },
+
+   getHealingLogs: async (historyId: string): Promise<any[]> => {
+      const response = await api.get(`/history/${historyId}/healing-logs`);
+      return response.data;
+   },
+
+   getHealedAssets: async (): Promise<any[]> => {
+      const response = await api.get('/history/all/healed-assets/list');
+      return response.data;
+   },
+
+   getHealingStatus: async (logId: string): Promise<any> => {
+      const response = await api.get(`/history/healing/${logId}`);
+      return response.data;
+   },
 
     // Schedules
     getSchedules: async (projectId: string) => {
         const response = await api.get<TestSchedule[]>('/schedules/', { params: { project_id: projectId } });
         return response.data;
+    },
+
+    assignJira: async (historyId: string): Promise<TestHistory> => {
+        const response = await api.post(`/history/${historyId}/jira`);
+        return mapHistory(response.data);
     }
 };

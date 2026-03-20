@@ -1,5 +1,5 @@
 from typing import Any, List, Dict, Optional
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 import asyncio
 import os
@@ -16,12 +16,15 @@ router = APIRouter()
 from app.services.app_runner import app_step_runner
 from app.services.web_runner import web_step_runner
 from app.services.device_service import device_service
+import json
+import uuid
+from datetime import datetime, timezone
 from app.models.project import Project
-from app.models.test import TestHistory, TestScript
+from app.models.test import TestHistory, TestScript, SelfHealingLog
 from app.api import deps
 from sqlalchemy.orm import Session
-from fastapi import Depends
-import json
+# from fastapi import Depends (Moved to top)
+from app.services.fallback_service import fallback_service
 
 class DryRunRequest(BaseModel):
     code: str
@@ -62,6 +65,7 @@ async def start_dry_run(request: DryRunRequest):
             from datetime import datetime, timezone
             import uuid
             from app.models.test import TestHistory, TestScript
+            from app.services.ai_analysis_service import ai_analysis_service
             
             run_dir = RUNS_DIR / run_id
             exit_code_file = run_dir / "exit_code.txt"
@@ -110,6 +114,27 @@ async def start_dry_run(request: DryRunRequest):
                     logs=execution_logs,
                     run_date=datetime.now(timezone.utc)
                 )
+
+                # AI Failure Analysis
+                if status == "failed":
+                    try:
+                        screenshot_b64 = None
+                        screenshot_path = run_dir / "latest.jpg"
+                        if screenshot_path.exists():
+                            with open(screenshot_path, "rb") as sf:
+                                screenshot_b64 = base64.b64encode(sf.read()).decode("utf-8")
+                        
+                        analysis = await ai_analysis_service.analyze_failure(
+                            logs=execution_logs,
+                            screenshot_b64=screenshot_b64,
+                            platform="WEB",
+                            script_name=request.script_name or "Dry Run",
+                            failure_reason=error_msg or "Execution Failure"
+                        )
+                        new_history.failure_analysis = analysis
+                    except Exception as ai_e:
+                        print(f"AI Analysis failed for dry-run: {ai_e}")
+
                 db_history.add(new_history)
                 db_history.commit()
 
@@ -211,6 +236,33 @@ async def start_active_steps_run(
         else:
             # Single iteration with no data
             iterations_data = [{"data": None, "expected_result": None, "iteration_index": 1}]
+
+        # Resolve target_url for potential AI Fallback
+        target_url = None
+        if request.platform.upper() == "WEB":
+            if request.steps:
+                for step in request.steps:
+                    if step.get("action") == "navigate":
+                        target_url = step.get("inputValue") or step.get("option")
+                        break
+            if not target_url and request.script_id:
+                # Fallback to scenario target or project envs (logic similar to self-heal)
+                db_tmp = SessionLocal()
+                try:
+                    from app.models.test import Scenario, TestScript
+                    from app.models.project import Project
+                    script_tmp = db_tmp.query(TestScript).filter(TestScript.id == request.script_id).first()
+                    if script_tmp:
+                        scenario_tmp = db_tmp.query(Scenario).filter(Scenario.golden_script_id == script_tmp.id).first()
+                        if scenario_tmp and scenario_tmp.target and scenario_tmp.target.startswith("http"):
+                            target_url = scenario_tmp.target
+                        if not target_url:
+                            proj_tmp = db_tmp.query(Project).filter(Project.id == script_tmp.project_id).first()
+                            if proj_tmp and proj_tmp.environments:
+                                envs = proj_tmp.environments
+                                target_url = envs.get("Prod") or envs.get("Stage") or envs.get("Dev") or (list(envs.values())[0] if envs else None)
+                finally:
+                    db_tmp.close()
 
         try:
             with open(log_file, "w", encoding="utf-8") as lf:
@@ -432,6 +484,8 @@ async def start_active_steps_run(
                         await asyncio.sleep(2)
 
                 # --- 3. AI Fallback (If all attempts failed) ---
+                # DISABLED: Self-healing should be triggered manually from Defect Management
+                """
                 if overall_status != "passed" and request.enable_ai_test:
                     log(f"--- All {request.try_count} attempts failed. Initiating AI Autonomous Testing (Fallback) ---")
                     
@@ -449,7 +503,7 @@ async def start_active_steps_run(
                         ai_history = await fallback_service.run_ai_fallback(
                             platform=request.platform,
                             goal=goal,
-                            initial_url=None, # Already in session
+                            initial_url=target_url, # Pass the resolved target URL
                             app_package=mobile_config.get("appPackage"),
                             persona_context=None 
                         )
@@ -476,11 +530,12 @@ async def start_active_steps_run(
                             log("--- AI Autonomous Testing FAILED. ---", "ERROR")
                     except Exception as ai_e:
                         log(f"AI Fallback Error: {str(ai_e)}", "ERROR")
+                """
 
                 # --- OUTSIDE RETRY & FALLBACK LOOP ---
                 # Final History Save (Keep results of the last/successful attempt)
                 duration_str = f"{round(asyncio.get_event_loop().time() - start_time, 1)}s"
-                _save_history_record(
+                await _save_history_record(
                     overall_status, 
                     None if overall_status=="passed" else "Step failure", 
                     step_results, 
@@ -494,7 +549,7 @@ async def start_active_steps_run(
         except Exception as e:
             print(f"Error in step run task: {e}")
 
-    def _save_history_record(status, failure_reason, steps_data, duration="0s", execution_logs=[]):
+    async def _save_history_record(status, failure_reason, steps_data, duration="0s", execution_logs=[]):
         from app.db.session import SessionLocal
         from datetime import datetime, timezone
         import uuid
@@ -519,6 +574,35 @@ async def start_active_steps_run(
                     logs=execution_logs,
                     run_date=datetime.now(timezone.utc)
                 )
+
+                # AI Failure Analysis
+                if status == "failed":
+                    try:
+                        from app.services.ai_analysis_service import ai_analysis_service
+                        screenshot_b64 = None
+                        if steps_data:
+                            for step_res in reversed(steps_data):
+                                if step_res.get("screenshot_data"):
+                                    screenshot_b64 = step_res["screenshot_data"]
+                                    break
+                        
+                        if not screenshot_b64:
+                            img_file = RUNS_DIR / run_id / "latest.jpg"
+                            if img_file.exists():
+                                with open(img_file, "rb") as sf:
+                                    screenshot_b64 = base64.b64encode(sf.read()).decode("utf-8")
+
+                        analysis = await ai_analysis_service.analyze_failure(
+                            logs=execution_logs,
+                            screenshot_b64=screenshot_b64,
+                            platform=request.platform,
+                            script_name=request.script_name or f"Asset Run ({request.project_id})",
+                            failure_reason=failure_reason or "Step Failure"
+                        )
+                        new_history.failure_analysis = analysis
+                    except Exception as ai_e:
+                        print(f"AI Analysis failed for run {run_id}: {ai_e}")
+
                 db_history.add(new_history)
                 db_history.commit()
                 print(f"DEBUG: Saved history record {h_id} for run {run_id}")
@@ -614,8 +698,14 @@ async def websocket_endpoint(websocket: WebSocket, run_id: str):
                         code = int(content)
                         status = "success" if code == 0 else "error"
                         print(f"DEBUG WS: Found exit code {code}, sending status {status}")
-                        await websocket.send_json({"type": "status", "data": status})
-                        status_sent = True
+                        try:
+                            await websocket.send_json({"type": "status", "data": status})
+                            status_sent = True
+                            await asyncio.sleep(0.5) # Give it time to flush
+                            break # EXIT LOOP AFTER FINAL STATUS
+                        except:
+                            print("DEBUG WS: Failed to send final status, connection likely closed.")
+                            break
                     else:
                         print(f"DEBUG WS: exit_code.txt exists but empty")
                 except Exception as e:
@@ -634,3 +724,185 @@ async def websocket_endpoint(websocket: WebSocket, run_id: str):
     finally:
         print(f"DEBUG WS: WebSocket handler finished for {run_id}")
         # runner_service.terminate_run(run_id) <-- REMOVED to prevent killing tests on disconnect
+@router.post("/retry/{history_id}", response_model=DryRunResponse)
+async def retry_run(
+    history_id: str,
+    db: Session = Depends(deps.get_db)
+):
+    """
+    Retry a specific test run from history.
+    """
+    history = db.query(TestHistory).filter(TestHistory.id == history_id).first()
+    if not history:
+        raise HTTPException(status_code=404, detail="History not found")
+    
+    script = db.query(TestScript).filter(TestScript.id == history.script_id).first()
+    if not script:
+        raise HTTPException(status_code=404, detail="Script not found")
+        
+    # Prepare RunStepsRequest similar to active-steps
+    request = RunStepsRequest(
+        steps=script.steps,
+        project_id=script.project_id,
+        platform=script.platform or "Android",
+        script_id=script.id,
+        script_name=script.name,
+        trigger="manual",
+        persona_name=history.persona_name or "Default",
+        capture_screenshots=script.capture_screenshots or False,
+        dataset=script.dataset,
+        try_count=script.try_count or 1,
+        enable_ai_test=script.enable_ai_test or False
+    )
+    
+    return await start_active_steps_run(request, db)
+
+@router.post("/self-heal/{history_id}", response_model=Dict[str, Any])
+async def self_heal_run(
+    history_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(deps.get_db)
+):
+    """
+    Trigger autonomous self-healing for a failed test.
+    """
+    history = db.query(TestHistory).filter(TestHistory.id == history_id).first()
+    if not history:
+        raise HTTPException(status_code=404, detail="History not found")
+        
+    script = db.query(TestScript).filter(TestScript.id == history.script_id).first()
+    if not script:
+        raise HTTPException(status_code=404, detail="Script not found")
+        
+    # 1. Create Log Entry
+    log_id = str(uuid.uuid4())
+    new_log = SelfHealingLog(
+        id=log_id,
+        history_id=history_id,
+        script_id=script.id,
+        status="started",
+        error_detected=history.failure_reason
+    )
+    db.add(new_log)
+    db.commit()
+    
+    # 2. Run Fallback Service as a Background Task
+    async def run_healing():
+        h_session = SessionLocal()
+        try:
+            # Determine Goal: Achive the result of the script
+            goal = f"Successfully execute the test script: {script.name}. {script.description or ''}"
+            
+            # Extract target from script if available
+            target_url = None
+            if script.platform == "WEB":
+                if script.steps:
+                    # Often first step is 'navigate' or similar
+                    for step in script.steps:
+                        if step.get("action") == "navigate":
+                            target_url = step.get("inputValue") or step.get("option")
+                            break
+                
+                # If still no URL, check associated scenario
+                if not target_url:
+                    from app.models.test import Scenario
+                    scenario = h_session.query(Scenario).filter(Scenario.golden_script_id == script.id).first()
+                    if scenario and scenario.target and scenario.target.startswith("http"):
+                        target_url = scenario.target
+                
+                # If still no URL, check project settings
+                if not target_url and project:
+                    envs = project.environments or {}
+                    # Try to get Prod or just first value
+                    target_url = envs.get("Prod") or envs.get("Stage") or envs.get("Dev") or (list(envs.values())[0] if envs else None)
+            
+            print(f"DEBUG: Self-healing resolved target_url: {target_url}")
+            
+            # Execute Autonomous Fallback
+            results = await fallback_service.run_ai_fallback(
+                platform=script.platform or "WEB",
+                goal=goal,
+                initial_url=target_url,
+                max_steps=15,
+                failure_analysis=history.failure_analysis,
+                original_steps=script.steps
+            )
+            
+            final_status = "failed"
+            modified_steps = []
+            if results and results[-1].get("status") == "Completed":
+                final_status = "success"
+                
+                # 1. Always prepend the initial navigation step to ensure script integrity
+                if target_url:
+                    modified_steps.append({
+                        "id": str(uuid.uuid4()),
+                        "stepName": "Initial Navigation",
+                        "action": "navigate",
+                        "selectorType": "",
+                        "selectorValue": "",
+                        "inputValue": target_url,
+                        "description": f"Navigate to {target_url}",
+                        "assertText": ""
+                    })
+                
+                # Update script immediately if navigate was the only thing? 
+                # No, wait for AI results.
+
+                # 2. Convert fallback results to TestScript steps
+                for res in results:
+                    # Skip if the AI suggested a navigate to the same initial URL (to avoid duplicates)
+                    if res.get("action_type") == "navigate" and res.get("action_value") == target_url:
+                        continue
+                        
+                    # Determine selector type
+                    s_target = res.get("action_target") or ""
+                    s_type = ""
+                    if s_target:
+                        if s_target.startswith("/") or s_target.startswith("("): s_type = "XPATH"
+                        elif "." in s_target or "#" in s_target or "[" in s_target: s_type = "CSS"
+                        else: s_type = "ID"
+
+                    modified_steps.append({
+                        "id": str(uuid.uuid4()),
+                        "stepName": res.get("description", "AI Step"),
+                        "action": res.get("action_type"),
+                        "selectorType": s_type,
+                        "selectorValue": s_target,
+                        "inputValue": res.get("action_value", ""),
+                        "description": res.get("thought", ""),
+                        "assertText": res.get("assert_text", "")
+                    })
+                
+                # Update the original script with healed steps
+                orig_script = h_session.query(TestScript).filter(TestScript.id == script.id).first()
+                if orig_script:
+                    orig_script.steps = modified_steps
+                    h_session.add(orig_script)
+                    h_session.commit()
+                    h_session.refresh(orig_script)
+                    print(f"DEBUG: Script {script.id} updated with {len(modified_steps)} healed steps.")
+
+            # Update Log
+            healing_log = h_session.query(SelfHealingLog).filter(SelfHealingLog.id == log_id).first()
+            if healing_log:
+                healing_log.status = final_status
+                healing_log.healing_steps = results
+                healing_log.modified_steps = modified_steps
+                h_session.add(healing_log)
+                h_session.commit()
+                print(f"DEBUG: Healing log {log_id} updated with status {final_status}.")
+                
+        except Exception as e:
+            print(f"Self-healing error: {e}")
+            healing_log = h_session.query(SelfHealingLog).filter(SelfHealingLog.id == log_id).first()
+            if healing_log:
+                healing_log.status = "failed"
+                h_session.commit()
+        finally:
+            h_session.close()
+
+    from app.db.session import SessionLocal
+    background_tasks.add_task(run_healing)
+    
+    return {"status": "started", "log_id": log_id}

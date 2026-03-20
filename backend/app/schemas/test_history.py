@@ -1,6 +1,7 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
+from app.schemas.self_healing import SelfHealingLog
 
 class LogEntry(BaseModel):
     msg: str
@@ -12,8 +13,10 @@ class TestHistoryBase(BaseModel):
     duration: Optional[str] = None
     failure_reason: Optional[str] = None
     ai_summary: Optional[str] = None
+    failure_analysis: Optional[Dict[str, Any]] = None
     logs: Optional[List[LogEntry]] = []
     step_results: Optional[List[Dict[str, Any]]] = []
+    jira_id: Optional[str] = None
 
 class TestHistoryCreate(TestHistoryBase):
     script_id: str
@@ -36,9 +39,10 @@ class TestHistoryInDBBase(TestHistoryBase):
     schedule_id: Optional[str] = None
     schedule_name: Optional[str] = None
     script_origin: Optional[str] = None
+    script_category: Optional[str] = "Common"
     
     class Config:
         from_attributes = True
 
 class TestHistory(TestHistoryInDBBase):
-    pass
+    healing_logs: List[SelfHealingLog] = []

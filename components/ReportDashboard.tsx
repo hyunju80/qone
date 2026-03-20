@@ -13,6 +13,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { TestHistory, TestScript, Project, ScriptStatus, ScriptOrigin } from '../types';
 import api from '../api/client';
+import { testApi } from '../api/test';
 
 interface ReportDashboardProps {
    history: TestHistory[];
@@ -511,8 +512,8 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                                           onClick={async () => {
                                              if (isAI) {
                                                 try {
-                                                   const res = await api.get(`/history/${h.id}`);
-                                                   setActiveTrace({ ...res.data, type: 'ai' });
+                                                   const detail = await testApi.getHistoryDetail(h.id);
+                                                    setActiveTrace({ ...detail, type: 'ai' });
                                                 } catch (e) {
                                                    console.error(e);
                                                 }

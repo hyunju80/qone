@@ -1,24 +1,27 @@
 import React, { useState, useMemo } from 'react';
 import {
    History, Search, Filter, Calendar, Clock, ChevronRight,
-   CheckCircle2, XCircle, Info, Activity, Terminal,
+   CheckCircle2, XCircle, Info, Activity, Terminal, Loader2,
    BarChart3, LayoutGrid, ArrowUpRight, Zap, Bot, Users,
    X, Download, AlertTriangle, FileText, GitBranch, MousePointer2, Timer,
-   Hash, Layers, Tag, Target, Save
+   Hash, Layers, Tag, Target, Save, Wand2, Code2
 } from 'lucide-react';
-import { TestHistory, Project, ExecutionTrigger } from '../types';
+import { TestHistory, Project, ExecutionTrigger, TestScript, ScriptOrigin } from '../types';
 import api from '../api/client';
+import { testApi } from '../api/test';
 import TestDashboard from './TestDashboard';
+import LiveExecutionModal from './LiveExecutionModal';
 
 interface HistoryViewProps {
    history: TestHistory[];
    activeProject: Project;
    onRefresh?: () => void;
    onNavigateToLibrary?: (scriptId: string) => void;
+   scripts?: TestScript[];
 }
 
-const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRefresh, onNavigateToLibrary }) => {
-   const [activeTab, setActiveTab] = useState<'dashboard' | 'history'>('dashboard');
+const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRefresh, onNavigateToLibrary, scripts = [] }) => {
+   const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'defects'>('dashboard');
 
    // Refresh history on mount
    React.useEffect(() => {
@@ -35,6 +38,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
    const [selectedReport, setSelectedReport] = useState<TestHistory | null>(null);
    const [expandedScreenshot, setExpandedScreenshot] = useState<string | null>(null);
 
+   // Date Filter State
+   const [startDate, setStartDate] = useState<string>('');
+   const [endDate, setEndDate] = useState<string>('');
+
    // Pagination State
    const [currentPage, setCurrentPage] = useState(1);
    const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -43,8 +50,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
       const total = history.length;
       const passed = history.filter(h => h.status === 'passed').length;
       const pipelineRuns = history.filter(h => h.trigger === 'pipeline').length;
+      const scheduledRuns = history.filter(h => h.trigger === 'scheduled').length;
       const rate = total > 0 ? Math.round((passed / total) * 100) : 0;
-      return { total, passed, rate, pipelineRuns };
+      return { total, passed, rate, pipelineRuns, scheduledRuns };
    }, [history]);
 
    // Extract unique versions and schedules for the filter dropdown
@@ -65,11 +73,28 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
             matchesContext = h.deploymentVersion === selectedContext || h.scheduleName === selectedContext;
          }
 
-         const matchesOrigin = originFilter === 'all' || h.scriptOrigin === originFilter;
+         let matchesOrigin = true;
+         if (originFilter === 'AI') {
+            matchesOrigin = h.scriptOrigin === 'AI' || h.scriptOrigin === 'AI_EXPLORATION';
+         } else if (originFilter !== 'all') {
+            matchesOrigin = h.scriptOrigin === originFilter;
+         }
 
-         return matchesSearch && matchesStatus && matchesTrigger && matchesContext && matchesOrigin;
+         let matchesDate = true;
+         const runTime = new Date(h.runDate).getTime();
+         if (startDate) {
+            matchesDate = matchesDate && runTime >= new Date(startDate).getTime();
+         }
+         if (endDate) {
+            // End of the selected day
+            const endOfDay = new Date(endDate);
+            endOfDay.setHours(23, 59, 59, 999);
+            matchesDate = matchesDate && runTime <= endOfDay.getTime();
+         }
+
+         return matchesSearch && matchesStatus && matchesTrigger && matchesContext && matchesOrigin && matchesDate;
       });
-   }, [history, searchTerm, statusFilter, triggerFilter, originFilter, selectedContext]);
+   }, [history, searchTerm, statusFilter, triggerFilter, originFilter, selectedContext, startDate, endDate]);
 
    const totalPages = Math.ceil(filteredHistory.length / itemsPerPage);
    const paginatedHistory = useMemo(() => {
@@ -77,10 +102,57 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
       return filteredHistory.slice(start, start + itemsPerPage);
    }, [filteredHistory, currentPage, itemsPerPage]);
 
+   const defects = useMemo(() => {
+      // 1. Group by scriptId to find latest run and failure frequency
+      const latestRuns = new Map<string, TestHistory>();
+      const failureCounts = new Map<string, number>();
+
+      const sortedHistory = [...history].sort((a, b) => new Date(b.runDate).getTime() - new Date(a.runDate).getTime());
+
+      sortedHistory.forEach(h => {
+         if (!latestRuns.has(h.scriptId)) {
+            latestRuns.set(h.scriptId, h);
+         }
+         if (h.status === 'failed') {
+            failureCounts.set(h.scriptId, (failureCounts.get(h.scriptId) || 0) + 1);
+         }
+      });
+
+      // 2. Filter assets where the latest run was a failure
+      const failedAssets = Array.from(latestRuns.values())
+         .filter(h => h.status === 'failed')
+         .map(h => {
+            const script = scripts.find(s => s.id === h.scriptId);
+            const failCount = failureCounts.get(h.scriptId) || 0;
+            const totalRuns = history.filter(hist => hist.scriptId === h.scriptId).length;
+            const failRate = totalRuns > 0 ? (failCount / totalRuns) * 100 : 0;
+
+            // Priority weight: P0=100, P1=70, P2=40, P3=10
+            const priorityMap: Record<string, number> = { 'P0': 100, 'P1': 70, 'P2': 40, 'P3': 10 };
+            const pScore = priorityMap[script?.priority || 'P2'] || 40;
+
+            // Importance Score Calculation (Hybrid)
+            // Heuristic: 40% User Priority, 30% Failure Rate, 30% Failure Volume
+            const importanceScore = Math.round((pScore * 0.4) + (failRate * 0.3) + (Math.min(failCount * 10, 100) * 0.3));
+
+            return {
+               ...h,
+               priority: script?.priority || 'P2',
+               category: h.scriptCategory || script?.category || 'General',
+               failCount,
+               failRate,
+               importanceScore,
+               assetOrigin: h.scriptOrigin || script?.origin || 'MANUAL'
+            };
+         });
+
+      return failedAssets.sort((a, b) => b.importanceScore - a.importanceScore);
+   }, [history, scripts]);
+
    // Reset to page 1 when filters change
    React.useEffect(() => {
       setCurrentPage(1);
-   }, [searchTerm, statusFilter, triggerFilter, originFilter, selectedContext, itemsPerPage]);
+   }, [searchTerm, statusFilter, triggerFilter, originFilter, selectedContext, itemsPerPage, startDate, endDate]);
 
    const getTriggerIcon = (trigger: ExecutionTrigger) => {
       switch (trigger) {
@@ -104,6 +176,246 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
    };
 
    const [showSuccessModal, setShowSuccessModal] = useState(false);
+   const [defectSubTab, setDefectSubTab] = useState<'active' | 'healed'>('active');
+   const [healedAssets, setHealedAssets] = useState<any[]>([]);
+   const [isHealing, setIsHealing] = useState<string | null>(null); // historyId being healed
+   // Consolidated state: historyId -> { status, logId }
+   const [healingTasks, setHealingTasks] = useState<Record<string, { status: 'started' | 'success' | 'failed', logId: string }>>({});
+
+   /* Execution states for Quick Retry */
+   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+   const [executingScript, setExecutingScript] = useState<TestScript | null>(null);
+   const [executionStatus, setExecutionStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
+   const [selectedHealedAsset, setSelectedHealedAsset] = useState<any>(null);
+   const [jiraTarget, setJiraTarget] = useState<TestHistory | null>(null);
+   const [jiraForm, setJiraForm] = useState({
+      project: 'QONE',
+      issueType: 'Bug',
+      priority: 'Medium',
+      summary: '',
+      description: '',
+      assignee: ''
+   });
+   const [isAssigningJira, setIsAssigningJira] = useState(false);
+   const [jiraScreenshot, setJiraScreenshot] = useState<string | null>(null);
+
+
+   const selectedScriptPriority = useMemo(() => {
+      if (!selectedReport) return 'P2';
+      const script = scripts.find(s => s.id === (selectedReport as any).scriptId);
+      return script?.priority || 'P2';
+   }, [selectedReport, scripts]);
+
+
+   const handleAssignJira = async () => {
+      if (!jiraTarget) return;
+      setIsAssigningJira(true);
+      try {
+         const updated = await testApi.assignJira(jiraTarget.id);
+         setJiraTarget(null);
+         // Refresh parent state
+         if (onRefresh) onRefresh();
+      } catch (error) {
+         console.error("Failed to assign Jira:", error);
+         alert("Failed to assign Jira issue.");
+      } finally {
+         setIsAssigningJira(false);
+      }
+   };
+
+   const openJiraModal = (item: TestHistory) => {
+      const assetName = item.scriptName;
+      const platform = item.scriptOrigin || 'WEB';
+      const summary = `[Bug] ${assetName} Failure on ${platform}`;
+
+      // 1. Logs
+      let logsText = "";
+      if (item.logs && item.logs.length > 0) {
+         const logLines = item.logs.slice(-10).map(l => `[${l.type.toUpperCase()}] ${l.msg}`).join('\n');
+         logsText = `{panel:title=Execution Trace (Last 10 Lines)|titleBGColor=#F7F9F9|borderStyle=solid}\n{code:theme=RDark|linenumbers=false}\n${logLines}\n{code}\n{panel}`;
+      }
+
+      // 2. Failure Analysis
+      let analysisText = "";
+      if (item.failureAnalysis) {
+         analysisText = "{panel:title=AI Failure Analysis|titleBGColor=#EBF5FB|borderStyle=solid}\n";
+         if (item.failureAnalysis.reason) {
+            analysisText += `*Root Cause:*\n${item.failureAnalysis.reason}\n\n`;
+         }
+         if (item.failureAnalysis.suggestion) {
+            analysisText += `*Suggestion:*\n${item.failureAnalysis.suggestion}\n\n`;
+         }
+         if (item.failureAnalysis.thought) {
+            analysisText += `*Analysis Detail:*\n${item.failureAnalysis.thought}\n`;
+         }
+         analysisText += "{panel}";
+      }
+
+      const description = `h2. 🚨 Test Failure Report: ${assetName}
+
+|| Field || Details ||
+| *Asset Name* | ${assetName} |
+| *Platform* | ${platform} |
+| *Run Date* | ${new Date(item.runDate).toLocaleString()} |
+| *Trigger* | ${item.trigger.toUpperCase()} |
+
+h3. 🔍 Failure Details
+{panel:title=Error Context|titleBGColor=#FDEDEC|borderStyle=solid}
+*Failure Reason:* ${item.failureReason || 'N/A'}
+*AI Summary:* ${item.aiSummary || 'No summary available.'}
+{panel}
+
+${analysisText}
+
+${logsText}
+
+----
+_Generated by Q-ONE AI Automation_`;
+
+      // 3. Find latest screenshot from failed steps
+      let screenshot = null;
+      if (item.step_results) {
+         const failedStep = [...item.step_results].reverse().find(s => s.status === 'failed' && s.screenshot_data);
+         if (failedStep) {
+            screenshot = failedStep.screenshot_data;
+         }
+      }
+
+      setJiraForm({
+         project: 'QONE',
+         issueType: 'Bug',
+         priority: 'Medium',
+         summary: summary,
+         description: description,
+         assignee: 'Unassigned'
+      });
+      setJiraScreenshot(screenshot);
+      setJiraTarget(item);
+   };;;
+
+   const loadHealedAssets = async () => {
+      try {
+         const data = await testApi.getHealedAssets();
+         setHealedAssets(data);
+      } catch (e) {
+         console.error("Failed to load healed assets", e);
+      }
+   };
+
+   React.useEffect(() => {
+      if (activeTab === 'defects' && defectSubTab === 'healed') {
+         loadHealedAssets();
+      }
+   }, [activeTab, defectSubTab]);
+
+   // Polling for self-healing status (Improved 3s Timeout pattern)
+   React.useEffect(() => {
+      const activeIds = Object.entries(healingTasks)
+         .filter(([_, task]) => task.status === 'started')
+         .map(([id, _]) => id);
+
+      if (activeIds.length === 0) return;
+
+      let timer: any;
+      const poll = async () => {
+         console.log(`[Self-Healing] Polling ${activeIds.length} active tasks...`);
+
+         for (const hId of activeIds) {
+            const task = healingTasks[hId];
+            if (!task || !task.logId) continue;
+
+            try {
+               const log = await testApi.getHealingStatus(task.logId);
+               console.log(`[Self-Healing] Log ${task.logId} current status: ${log.status}`);
+
+               const status = log.status?.toLowerCase();
+               if (status === 'success' || status === 'failed') {
+                  setHealingTasks(prev => ({
+                     ...prev,
+                     [hId]: { ...prev[hId], status: status as any }
+                  }));
+                  setIsHealing(null);
+                  if (onRefresh) onRefresh();
+                  loadHealedAssets();
+               }
+            } catch (e) {
+               console.error(`[Self-Healing] Polling failed for ${task.logId}`, e);
+            }
+         }
+
+         // Schedule next poll in 3 seconds if we still have active tasks
+         timer = setTimeout(poll, 3000);
+      };
+
+      timer = setTimeout(poll, 3000);
+      return () => clearTimeout(timer);
+   }, [healingTasks]);
+
+   const handleRetry = async (historyId: string) => {
+      const defect = defects.find(d => d.id === historyId);
+      if (!defect) return;
+
+      const script = scripts.find(s => s.id === defect.scriptId);
+      if (!script) {
+         alert("Original script not found.");
+         return;
+      }
+
+      setExecutingScript(script);
+      setExecutionStatus('running');
+
+      try {
+         if (script.steps && script.steps.length > 0) {
+            const { run_id } = await testApi.runActiveSteps({
+               steps: script.steps,
+               project_id: script.projectId,
+               platform: script.platform || 'WEB',
+               script_id: script.id,
+               script_name: script.name,
+               trigger: "manual",
+               persona_name: script.persona?.name || 'Default',
+               capture_screenshots: script.captureScreenshots || false,
+               dataset: script.dataset || [],
+               try_count: script.try_count || 1,
+               enable_ai_test: script.enable_ai_test || false
+            });
+            setActiveRunId(run_id);
+         } else {
+            const { run_id } = await testApi.dryRun({
+               code: script.code,
+               project_id: script.projectId,
+               script_id: script.id,
+               script_name: script.name,
+               persona_name: script.persona?.name || 'Default',
+               dataset: script.dataset || [],
+               try_count: script.try_count || 1,
+               enable_ai_test: script.enable_ai_test || false
+            });
+            setActiveRunId(run_id);
+         }
+      } catch (e) {
+         console.error("Retry failed", e);
+         setExecutionStatus('error');
+         alert("Failed to start retry.");
+      }
+   };
+
+   const handleSelfHeal = async (historyId: string) => {
+      try {
+         setIsHealing(historyId);
+         const { log_id } = await testApi.selfHealTest(historyId);
+
+         setHealingTasks(prev => ({
+            ...prev,
+            [historyId]: { status: 'started', logId: log_id }
+         }));
+      } catch (e) {
+         console.error("Self-healing failed", e);
+         setHealingTasks(prev => ({ ...prev, [historyId]: { ...prev[historyId], status: 'failed' } }));
+      } finally {
+         setIsHealing(null);
+      }
+   };
 
    const refreshReport = async () => {
       if (selectedReport) {
@@ -132,6 +444,35 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
       if (onRefresh) onRefresh();
    };
 
+   const setDatePreset = (preset: 'today' | 'week' | 'month' | 'all') => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const now = new Date();
+
+      switch (preset) {
+         case 'today':
+            setStartDate(today.toISOString().split('T')[0]);
+            setEndDate(now.toISOString().split('T')[0]);
+            break;
+         case 'week':
+            const weekAgo = new Date(today);
+            weekAgo.setDate(today.getDate() - 7);
+            setStartDate(weekAgo.toISOString().split('T')[0]);
+            setEndDate(now.toISOString().split('T')[0]);
+            break;
+         case 'month':
+            const monthAgo = new Date(today);
+            monthAgo.setMonth(today.getMonth() - 1);
+            setStartDate(monthAgo.toISOString().split('T')[0]);
+            setEndDate(now.toISOString().split('T')[0]);
+            break;
+         case 'all':
+            setStartDate('');
+            setEndDate('');
+            break;
+      }
+   };
+
    return (
       <div className="h-full flex flex-col bg-gray-50 dark:bg-[#0c0e12] overflow-hidden">
          {/* Tab Navigation - Design Center Style */}
@@ -156,13 +497,23 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                   >
                      Execution History
                   </button>
+                  <button
+                     onClick={() => setActiveTab('defects')}
+                     className={`px-6 py-3 text-sm font-black flex items-center gap-2 border-b-2 transition-all uppercase tracking-widest ${activeTab === 'defects'
+                        ? 'border-red-600 text-red-600 dark:text-red-400'
+                        : 'border-transparent text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300'
+                        }`}
+                  >
+                     <AlertTriangle className={`w-4 h-4 ${activeTab === 'defects' ? 'text-red-500' : 'text-gray-400'}`} />
+                     Defect Management
+                  </button>
                </div>
             </div>
          </div>
 
          <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
             <div className="max-w-6xl mx-auto pb-20">
-               {activeTab === 'dashboard' ? (
+               {activeTab === 'dashboard' && (
                   <TestDashboard
                      history={history}
                      activeProject={activeProject}
@@ -171,7 +522,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                         // We don't automatically switch tabs, just show the modal
                      }}
                   />
-               ) : (
+               )}
+               {activeTab === 'history' && (
                   <>
                      {/* Stats Row */}
                      <div className="mb-10 flex gap-6">
@@ -183,9 +535,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                            <div className="text-[10px] font-black text-gray-500 dark:text-gray-600 uppercase mb-2 transition-colors tracking-widest">Success Rate</div>
                            <div className={`text-3xl font-black ${stats.rate > 90 ? 'text-green-600 dark:text-green-500' : 'text-amber-500'}`}>{stats.rate}%</div>
                         </div>
-                        <div className="flex-1 bg-purple-600/5 border border-purple-500/20 rounded-3xl p-6">
+                        <div className="flex-1 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 transition-colors shadow-sm dark:shadow-none">
                            <div className="text-[10px] font-black text-purple-600 dark:text-purple-400 uppercase mb-2 transition-colors tracking-widest">Pipeline Auto</div>
                            <div className="text-3xl font-black text-gray-900 dark:text-white transition-colors">{stats.pipelineRuns}</div>
+                        </div>
+                        <div className="flex-1 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 transition-colors shadow-sm dark:shadow-none">
+                           <div className="text-[10px] font-black text-amber-500 dark:text-amber-400 uppercase mb-2 transition-colors tracking-widest">Scheduled Runs</div>
+                           <div className="text-3xl font-black text-gray-900 dark:text-white transition-colors">{stats.scheduledRuns}</div>
                         </div>
                      </div>
 
@@ -211,7 +567,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                                  onChange={(e) => setSelectedContext(e.target.value)}
                                  className="w-full bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 pl-10 pr-4 text-[11px] font-bold text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none uppercase transition-colors shadow-sm dark:shadow-none"
                               >
-                                 <option value="All Contexts">All Contexts</option>
+                                 <option value="All Contexts">Contexts</option>
                                  {contextOptions.versions.length > 0 && (
                                     <optgroup label="Deployment Releases">
                                        {contextOptions.versions.map(v => <option key={v} value={v!}>Release: {v}</option>)}
@@ -224,19 +580,44 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                                  )}
                               </select>
                            </div>
+
+                           {/* Date Range Picker */}
+                           <div className="flex items-center gap-2 flex-[2]">
+                              <div className="relative flex-1">
+                                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                                 <input
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    className="w-full bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl py-2 pl-9 pr-3 text-[10px] font-bold text-gray-600 dark:text-gray-400 focus:outline-none transition-colors"
+                                 />
+                              </div>
+                              <span className="text-gray-400 text-xs">~</span>
+                              <div className="relative flex-1">
+                                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                                 <input
+                                    type="date"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                    className="w-full bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl py-2 pl-9 pr-3 text-[10px] font-bold text-gray-600 dark:text-gray-400 focus:outline-none transition-colors"
+                                 />
+                              </div>
+                           </div>
                         </div>
 
                         <div className="flex flex-wrap items-center justify-between gap-4">
-                           <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
-                              {(['all', 'passed', 'failed'] as const).map((s) => (
-                                 <button
-                                    key={s}
-                                    onClick={() => setStatusFilter(s)}
-                                    className={`px-4 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-                                 >
-                                    {s}
-                                 </button>
-                              ))}
+                           <div className="flex items-center gap-2">
+                              <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
+                                 {(['all', 'passed', 'failed'] as const).map((s) => (
+                                    <button
+                                       key={s}
+                                       onClick={() => setStatusFilter(s)}
+                                       className={`px-4 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                    >
+                                       {s}
+                                    </button>
+                                 ))}
+                              </div>
                            </div>
 
                            <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
@@ -257,16 +638,28 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
 
                            <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
                               <div className="px-3 py-1.5 flex items-center text-[9px] font-black text-white bg-emerald-500/80 dark:bg-emerald-600/50 rounded-md shadow-sm uppercase tracking-widest mr-1">Origin</div>
-                              {(['all', 'AI', 'AI_EXPLORATION', 'MANUAL', 'STEP'] as const).map((o) => (
+                              {(['all', 'AI', 'STEP'] as const).map((o) => (
                                  <button
                                     key={o}
                                     onClick={() => setOriginFilter(o)}
                                     className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${originFilter === o
-                                       ? o === 'STEP' ? 'bg-emerald-100 dark:bg-emerald-600 text-emerald-600 dark:text-white shadow-sm' : (o === 'AI' || o === 'AI_EXPLORATION') ? 'bg-indigo-100 dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 shadow-sm'
+                                       ? o === 'STEP' ? 'bg-emerald-100 dark:bg-emerald-600 text-emerald-600 dark:text-white shadow-sm' : o === 'AI' ? 'bg-indigo-100 dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 shadow-sm'
                                        : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-400'
                                        }`}
                                  >
-                                    {o.replace('_', ' ')}
+                                    {o === 'AI' ? 'AI GEN' : o === 'STEP' ? 'STEP FLOW' : o.toUpperCase()}
+                                 </button>
+                              ))}
+                           </div>
+
+                           <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors ml-auto">
+                              {(['all', 'today', 'week', 'month'] as const).map((p) => (
+                                 <button
+                                    key={p}
+                                    onClick={() => setDatePreset(p)}
+                                    className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest transition-all hover:text-indigo-500 text-gray-500`}
+                                 >
+                                    {p}
                                  </button>
                               ))}
                            </div>
@@ -281,7 +674,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                                  <th className="px-6 py-4">Status</th>
                                  <th className="px-6 py-4">Origin Context</th>
                                  <th className="px-6 py-4">Golden Script Asset</th>
-                                 <th className="px-6 py-4">Persona</th>
+                                 <th className="px-6 py-4">Category</th>
                                  <th className="px-6 py-4 text-right">Execution Data</th>
                               </tr>
                            </thead>
@@ -292,8 +685,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                                     onClick={async () => {
                                        if (item.trigger === 'ai_exploration') {
                                           try {
-                                             const res = await api.get(`/history/${item.id}`);
-                                             setSelectedReport({ ...res.data });
+                                             const detail = await testApi.getHistoryDetail(item.id);
+                                             setSelectedReport(detail);
                                           } catch (e) {
                                              console.error("Failed to fetch history details", e);
                                              setSelectedReport(item);
@@ -314,12 +707,18 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                                           <span className={`text-[10px] font-black uppercase ${item.status === 'passed' ? 'text-green-500' : 'text-red-500'}`}>
                                              {item.status}
                                           </span>
+                                          {item.jira_id && (
+                                             <div className="ml-2 flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 dark:bg-blue-500/10 rounded border border-blue-100 dark:border-blue-500/20">
+                                                <Layers className="w-2.5 h-2.5 text-blue-500" />
+                                                <span className="text-[8px] font-black text-blue-600 dark:text-blue-400">{item.jira_id}</span>
+                                             </div>
+                                          )}
                                        </div>
                                     </td>
                                     <td className="px-6 py-5">
                                        <div className="flex flex-col gap-1.5">
                                           <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-black uppercase text-[9px] tracking-widest w-fit ${item.trigger === 'pipeline' ? 'bg-purple-100 dark:bg-purple-600/10 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-500/20' :
-                                             item.trigger === 'scheduled' ? 'bg-amber-100 dark:bg-amber-600/10 text-amber-600 dark:text-amber-500 border-amber-200 dark:border-amber-500/20' :
+                                             item.trigger === 'scheduled' ? 'bg-amber-100 dark:bg-amber-600/10 text-amber-600 dark:text-amber-500 border-amber-200 dark:border-500/20' :
                                                 (item.trigger === 'ai_exploration') ? 'bg-indigo-100 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20' :
                                                    'bg-gray-100 dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700'
                                              }`}>
@@ -357,8 +756,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                                     </td>
                                     <td className="px-6 py-5">
                                        <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg w-fit transition-colors">
-                                          <Users className="w-3 h-3 text-indigo-500" />
-                                          <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400">{item.personaName}</span>
+                                          <LayoutGrid className="w-3 h-3 text-indigo-500" />
+                                          <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400">{item.scriptCategory || 'Common'}</span>
                                        </div>
                                     </td>
                                     <td className="px-6 py-5 text-right">
@@ -444,6 +843,223 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                      </div>
                   </>
                )}
+
+               {activeTab === 'defects' && (
+                  <div className="space-y-8 animate-in fade-in duration-500">
+                     <div className="flex items-center justify-between">
+                        <div>
+                           <h2 className="text-2xl font-black text-gray-900 dark:text-white uppercase tracking-tighter transition-colors">Failure Triage Center</h2>
+                           <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest transition-colors mb-1">Issue Analysis & Automatic Classification</p>
+                        </div>
+                        <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-800">
+                           <button
+                              onClick={() => setDefectSubTab('active')}
+                              className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${defectSubTab === 'active' ? 'bg-white dark:bg-red-600 text-red-600 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                           >
+                              Active Defects ({defects.length})
+                           </button>
+                           <button
+                              onClick={() => setDefectSubTab('healed')}
+                              className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${defectSubTab === 'healed' ? 'bg-white dark:bg-green-600 text-green-600 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                           >
+                              <Zap className="w-3 h-3 inline-block mr-1" /> Healed Assets ({healedAssets.length})
+                           </button>
+                        </div>
+                     </div>
+
+                     {defectSubTab === 'active' ? (
+                        <div className="grid grid-cols-1 gap-6">
+                           {defects.length === 0 ? (
+                              <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-20 flex flex-col items-center justify-center text-center transition-colors">
+                                 <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mb-6 ring-4 ring-green-500/20">
+                                    <CheckCircle2 className="w-8 h-8 text-green-500" />
+                                 </div>
+                                 <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 transition-colors">No Defects Detected</h3>
+                                 <p className="text-sm text-gray-500 dark:text-gray-400 transition-colors">All critical assets are currently passing their validation cycles.</p>
+                              </div>
+                           ) : (
+                              defects.map(defect => {
+                                 const script = scripts.find(s => s.id === defect.scriptId);
+                                 const canSelfHeal = script?.enable_ai_test;
+
+                                 return (
+                                    <div key={defect.id} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-8 hover:border-red-500/30 transition-all shadow-sm dark:shadow-none group relative overflow-hidden">
+                                       {/* Importance Score Gauge (Visual Background) */}
+                                       <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 -mr-16 -mt-16 rounded-full blur-3xl group-hover:bg-red-500/10 transition-all"></div>
+
+                                       <div className="flex flex-col md:flex-row gap-8 relative z-10">
+                                          <div className="flex-1">
+                                             <div className="flex items-center gap-3 mb-4">
+                                                <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border ${defect.priority === 'P0' ? 'bg-red-50 dark:bg-red-900/10 border-red-500 text-red-600 dark:text-red-400' :
+                                                   defect.priority === 'P1' ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-500 text-amber-600 dark:text-amber-400' :
+                                                      defect.priority === 'P2' ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-500 text-blue-600 dark:text-blue-400' :
+                                                         'bg-gray-50 dark:bg-gray-900/10 border-gray-200 dark:border-gray-800 text-gray-500'
+                                                   }`}>
+                                                   {defect.priority}
+                                                </span>
+                                                <span className="px-2 py-1 bg-gray-100 dark:bg-gray-900 text-gray-500 text-[10px] font-black uppercase tracking-widest rounded border border-gray-200 dark:border-gray-800 transition-colors">
+                                                   {defect.category}
+                                                </span>
+                                                <span className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded border border-indigo-500/10 transition-colors">
+                                                   {defect.assetOrigin}
+                                                </span>
+                                             </div>
+
+                                             <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2 tracking-tight group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors cursor-pointer" onClick={() => setSelectedReport(defect)}>
+                                                {defect.scriptName}
+                                             </h3>
+                                             <p className="text-xs text-gray-500 dark:text-gray-400 mb-6 font-medium transition-colors">
+                                                Last failed on <span className="text-gray-900 dark:text-white font-bold">{new Date(defect.runDate).toLocaleString()}</span> via <span className="uppercase text-indigo-500 font-bold">{defect.trigger}</span>
+                                             </p>
+
+                                             <div className="grid grid-cols-3 gap-6">
+                                                <div className="p-4 bg-gray-50 dark:bg-[#0c0e12] rounded-2xl border border-gray-100 dark:border-gray-800 transition-colors">
+                                                   <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Fail Freq</div>
+                                                   <div className="text-lg font-black text-red-500">{defect.failCount} <span className="text-[10px] text-gray-400 font-medium tracking-normal">Times</span></div>
+                                                </div>
+                                                <div className="p-4 bg-gray-50 dark:bg-[#0c0e12] rounded-2xl border border-gray-100 dark:border-gray-800 transition-colors">
+                                                   <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Failure Rate</div>
+                                                   <div className="text-lg font-black text-amber-500">{Math.round(defect.failRate)}%</div>
+                                                </div>
+                                                <div className="p-4 bg-red-50 dark:bg-red-500/5 rounded-2xl border border-red-100 dark:border-red-500/10 transition-colors">
+                                                   <div className="text-[9px] font-black text-red-500/70 uppercase tracking-widest mb-1">Importance</div>
+                                                   <div className="text-lg font-black text-red-600 dark:text-red-400">{defect.importanceScore}%</div>
+                                                </div>
+                                             </div>
+                                          </div>
+
+                                          <div className="flex-none flex flex-col justify-center gap-3 min-w-[200px]">
+                                             <button
+                                                onClick={() => handleRetry(defect.id)}
+                                                className="w-full py-3 bg-white dark:bg-[#0c0e12] hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-800 dark:text-white border border-gray-200 dark:border-gray-800 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-sm"
+                                             >
+                                                <Activity className="w-3.5 h-3.5" /> Quick Retry
+                                             </button>
+
+                                             {canSelfHeal && (() => {
+                                                const latestBackendLog = defect.healing_logs && defect.healing_logs.length > 0
+                                                   ? [...defect.healing_logs].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+                                                   : null;
+
+                                                const currentTask = healingTasks[defect.id] || (latestBackendLog ? { status: latestBackendLog.status } : null);
+                                                const status = currentTask?.status?.toLowerCase();
+                                                const isProcessing = isHealing === defect.id || status === "started" || status === "in_progress";
+                                                const isSuccess = status === "success";
+                                                const isFailed = status === "failed";
+
+                                                return (
+                                                   <button
+                                                      onClick={() => {
+                                                         if (isSuccess) {
+                                                            setDefectSubTab("healed");
+                                                         } else if (!isHealing && !isProcessing) {
+                                                            handleSelfHeal(defect.id);
+                                                         }
+                                                      }}
+                                                      disabled={isProcessing || (isFailed && isHealing === defect.id)}
+                                                      className={`w-full py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg transition-all ${isProcessing
+                                                         ? "bg-indigo-400 text-white cursor-wait"
+                                                         : isSuccess
+                                                            ? "bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20"
+                                                            : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20"
+                                                         }`}
+                                                   >
+                                                      {isProcessing ? (
+                                                         <>
+                                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                            Healing...
+                                                         </>
+                                                      ) : isSuccess ? (
+                                                         <>
+                                                            <CheckCircle2 className="w-3.5 h-3.5" />
+                                                            HEALED
+                                                         </>
+                                                      ) : (
+                                                         <>
+                                                            <Zap className="w-3.5 h-3.5" />
+                                                            Self-Healing
+                                                         </>
+                                                      )}
+                                                   </button>
+                                                );
+                                             })()}
+
+                                             {defect.jira_id ? (
+                                                <div className="w-full py-3 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-xl flex items-center justify-center gap-2 transition-all">
+                                                   <Layers className="w-3.5 h-3.5 text-blue-600" />
+                                                   <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 tracking-widest uppercase">Jira: {defect.jira_id}</span>
+                                                </div>
+                                             ) : (
+                                                <button
+                                                   onClick={() => openJiraModal(defect)}
+                                                   className="w-full py-3 bg-white dark:bg-[#0c0e12] hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-800 dark:text-white border border-gray-200 dark:border-gray-800 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-sm"
+                                                >
+                                                   <Layers className="w-3.5 h-3.5 text-blue-500" /> Assign to Jira
+                                                </button>
+                                             )}
+                                          </div>
+                                       </div>
+                                    </div>
+                                 );
+                              })
+                           )}
+                        </div>
+                     ) : (
+                        /* HEALED ASSETS TAB */
+                        <div className="grid grid-cols-1 gap-4">
+                           {healedAssets.length === 0 ? (
+                              <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-20 flex flex-col items-center justify-center text-center transition-colors">
+                                 <div className="w-16 h-16 bg-gray-500/10 rounded-full flex items-center justify-center mb-6 ring-4 ring-gray-500/20">
+                                    <Search className="w-8 h-8 text-gray-400" />
+                                 </div>
+                                 <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 transition-colors">No Healed Assets Yet</h3>
+                                 <p className="text-sm text-gray-500 dark:text-gray-400 transition-colors">Assets fixed by AI will appear here.</p>
+                              </div>
+                           ) : (
+                              healedAssets.map(log => (
+                                 <div key={log.id} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl p-6 hover:border-green-500/30 transition-all flex items-center justify-between group">
+                                    <div className="flex items-center gap-4">
+                                       <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center">
+                                          <Zap className="w-5 h-5 text-green-500" />
+                                       </div>
+                                       <div>
+                                          <h4 className="font-black text-gray-900 dark:text-white uppercase tracking-tight">
+                                             {(() => {
+                                                const script = scripts.find(s => s.id === log.script_id);
+                                                return script?.name || `Asset #${log.script_id.substring(0, 8)}`;
+                                             })()}
+                                          </h4>
+                                          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Repair completed on {new Date(log.created_at).toLocaleString()}</p>
+                                       </div>
+                                    </div>
+                                    <div className="flex items-center gap-6">
+                                       <div className="text-right">
+                                          <div className="text-[9px] font-black text-gray-400 uppercase mb-1">Status</div>
+                                          <div className="text-xs font-black text-green-500 uppercase">Self-Healed Success</div>
+                                       </div>
+                                       <button
+                                          onClick={() => setSelectedHealedAsset(log)}
+                                          className="px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all border border-indigo-100 dark:border-indigo-500/20"
+                                       >
+                                          Detailed Log
+                                       </button>
+                                       <button
+                                          onClick={() => {
+                                             const script = scripts.find(s => s.id === log.script_id);
+                                             if (script && onNavigateToLibrary) onNavigateToLibrary(script.id);
+                                          }}
+                                          className="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all"
+                                       >
+                                          View Script
+                                       </button>
+                                    </div>
+                                 </div>
+                              ))
+                           )}
+                        </div>
+                     )}
+                  </div>
+               )}
             </div>
          </div>
 
@@ -466,6 +1082,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                                  {getTriggerIcon(selectedReport.trigger)}
                                  <span className="text-[10px] font-bold uppercase tracking-widest">{selectedReport.deploymentVersion || selectedReport.scheduleName || getTriggerLabel(selectedReport.trigger)}</span>
                               </div>
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${selectedScriptPriority === 'P0' ? 'bg-red-50 dark:bg-red-900/10 border-red-500 text-red-600 dark:text-red-400' :
+                                 selectedScriptPriority === 'P1' ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-500 text-amber-600 dark:text-amber-400' :
+                                    selectedScriptPriority === 'P2' ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-500 text-blue-600 dark:text-blue-400' :
+                                       'bg-gray-50 dark:bg-gray-900/10 border-gray-200 dark:border-gray-800 text-gray-500'
+                                 }`}>
+                                 {selectedScriptPriority} Priority
+                              </span>
                               {selectedReport.commitHash && (
                                  <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest mono">Hash: {selectedReport.commitHash}</span>
                               )}
@@ -688,27 +1311,51 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                      ) : (
                         /* STANDARD VIEW (Existing Logic) */
                         <>
-                           {/* AI Analysis Panel (Static/Summary for non-full AI runs) */}
-                           <div className={`p-6 rounded-3xl border ${selectedReport.status === 'passed' ? 'bg-green-50 dark:bg-green-950/10 border-green-200 dark:border-green-500/20' : 'bg-indigo-50 dark:bg-indigo-950/10 border-indigo-200 dark:border-indigo-500/20'} transition-colors`}>
-                              <div className="flex items-center gap-3 mb-4">
-                                 <Bot className="w-6 h-6 text-indigo-500 dark:text-indigo-400" />
-                                 <h4 className="text-xs font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-[0.2em]">Oracle Intelligent Analysis</h4>
-                              </div>
-                              <div className="space-y-4">
-                                 <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed font-medium transition-colors">
-                                    {selectedReport.aiSummary || (selectedReport.status === 'passed' ? "The agent successfully navigated through all assertion points. UI consistency and state transitions were 100% compliant with the Golden Script definition." : "Critical failure detected during the assertion phase. The agent encountered a mismatch between expected and actual DOM state.")}
-                                 </p>
-                                 {selectedReport.status === 'failed' && (
-                                    <div className="flex items-center gap-3 p-4 bg-red-100 dark:bg-red-600/10 border border-red-200 dark:border-red-500/20 rounded-2xl transition-colors">
-                                       <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
-                                       <div>
-                                          <div className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-0.5">Failure Type: {selectedReport.failureReason || 'Logic Discrepancy'}</div>
-                                          <p className="text-xs text-red-600/80 dark:text-red-400/80 italic">"UI Selector mismatch or API Timeout detected during the execution flow."</p>
-                                       </div>
+                           {/* AI Analysis Panel - Dynamic/Data-driven version */}
+                           {selectedReport.failureAnalysis && (
+                              <div className={`p-6 rounded-3xl border ${selectedReport.status === 'passed' ? 'bg-green-50 dark:bg-green-950/10 border-green-200 dark:border-green-500/20' : 'bg-indigo-50 dark:bg-indigo-950/10 border-indigo-200 dark:border-indigo-500/20'} transition-colors mb-8`}>
+                                 <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-3">
+                                       <Bot className="w-6 h-6 text-indigo-500 dark:text-indigo-400" />
+                                       <h4 className="text-xs font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-[0.2em]">Oracle Intelligent Analysis</h4>
                                     </div>
-                                 )}
+                                    {selectedReport.failureAnalysis?.confidence && (
+                                       <div className="text-[10px] font-bold text-indigo-400 bg-indigo-500/5 px-2 py-0.5 rounded-full border border-indigo-500/20">
+                                          AI Confidence: {selectedReport.failureAnalysis.confidence}%
+                                       </div>
+                                    )}
+                                 </div>
+                                 <div className="space-y-4">
+                                    <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed font-medium transition-colors">
+                                       {selectedReport.failureAnalysis?.thought || selectedReport.aiSummary || (selectedReport.status === 'passed' ? "The agent successfully navigated through all assertion points. UI consistency and state transitions were 100% compliant with the Golden Script definition." : "Critical failure detected during the assertion phase. The agent encountered a mismatch between expected and actual DOM state.")}
+                                    </p>
+                                    {selectedReport.status === 'failed' && (
+                                       <div className="flex flex-col gap-3">
+                                          <div className="flex items-start gap-4 p-4 bg-red-100/50 dark:bg-red-600/5 border border-red-200 dark:border-red-500/10 rounded-2xl transition-colors">
+                                             <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                                             <div>
+                                                <div className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">Root Cause (AI Diagnostic)</div>
+                                                <p className="text-xs text-red-700 dark:text-red-400 font-bold">
+                                                   {selectedReport.failureAnalysis?.reason || selectedReport.failureReason || 'Logic Discrepancy'}
+                                                </p>
+                                             </div>
+                                          </div>
+                                          {selectedReport.failureAnalysis?.suggestion && (
+                                             <div className="flex items-start gap-4 p-4 bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/10 rounded-2xl transition-colors">
+                                                <Bot className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                                                <div>
+                                                   <div className="text-[10px] font-black text-emerald-600 dark:text-emerald-500 uppercase tracking-widest mb-1">Suggested Fix</div>
+                                                   <p className="text-xs text-emerald-700 dark:text-emerald-400 leading-relaxed">
+                                                      {selectedReport.failureAnalysis.suggestion}
+                                                   </p>
+                                                </div>
+                                             </div>
+                                          )}
+                                       </div>
+                                    )}
+                                 </div>
                               </div>
-                           </div>
+                           )}
 
                            {/* Console Trace Section */}
                            {(selectedReport.step_results && selectedReport.step_results.length > 0) && (
@@ -837,9 +1484,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                   </div>
 
                   <div className="p-8 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/20 flex justify-end gap-3 transition-colors">
-                     <button className="flex items-center gap-2 px-6 py-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] font-black rounded-2xl transition-all uppercase tracking-widest">
-                        <FileText className="w-4 h-4" /> Export Data
-                     </button>
                      <button
                         onClick={() => setSelectedReport(null)}
                         className="px-10 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black rounded-2xl transition-all uppercase tracking-widest shadow-xl shadow-indigo-600/20"
@@ -869,6 +1513,280 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                   />
                   <div className="mt-4 px-6 py-2 bg-white/10 backdrop-blur-md rounded-full border border-white/10 text-white/80 text-[10px] font-black uppercase tracking-widest">
                      Full Resolution Evidence Capture
+                  </div>
+               </div>
+            </div>
+         )}
+
+         {/* Live Execution Modal for Retry */}
+         {activeRunId && executingScript && (
+            <LiveExecutionModal
+               runId={activeRunId}
+               onClose={() => {
+                  setActiveRunId(null);
+                  setExecutingScript(null);
+                  setExecutionStatus('idle');
+                  if (onRefresh) onRefresh();
+               }}
+            />
+         )}
+
+         {/* Healed Asset Detail Modal */}
+         {selectedHealedAsset && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+               <div className="bg-white dark:bg-[#0c0e12] w-full max-w-5xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800">
+                  <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-900/50">
+                     <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-green-100 dark:bg-green-500/10 flex items-center justify-center">
+                           <Wand2 className="w-6 h-6 text-green-600" />
+                        </div>
+                        <div>
+                           <h2 className="text-xl font-black text-gray-900 dark:text-white">Self-Healing Detail</h2>
+                           <p className="text-sm text-gray-500 font-medium">History ID: {selectedHealedAsset?.history_id}</p>
+                        </div>
+                     </div>
+                     <button
+                        onClick={() => setSelectedHealedAsset(null)}
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"
+                     >
+                        <X className="w-6 h-6 text-gray-400" />
+                     </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-8 space-y-10">
+                     {/* Failure Analysis Context */}
+                     <div className="bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 rounded-2xl p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                           <AlertTriangle className="w-4 h-4 text-amber-500" />
+                           <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest">Original Failure Analysis (Context)</span>
+                        </div>
+                        {(() => {
+                           const relatedHistory = history.find(h => h.id === selectedHealedAsset?.history_id);
+                           const analysis = relatedHistory?.failureAnalysis;
+                           if (!analysis) return <p className="text-sm text-amber-700/60 dark:text-amber-400/60 italic">No detailed analysis available for this failure.</p>;
+                           return (
+                              <div className="space-y-3">
+                                 <div>
+                                    <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase">Reason:</span>
+                                    <p className="text-sm font-medium text-gray-900 dark:text-white">{analysis.reason}</p>
+                                 </div>
+                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-amber-200/50 dark:border-amber-500/10">
+                                    <div>
+                                       <span className="text-[9px] font-bold text-amber-800/70 dark:text-amber-300/70 uppercase">AI Diagnosis:</span>
+                                       <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{analysis.thought}</p>
+                                    </div>
+                                    <div>
+                                       <span className="text-[9px] font-bold text-amber-800/70 dark:text-amber-300/70 uppercase">Repair Strategy:</span>
+                                       <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{analysis.suggestion}</p>
+                                    </div>
+                                 </div>
+                              </div>
+                           );
+                        })()}
+                     </div>
+
+                     <div className="flex flex-col gap-6">
+                        <div className="flex items-center gap-2">
+                           <GitBranch className="w-4 h-4 text-indigo-500" />
+                           <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Step Comparison (Before vs After)</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                           {/* ORIGINAL STEPS */}
+                           <div className="space-y-4">
+                              <div className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl inline-flex items-center gap-2">
+                                 <History className="w-3 h-3 text-gray-500" />
+                                 <span className="text-[10px] font-black text-gray-600 dark:text-gray-400 uppercase tracking-widest">Original Script</span>
+                              </div>
+                              <div className="space-y-2">
+                                 {(() => {
+                                    const originalScript = scripts.find(s => s.id === selectedHealedAsset.script_id);
+                                    const originalSteps = originalScript?.steps || [];
+                                    return originalSteps.map((step: any, idx: number) => (
+                                       <div key={idx} className="p-4 bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-800 rounded-xl flex items-start gap-3 opacity-60">
+                                          <span className="text-[10px] font-bold text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{idx + 1}</span>
+                                          <div className="flex-1 min-w-0">
+                                             <div className="text-xs font-bold text-gray-900 dark:text-white truncate">{step.stepName || step.description}</div>
+                                             <div className="text-[10px] font-mono text-gray-500 mt-1 truncate">{step.action} on {step.selectorValue || step.inputValue || '-'}</div>
+                                          </div>
+                                       </div>
+                                    ));
+                                 })()}
+                              </div>
+                           </div>
+
+                           {/* HEALED STEPS */}
+                           <div className="space-y-4">
+                              <div className="px-4 py-2 bg-green-50 dark:bg-green-500/10 rounded-xl inline-flex items-center gap-2 border border-green-100 dark:border-green-500/20">
+                                 <Zap className="w-3 h-3 text-green-500" />
+                                 <span className="text-[10px] font-black text-green-600 dark:text-green-400 uppercase tracking-widest">Healed Script</span>
+                              </div>
+                              <div className="space-y-2">
+                                 {selectedHealedAsset.modified_steps?.map((step: any, idx: number) => {
+                                    const originalScript = scripts.find(s => s.id === selectedHealedAsset.script_id);
+                                    const originalSteps = originalScript?.steps || [];
+                                    const origStep = originalSteps[idx];
+                                    const isModified = !origStep ||
+                                       origStep.action !== step.action ||
+                                       origStep.selectorValue !== step.selectorValue ||
+                                       origStep.inputValue !== step.inputValue;
+
+                                    return (
+                                       <div key={idx} className={`p-4 ${isModified ? 'bg-green-50 dark:bg-green-500/5 ring-1 ring-green-500/20' : 'bg-gray-50 dark:bg-gray-900/40'} border border-gray-100 dark:border-gray-800 rounded-xl flex items-start gap-3 transition-all`}>
+                                          <span className={`text-[10px] font-bold ${isModified ? 'text-green-600 bg-green-100 dark:bg-green-500/20' : 'text-gray-400 bg-gray-100 dark:bg-gray-800'} px-1.5 py-0.5 rounded shadow-sm`}>{idx + 1}</span>
+                                          <div className="flex-1 min-w-0">
+                                             <div className="flex items-center gap-2">
+                                                <div className="text-xs font-bold text-gray-900 dark:text-white truncate">{step.stepName}</div>
+                                                {isModified && (
+                                                   <span className="text-[8px] font-black bg-green-500 text-white px-1 rounded-sm uppercase tracking-tighter">Healed</span>
+                                                )}
+                                             </div>
+                                             <div className="text-[10px] font-mono mt-1 flex flex-wrap gap-x-2">
+                                                <span className={isModified && origStep?.action !== step.action ? 'text-green-600 dark:text-green-400 font-black' : 'text-gray-500'}>{step.action}</span>
+                                                <span className="text-gray-400">/</span>
+                                                <span className={isModified && origStep?.selectorValue !== step.selectorValue ? 'text-green-600 dark:text-green-400 font-black' : 'text-gray-500'}>{step.selectorValue || step.inputValue || '-'}</span>
+                                             </div>
+                                          </div>
+                                       </div>
+                                    );
+                                 })}
+                              </div>
+                           </div>
+                        </div>
+                     </div>
+
+                     <div>
+                        <div className="flex items-center gap-2 mb-4">
+                           <Activity className="w-4 h-4 text-indigo-500" />
+                           <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Autonomous Healing Logs</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           {selectedHealedAsset.healing_steps?.map((log: any, idx: number) => (
+                              <div key={idx} className="p-4 bg-gray-50 dark:bg-gray-900/30 rounded-xl border border-gray-100 dark:border-gray-800 hover:border-indigo-500/30 transition-all">
+                                 <div className="flex items-center gap-3 mb-2">
+                                    <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded">RECOVERY STEP {log.step_number}</span>
+                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ml-auto ${log.status === 'Completed' ? 'bg-green-100 text-green-600' :
+                                       log.status === 'Failed' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+                                       }`}>
+                                       {log.status}
+                                    </span>
+                                 </div>
+                                 <p className="text-xs font-bold text-gray-900 dark:text-white mb-1">{log.description}</p>
+                                 <p className="text-[11px] text-gray-600 dark:text-gray-400 italic font-medium leading-relaxed">"{log.thought}"</p>
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+
+                     <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 flex justify-end">
+                        <button
+                           onClick={() => setSelectedHealedAsset(null)}
+                           className="px-8 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-black text-sm hover:scale-105 active:scale-95 transition-all shadow-xl shadow-indigo-500/10"
+                        >
+                           CLOSE
+                        </button>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         )}
+
+         {/* Jira Assignment Modal */}
+         {jiraTarget && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 animate-in fade-in duration-200">
+               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setJiraTarget(null)} />
+               <div className="relative w-full max-w-3xl max-h-[95vh] bg-white dark:bg-[#0f1115] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                        <div className="p-3 bg-blue-100 dark:bg-blue-600/10 rounded-2xl text-blue-600 dark:text-blue-400">
+                           <Layers className="w-6 h-6" />
+                        </div>
+                        <div>
+                           <h3 className="text-lg font-black text-gray-900 dark:text-white tracking-tight uppercase">Jira Issue Registration</h3>
+                           <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Create a comprehensive ticket for tracking</p>
+                        </div>
+                     </div>
+                     <button onClick={() => setJiraTarget(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">
+                        <X className="w-5 h-5 text-gray-400" />
+                     </button>
+                  </div>
+
+                  <div className="flex-1 overflow-hidden flex">
+                     {/* LEFT COLUMN: FORM */}
+                     <div className="flex-1 p-8 space-y-6 overflow-y-auto custom-scrollbar">
+                        <div className="grid grid-cols-2 gap-4">
+                           <div className="space-y-1.5">
+                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Project</label>
+                              <select className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-xs font-bold transition-all focus:ring-2 focus:ring-blue-500/20" value={jiraForm.project} onChange={e => setJiraForm({ ...jiraForm, project: e.target.value })}>
+                                 <option value="QONE">Q-ONE Project (QONE)</option>
+                                 <option value="CORE">Core Infrastructure (CORE)</option>
+                              </select>
+                           </div>
+                           <div className="space-y-1.5">
+                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Issue Type</label>
+                              <select className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-xs font-bold transition-all focus:ring-2 focus:ring-blue-500/20" value={jiraForm.issueType} onChange={e => setJiraForm({ ...jiraForm, issueType: e.target.value })}>
+                                 <option value="Bug">Bug</option>
+                                 <option value="Story">Story</option>
+                                 <option value="Task">Task</option>
+                              </select>
+                           </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                           <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Summary</label>
+                           <input
+                              type="text"
+                              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-xs font-bold transition-all focus:ring-2 focus:ring-blue-500/20"
+                              value={jiraForm.summary}
+                              onChange={e => setJiraForm({ ...jiraForm, summary: e.target.value })}
+                           />
+                        </div>
+
+                        <div className="space-y-1.5">
+                           <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Description</label>
+                           <textarea
+                              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-xs font-medium min-h-[250px] transition-all focus:ring-2 focus:ring-blue-500/20 whitespace-pre-wrap leading-relaxed"
+                              value={jiraForm.description}
+                              onChange={e => setJiraForm({ ...jiraForm, description: e.target.value })}
+                           />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                           <div className="space-y-1.5">
+                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Assignee</label>
+                              <input
+                                 type="text"
+                                 className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-xs font-bold"
+                                 value={jiraForm.assignee}
+                                 readOnly
+                              />
+                           </div>
+                           <div className="space-y-1.5">
+                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Priority</label>
+                              <select className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-xs font-bold" value={jiraForm.priority} onChange={e => setJiraForm({ ...jiraForm, priority: e.target.value })}>
+                                 <option value="High">High</option>
+                                 <option value="Medium">Medium</option>
+                                 <option value="Low">Low</option>
+                              </select>
+                           </div>
+                        </div>
+                        <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-[#0f1115] flex justify-end gap-3 px-8">
+                           <button
+                              onClick={() => setJiraTarget(null)}
+                              className="px-6 py-3 text-xs font-black uppercase tracking-widest text-gray-500 hover:text-gray-700 transition-colors"
+                           >
+                              Cancel
+                           </button>
+                           <button
+                              onClick={handleAssignJira}
+                              disabled={isAssigningJira}
+                              className="px-10 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-blue-600/20 transition-all flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
+                           >
+                              {isAssigningJira ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                              Assign to Jira
+                           </button>
+                        </div>
+                     </div>
                   </div>
                </div>
             </div>

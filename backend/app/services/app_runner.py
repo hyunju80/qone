@@ -819,7 +819,7 @@ class AppStepRunner:
 
             elif action == "swipe(하)":
                 logger.info(f"Executing swipe(하) to find {selector_type}={selector_value}")
-                max_swipes = 10
+                max_swipes = 5
                 element_found = False
                 size = self.driver.get_window_size()
                 start_x = size['width'] // 2

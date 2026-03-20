@@ -38,6 +38,7 @@ export interface StepAsset {
   runCount?: number;
   try_count?: number;
   enable_ai_test?: boolean;
+  priority?: string;
 }
 
 export interface TestObject {
@@ -254,6 +255,7 @@ export interface Scenario {
   goldenScriptId?: string;
   try_count?: number;
   enable_ai_test?: boolean;
+  priority?: string;
 }
 
 export interface TestCase {
@@ -291,6 +293,7 @@ export interface TestScript {
   captureScreenshots?: boolean;
   try_count?: number;
   enable_ai_test?: boolean;
+  priority?: string;
 }
 
 export interface LogEntry {
@@ -312,6 +315,7 @@ export interface TestHistory {
   trigger: ExecutionTrigger;
   failureReason?: string;
   aiSummary?: string;
+  failureAnalysis?: any;
   logs: LogEntry[];
   step_results?: any[]; // Universal step results
   deploymentVersion?: string;
@@ -319,6 +323,9 @@ export interface TestHistory {
   scheduleId?: string;
   scheduleName?: string;
   scriptOrigin?: ScriptOrigin | string;
+  scriptCategory?: string;
+  healing_logs?: any[];
+  jira_id?: string;
 }
 
 export interface Message {

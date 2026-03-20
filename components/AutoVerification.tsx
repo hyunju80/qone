@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
     Play, RotateCcw, CheckCircle2, AlertCircle, Bot, Target,
     ChevronRight, Save, Activity, Globe, Smartphone, ShieldCheck,
-    Search, ListChecks, ArrowRight, Loader2, Sparkles, Tablet, Square, XCircle
+    Search, ListChecks, ArrowRight, Loader2, Sparkles, Tablet, Square, XCircle,
+    User, Lock
 } from 'lucide-react';
 import { Project, Persona, Scenario, TestScript, TestCase, ScriptOrigin } from '../types';
 import { scenariosApi } from '../api/scenarios';
@@ -35,6 +36,8 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
     const [platform, setPlatform] = useState<'WEB' | 'APP'>('WEB');
     const [targetUrl, setTargetUrl] = useState(''); // Shared target
     const [selectedPersonaId, setSelectedPersonaId] = useState<string>(personas[0]?.id || '');
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
     const [enableAiTest, setEnableAiTest] = useState(false);
 
     const selectedScenario = scenarios.find(s => s.id === selectedScenarioId);
@@ -104,17 +107,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
       `;
 
             while (!loopComplete && loopCount < MAX_LOOPS) {
-                const stepResult = await explorationApi.step(
-                    currentSessionId,
-                    scenarioGoal,
-                    currentSteps,
-                    '', '', // username, password
-                    undefined, // feedback
-                    personaContext,
-                    undefined, // override
-                    platform,
-                    true // capture screenshots
-                );
+                const stepResult = await explorationApi.step(currentSessionId, scenarioGoal, currentSteps, username, password, undefined, personaContext, undefined, platform, true);
 
                 currentSteps = [...currentSteps, stepResult];
                 setSteps(currentSteps);
@@ -294,89 +287,113 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
             <div className="flex-1 flex flex-col overflow-hidden relative">
                 {selectedScenario ? (
                     <div className="flex flex-col h-full animate-in fade-in transition-colors">
-                        {/* Context Header */}
-                        <div className="px-8 py-6 bg-white dark:bg-[#111318] border-b border-gray-200 dark:border-gray-800 flex items-center justify-between transition-colors">
-                            <div className="flex items-center gap-6 flex-1">
+                        {/* Context Header (Two-Row Layout Restored) */}
+                        <div className="px-8 py-6 bg-white dark:bg-[#111318] border-b border-gray-200 dark:border-gray-800 flex flex-col gap-5 transition-colors">
+                            <div className="flex items-center justify-between">
                                 <div className="flex flex-col">
                                     <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-1"><Bot className="w-3.5 h-3.5" /> Autonomous Verification</span>
-                                    <h2 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">{selectedScenario.title}</h2>
+                                    <h2 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight leading-tight">{selectedScenario.title}</h2>
                                 </div>
-                                <div className="h-8 w-px bg-gray-100 dark:bg-gray-800" />
-                                <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-2 group">
-                                        <div className="flex flex-col">
-                                            <span className="text-[8px] font-black text-gray-400 uppercase tracking-[0.1em] ml-1 mb-0.5">Target {platform === 'WEB' ? 'URL' : 'App ID'}</span>
-                                            <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-1.5 focus-within:border-indigo-500 transition-all">
-                                                {platform === 'WEB' ? <Globe className="w-3.5 h-3.5 text-indigo-400" /> : <Tablet className="w-3.5 h-3.5 text-indigo-400" />}
-                                                <input value={targetUrl} onChange={e => setTargetUrl(e.target.value)} placeholder={platform === 'WEB' ? "https://example.com" : "com.example.app"} className="bg-transparent text-xs w-64 outline-none font-medium" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-col self-end pb-1.5">
-                                        <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1.5">AI Fallback</span>
+                                <div className="flex items-center gap-3">
+                                    {isRunning ? (
                                         <button
-                                            onClick={() => setEnableAiTest(!enableAiTest)}
-                                            className={`px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-2 shadow-sm border transition-all ${enableAiTest ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-gray-100 border-gray-200 text-gray-500'} `}
+                                            onClick={stopVerification}
+                                            disabled={isStopping}
+                                            className="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-lg shadow-red-600/20 active:scale-95 transition-all disabled:opacity-50"
                                         >
-                                            <Bot className={`w-3.5 h-3.5 ${enableAiTest ? 'text-white' : 'text-gray-400'} `} />
-                                            {enableAiTest ? 'AI Autonomous ENABLED' : 'Standard Only'}
+                                            {isStopping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4 fill-current" />}
+                                            Stop Verification
                                         </button>
-                                    </div>
-
-                                    <div className="flex flex-col self-end pb-1.5">
-                                        <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Verification Status</span>
-                                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-2 shadow-sm border ${isRunning ? 'bg-amber-100 border-amber-200 text-amber-600' : isComplete ? 'bg-emerald-100 border-emerald-200 text-emerald-600' : 'bg-gray-100 border-gray-200 text-gray-500'} `}>
-                                            <div className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-amber-500 animate-pulse' : isComplete ? 'bg-emerald-500' : 'bg-gray-400'} `} />
-                                            {isRunning ? 'Running' : isComplete ? 'Finished' : 'Standby'}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                {isRunning ? (
-                                    <button
-                                        onClick={stopVerification}
-                                        disabled={isStopping}
-                                        className="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-lg shadow-red-600/20 active:scale-95 transition-all disabled:opacity-50"
-                                    >
-                                        {isStopping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4 fill-current" />}
-                                        Stop Verification
-                                    </button>
-                                ) : (
-                                    <>
-                                        {!isComplete && (
-                                            <button
-                                                onClick={() => setSelectedScenarioId(null)}
-                                                className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-xs font-black uppercase text-gray-500 transition-colors"
-                                            >
-                                                Cancel
-                                            </button>
-                                        )}
-                                        {!isComplete ? (
-                                            <button
-                                                onClick={startVerification}
-                                                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
-                                            >
-                                                <Play className="w-4 h-4 fill-current" /> Auto-Verify
-                                            </button>
-                                        ) : (
-                                            <div className="flex items-center gap-3">
+                                    ) : (
+                                        <>
+                                            {!isComplete && (
                                                 <button
-                                                    onClick={() => { setIsComplete(false); setSteps([]); }}
+                                                    onClick={() => setSelectedScenarioId(null)}
                                                     className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-xs font-black uppercase text-gray-500 transition-colors"
                                                 >
-                                                    Reset
+                                                    Cancel
                                                 </button>
+                                            )}
+                                            {!isComplete ? (
                                                 <button
-                                                    onClick={handleSaveAsAsset}
-                                                    className="px-6 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-lg shadow-green-600/20 active:scale-95 transition-all"
+                                                    onClick={startVerification}
+                                                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
                                                 >
-                                                    <Save className="w-4 h-4" /> Save as Asset
+                                                    <Play className="w-4 h-4 fill-current" /> Auto-Verify
                                                 </button>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
+                                            ) : (
+                                                <div className="flex items-center gap-3">
+                                                    <button
+                                                        onClick={() => { setIsComplete(false); setSteps([]); }}
+                                                        className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-xs font-black uppercase text-gray-500 transition-colors"
+                                                    >
+                                                        Reset
+                                                    </button>
+                                                    <button
+                                                        onClick={handleSaveAsAsset}
+                                                        className="px-6 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-lg shadow-green-600/20 active:scale-95 transition-all"
+                                                    >
+                                                        <Save className="w-4 h-4" /> Save as Asset
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-8 pt-5 border-t border-gray-100 dark:border-gray-800">
+                                <div className="flex flex-col">
+                                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Target {platform === 'WEB' ? 'URL' : 'App ID'}</span>
+                                    <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-1.5 focus-within:border-indigo-500 transition-all">
+                                        {platform === 'WEB' ? <Globe className="w-3.5 h-3.5 text-indigo-400" /> : <Tablet className="w-3.5 h-3.5 text-indigo-400" />}
+                                        <input value={targetUrl} onChange={e => setTargetUrl(e.target.value)} placeholder={platform === 'WEB' ? "https://example.com" : "com.example.app"} className="bg-transparent text-xs w-64 outline-none font-medium text-gray-900 dark:text-gray-100 placeholder:text-gray-400" />
+                                    </div>
+                                </div>
+                                
+                                <div className="flex flex-col">
+                                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Credentials (Optional)</span>
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-1.5 focus-within:border-indigo-500 transition-all">
+                                            <User className="w-3.5 h-3.5 text-gray-400" />
+                                            <input 
+                                                value={username} 
+                                                onChange={e => setUsername(e.target.value)} 
+                                                placeholder="Username" 
+                                                className="bg-transparent text-xs w-32 outline-none font-medium text-gray-900 dark:text-gray-100 placeholder:text-gray-400" 
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-1.5 focus-within:border-indigo-500 transition-all">
+                                            <Lock className="w-3.5 h-3.5 text-gray-400" />
+                                            <input 
+                                                type="password"
+                                                value={password} 
+                                                onChange={e => setPassword(e.target.value)} 
+                                                placeholder="Password" 
+                                                className="bg-transparent text-xs w-32 outline-none font-medium text-gray-900 dark:text-gray-100 placeholder:text-gray-400" 
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col">
+                                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">AI Fallback</span>
+                                    <button
+                                        onClick={() => setEnableAiTest(!enableAiTest)}
+                                        className={`h-[34px] px-4 rounded-lg text-[10px] font-black uppercase flex items-center gap-2 shadow-sm border transition-all ${enableAiTest ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-500'} `}
+                                    >
+                                        <Bot className={`w-3.5 h-3.5 ${enableAiTest ? 'text-white' : 'text-gray-400'} `} />
+                                        {enableAiTest ? 'ENABLED' : 'DISABLED'}
+                                    </button>
+                                </div>
+
+                                <div className="flex flex-col">
+                                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Status</span>
+                                    <div className={`h-[34px] px-4 rounded-lg text-[10px] font-black uppercase flex items-center gap-2 shadow-sm border transition-all ${isRunning ? 'bg-amber-100 border-amber-200 text-amber-600' : isComplete ? 'bg-emerald-100 border-emerald-200 text-emerald-600' : 'bg-gray-100 border-gray-200 text-gray-500'} `}>
+                                        <div className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-amber-500 animate-pulse' : isComplete ? 'bg-emerald-500' : 'bg-gray-400'} `} />
+                                        {isRunning ? 'Running' : isComplete ? 'Finished' : 'Standby'}
+                                    </div>
+                                </div>
                             </div>
                         </div>
 

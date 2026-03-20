@@ -27,7 +27,9 @@ class FallbackService:
         device_id: Optional[str] = None,
         max_steps: int = 12,
         persona_context: Optional[str] = None,
-        credentials: Optional[Dict[str, str]] = None
+        credentials: Optional[Dict[str, str]] = None,
+        failure_analysis: Optional[Dict[str, Any]] = None,
+        original_steps: Optional[List[Dict[str, Any]]] = None
     ) -> List[Dict[str, Any]]:
         """
         Runs an autonomous AI fallback loop to achieve a goal.
@@ -67,8 +69,8 @@ class FallbackService:
                     try: app_step_runner.driver.activate_app(app_package)
                     except: pass
             else:
-                # For WEB, we always start a fresh session for goal-based exploration
-                await self.crawler_service.start_session(session_id, initial_url)
+                # For WEB, we always start a fresh session for goal-based exploration (Headless for performance)
+                await self.crawler_service.start_session(session_id, initial_url, headless=True)
         except Exception as e:
             logger.error(f"AI Fallback initial session failed: {e}")
             return [{"thought": f"Session initialization failed: {str(e)}", "status": "Failed"}]
@@ -103,7 +105,9 @@ class FallbackService:
                 screenshot=screenshot,
                 history=history,
                 persona_context=persona_context,
-                credentials=credentials
+                credentials=credentials,
+                failure_analysis=failure_analysis,
+                original_steps=original_steps
             )
             
             # Enrich decision with step number and state metadata
@@ -160,7 +164,16 @@ class FallbackService:
                 break
                 
             # D. Small stabilization wait
-            await asyncio.sleep(3)
+            await asyncio.sleep(3) # Increased for stability
+
+            # E. For WEB: If we are still on about:blank and it's early steps, wait a bit more
+            if platform.upper() == "WEB" and i <= 3:
+                try:
+                    state = await self.crawler_service.get_state(session_id)
+                    if state.get("url") == "about:blank":
+                        logger.info(f"Step {i}: Still on about:blank, waiting additional 5s for page load...")
+                        await asyncio.sleep(5)
+                except: pass
 
         # 3. Cleanup
         if platform.upper() == "WEB":
@@ -220,9 +233,18 @@ class FallbackService:
                 "description": "AI 연동 실패"
             }
 
-    def _build_prompt(self, platform, goal, current_url, title, xml_structure, history, persona_context, credentials, **kwargs):
+    def _build_prompt(self, platform, goal, current_url, title, xml_structure, history, persona_context, credentials, failure_analysis=None, original_steps=None, **kwargs):
         history_summary = "\n".join([f"- Step {s.get('step_number')}: {s.get('description')} ({s.get('status')})" for s in history])
         
+        analysis_context = ""
+        if failure_analysis:
+            analysis_context = f"\n[Original Failure Analysis]\n- Reason: {failure_analysis.get('reason')}\n- Thought: {failure_analysis.get('thought')}\n- Suggestion: {failure_analysis.get('suggestion')}\n"
+        
+        original_script_context = ""
+        if original_steps:
+            steps_text = "\n".join([f"  {i+1}. {s.get('action')} on '{s.get('selectorValue')}' ({s.get('stepName')})" for i, s in enumerate(original_steps)])
+            original_script_context = f"\n[Original Script Steps (TO BE PRESERVED)]\n{steps_text}\n"
+
         cred_context = "Authorized credentials available." if credentials else "No specific credentials provided."
         persona_str = f"Adopt persona: {persona_context}" if persona_context else "As a standard QA Tester"
 
@@ -233,33 +255,37 @@ class FallbackService:
         Platform: {platform}
         Current Page: {title} ({current_url})
         Context: {cred_context} / {persona_str}
+        {analysis_context}
+        {original_script_context}
         
-        Previous Steps:
-        {history_summary if history else "Start of Fallback process."}
+        Previous Steps (During Current Recovery):
+        {history_summary if history else "Start of Recovery process."}
         
         Simplified UI Structure (XML/HTML):
         {xml_structure}
         
         ---
-        VISION FALLBACK INSTRUCTIONS:
-        1. A screenshot of the current screen is attached.
-        2. IF you see an important element (button, icon, input) in the image that is NOT listed in the UI Structure (XML), you MUST try to interact with it anyway.
-        3. For 'action_target', you can use the literal text you see, a coordinate-based description (handled by system heuristics), or a simple ID if it looks like one.
-        4. Focus on ACHIEVEMENT OF THE GOAL. If the automation tree is broken, use your visual reasoning to bypass it.
-        5. If the goal requires entering data, use placeholders {{USERNAME}} and {{PASSWORD}} if credentials were provided.
+        SELF-HEALING & VISION INSTRUCTIONS:
+        1. REPAIR, DON'T REWRITE: Your primary job is to HEAL the original script. Preserve the sequence of steps as much as possible.
+        2. PROBLEM SOLVING: If a step failed (e.g., selector changed), find the new selector. If a popup appeared, close it. If a wait is needed, add it.
+        3. ROBUST ASSERTIONS: If an assertion failed step because of a volatile value (like a count '944 items'), suggest a more robust assertion that focuses on static text (e.g., "items") or partial matches instead of specific numbers.
+        4. IMAGE REASONING: A screenshot of the current screen is attached. Use it to find elements that might be missing from the XML or to understand visual context.
+        5. For 'action_target', you can use CSS/XPath/Text/ID.
+        6. Focus on ACHIEVEMENT OF THE GOAL within the framework of the original script.
         
         CRITICAL RULES:
         - THOUGHT and DESCRIPTION must be in Korean (한국어).
-        - If the goal is met (e.g., success message visible), set status='Completed'.
+        - If the goal is fully met and original script flow is recovered, set status='Completed'.
         - If you are stuck after 3 tries on same screen, set status='Failed'.
-        - Available actions: click, type, scroll, wait, finish.
+        - Available actions: navigate, click, type, scroll, wait, finish.
         
         JSON Output:
         {{
             "thought": "이유 및 전략 상세 (Korean)",
-            "action_type": "click/type/scroll/wait/finish",
+            "action_type": "navigate/click/type/scroll/wait/finish",
             "action_target": "CSS/XPath/Text/ID",
             "action_value": "text to type",
+            "assert_text": "검증할 텍스트 (Rule Assertion)",
             "description": "동작 요약 (Korean)",
             "status": "In-Progress/Completed/Failed"
         }}
