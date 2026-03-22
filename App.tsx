@@ -121,7 +121,7 @@ const AppContent: React.FC = () => {
       case ViewMode.DATASET_STUDIO: return 'DataSet Studio';
       case ViewMode.LIBRARY: return 'Asset Library';
       case ViewMode.PERSONAS: return 'Persona Management';
-      case ViewMode.HISTORY: return 'Test History';
+      case ViewMode.HISTORY: return 'Execution Status';
       case ViewMode.REPORTS: return 'Analytics & Reports';
       case ViewMode.STEP_RUNNER: return 'Step Flow';
       case ViewMode.DESIGN_CENTER: return 'Design Center';

@@ -41,7 +41,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, onSwitchPro
     { id: ViewMode.LIBRARY, label: 'Asset Library', icon: Library },
     { id: ViewMode.SCHEDULES, label: 'Test Scheduler', icon: CalendarClock },
     { id: ViewMode.PIPELINE, label: 'Pipeline Watcher', icon: Activity },
-    { id: ViewMode.HISTORY, label: 'Test History', icon: History },
+    { id: ViewMode.HISTORY, label: 'Execution Status', icon: History },
     { id: ViewMode.REPORTS, label: 'Analytics & Reports', icon: BarChart3 },
     { id: ViewMode.DEVICE_FARM, label: 'Device Farm', icon: Smartphone },
   ];
