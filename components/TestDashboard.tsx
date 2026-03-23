@@ -199,7 +199,7 @@ const TestDashboard: React.FC<TestDashboardProps> = ({ history, activeProject, o
                     </div>
                     <span className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-4">Active Assets (Month)</span>
                     <div className="text-3xl font-black text-gray-900 dark:text-white">{dashboardData.length}</div>
-                    <p className="text-[10px] text-gray-400 mt-1 uppercase font-bold tracking-tighter">Scripts matching filters</p>
+                    <p className="text-[10px] text-gray-400 mt-1 uppercase font-bold tracking-tighter">Assets matching filters</p>
                 </div>
                 <div className="bg-white dark:bg-[#16191f] p-6 rounded-[2rem] border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden group">
                     <div className="absolute -right-4 -bottom-4 opacity-20 group-hover:scale-110 transition-transform duration-500">
@@ -243,7 +243,7 @@ const TestDashboard: React.FC<TestDashboardProps> = ({ history, activeProject, o
                                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 group-focus-within/search:text-indigo-500 transition-colors" />
                                 <input
                                     type="text"
-                                    placeholder="Search scripts..."
+                                    placeholder="Search assets..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="pl-10 pr-8 py-2.5 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl text-[11px] font-black uppercase tracking-tight text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all w-[240px] placeholder:text-gray-400 placeholder:font-bold"
