@@ -257,54 +257,67 @@ No introductory text like "Here is the report". Start directly with single # tit
 
 ## 6. AI Fallback Service (Self-Healing)
 *   **파일**: `fallback_service.py`
-*   **목적**: 표준 자동화 스텝 실패 시, Vision AI가 개입하여 우회 경로를 찾고 목표를 달성함.
+*   **목적**: 테스트 실패 발생 시, AI가 실패 원인(Failure Analysis)과 기존 시나리오/스텝 정보를 바탕으로 자율 브라우징을 수행하여, 변경된 UI나 로직에 맞게 테스트 스크립트를 자동으로 교정(Healing)합니다.
 
-### 7.1. Vision-AI Fallback Prompt
+### 6.1. Vision-AI Fallback Prompt
 ```text
 You are a 'Self-Healing' Vision-AI Testing Agent.
+
 Goal: {goal}
 Platform: {platform}
 Current Page: {title} ({current_url})
 Context: {cred_context} / {persona_str}
+{analysis_context}
+{original_script_context}
 
-Previous Steps: {history_summary}
-Simplified UI Structure (XML/HTML): {xml_structure}
+Previous Steps (During Current Recovery):
+{history_summary}
+
+Simplified UI Structure (XML/HTML):
+{xml_structure}
 
 ---
-VISION FALLBACK INSTRUCTIONS:
-1. A screenshot of the current screen is attached.
-2. IF you see an important element (button, icon, input) in the image that is NOT listed in the UI Structure (XML), you MUST try to interact with it anyway.
-3. For 'action_target', you can use the literal text you see, a coordinate-based description, or a simple ID.
-4. Focus on ACHIEVEMENT OF THE GOAL. If the automation tree is broken, use your visual reasoning to bypass it.
+SELF-HEALING & VISION INSTRUCTIONS:
+1. REPAIR, DON'T REWRITE: Your primary job is to HEAL the original script. Preserve the sequence of steps as much as possible.
+2. PROBLEM SOLVING: If a step failed (e.g., selector changed), find the new selector. If a popup appeared, close it. If a wait is needed, add it.
+3. ROBUST ASSERTIONS: If an assertion failed step because of a volatile value (like a count '944 items'), suggest a more robust assertion that focuses on static text (e.g., "items") or partial matches instead of specific numbers.
+4. IMAGE REASONING: A screenshot of the current screen is attached. Use it to find elements that might be missing from the XML or to understand visual context.
+5. For 'action_target', you can use CSS/XPath/Text/ID.
+6. Focus on ACHIEVEMENT OF THE GOAL within the framework of the original script.
+
+[CRITICAL RULES]
+- THOUGHT and DESCRIPTION must be in Korean (한국어).
+- Available actions: navigate, click, type, scroll, wait, finish.
 ```
 
-### 7.2. Output Schema
+### 6.2. Output Schema
 ```json
 {
     "thought": "이유 및 전략 상세 (Korean)",
-    "action_type": "click/type/scroll/wait/finish",
+    "action_type": "navigate/click/type/scroll/wait/finish",
     "action_target": "CSS/XPath/Text/ID",
     "action_value": "text to type",
+    "assert_text": "검증할 텍스트 (Rule Assertion)",
     "description": "동작 요약 (Korean)",
     "status": "In-Progress/Completed/Failed"
 }
 ```
 
 #### 사용 시점 (Trigger)
-*   **UI/Config**: 테스트 실행(Run) 설정에서 'Enable AI Fallback' 또는 'Self-Healing' 옵션이 활성화된 경우.
-*   **Flow**: 시나리오 기반의 일반 실행(Step Flow/Appium)이 모든 리트라이 횟수를 소진하고도 실패했을 때, 백엔드에서 원인 해결 및 목표 달성을 위해 최후 수단으로 자동 트리거됨.
+*   **UI**: **Execution Status > Defect Management** 목록에서 실패한 자산에 대해 **'Self-healing'** 버튼 선택 시 실행됩니다. (버튼 노출 여부는 각 테스트 자산의 'Enable Self-healing' 설정에 따라 결정됩니다.)
+*   **Flow**: 실패 분석 결과(RCA)와 원본 스텝을 LLM 컨텍스트로 주입받아, 중단된 시점부터 목표 달성을 위한 최적의 경로를 재탐색하고 성공 시 수정된 스텝 정보를 제안하거나 자산을 업데이트합니다.
 
 
 ---
 
-## 8. AI Test Step Generator (테스트 스크립트 전환 프로토콜)
+## 7. AI Test Step Generator (테스트 스크립트 전환 프로토콜)
 *   **개요**: 생성된 시나리오와 테스트 케이스를 실제 실행 가능한 **Step Flow (단계별 액션)**로 변환합니다.
 *   **입력**: `Scenario JSON`, `Project Context`, `Persona`
 *   **출력**: **Test Step Asset (JSON Action Sequence)**
 *   **진입점**: `/scripts/generate`
 *   **목적**: 시나리오 자산을 실행 가능한 JSON Action Sequence로 변환.
 
-### 8.1. Expert Automation Engineer Prompt
+### 7.1. Expert Automation Engineer Prompt
 ```text
         You are an Expert QA Automation Engineer.
         Convert the following Test Scenarios into a structured **Step Flow (Action Sequence)** for the Q-ONE Step Runner.
@@ -327,7 +340,7 @@ SCENARIOS TO IMPLEMENT: {scenarios_json}
 3. Add a 'final_assertion' step at the end based on the Expected Result.
 ```
 
-### 8.2. Output Schema
+### 7.2. Output Schema
 ```json
 {
     "steps": [
@@ -374,11 +387,52 @@ Return ONLY the name of the category.
 
 ---
 
-## 9. AI Workflow Diagrams (LLM-Based Process Flows)
+## 9. AI Failure Analysis (지능형 장애 분석)
+*   **진입점**: `/history/analyze-failure` (또는 `AIAnalysisService`)
+*   **목적**: 테스트 실패 원인을 기술적/비즈니스적 관점에서 자동 분석하여 조치 가이드를 제공합니다.
+
+### 9.1. Failure Diagnosis Prompt
+```text
+당신은 QA 자동화 테스트 전문가이자 장애 분석 AI입니다.
+테스트 실행 중 발생한 실패(Failure)를 분석하고 원인과 해결 방안을 제시해 주세요.
+
+[테스트 정보]
+- 스크립트명: {script_name}
+- 플랫폼: {platform}
+- 발생한 에러: {failure_reason}
+
+[실행 로그 (마지막 20줄)]
+{log_summary}
+
+---
+[분석 지침]
+1. 첨부된 스크린샷(실패 시점)과 로그를 종합적으로 분석하세요.
+2. 실패 원인이 코드 문제인지, UI 변경(Selector) 문제인지, 혹은 환경/네트워크 문제인지 판단하세요.
+3. 해결을 위한 구체적인 가이드(코드 수정 제안 등)를 포함하세요.
+4. 모든 텍스트 답변은 한국어(Korean)로 작성해 주세요.
+```
+
+### 9.2. Output Schema
+```json
+{
+    "thought": "분석 과정 및 추론 (상세)",
+    "reason": "실패의 직접적인 원인 요약 (한 문장)",
+    "suggestion": "구체적인 해결 방안/수정 가이드",
+    "confidence": "0~100 사이의 분석 신뢰도 숫자"
+}
+```
+
+#### 사용 시점 (Trigger)
+*   **Execution Flow**: 테스트 실행 종료 후 상태가 **'failed'**일 경우, 히스토리 저장 직전에 백엔드(Executor/Run Service)에서 자동으로 트리거됩니다.
+*   **Flow**: 실패 시점의 스택 트레이스, 실행 로그, 마지막 스크린샷(멀티모달)을 LLM에 주입하여 즉각적인 장애 분석(RCA)을 수행하고 그 결과를 히스토리 데이터와 함께 저장합니다. 사용자는 UI에서 이미 분석된 결과를 즉시 확인할 수 있습니다.
+
+---
+
+## 10. AI Workflow Diagrams (LLM-Based Process Flows)
 
 Q-ONE의 AI 서비스는 크게 **시나리오 중심(Scenario-Driven)**과 **목표 중심(Goal-Driven)**이라는 두 가지 워크플로우를 가지며, 이들은 최종적으로 동일한 **Autonomous Agent (Section 3)** 엔진을 공유합니다.
 
-### 9.1. Workflow 1: AI Generator (Scenario-Driven)
+### 10.1. Workflow 1: AI Generator (Scenario-Driven)
 ```mermaid
 graph TD
     A["URL / Feature Input"] --> B{{"LLM: Scenario Designer"}}
@@ -387,7 +441,7 @@ graph TD
     D --> E["Test Step Asset (JSON)"]
 ```
 
-### 9.2. Workflow 2: AI Exploration (Goal/Persona-Driven)
+### 10.2. Workflow 2: AI Exploration (Goal/Persona-Driven)
 ```mermaid
 graph TD
     I["Goal & Persona Input"] --> J{{"Agent: Autonomous Explorer"}}
@@ -398,10 +452,14 @@ graph TD
 
 ![AI Unified Workflow](./images/ai_unified_workflow.png)
 
-### 9.3. 핵심 차이점 요약 (Key Comparison)
+### 10.3. 핵심 차이점 요약 (Key Comparison)
 | 구분 | AI Generator (Smart Gen) | AI Exploration (Discovery) |
 | :--- | :--- | :--- |
 | **출발점** | 설계서, 화면 구조 (정적 분석) | 사용자 목표, 페르소나 (동적 탐색) |
 | **핵심 LLM** | Scenario Designer (Section 2) | Self-Driving Agent (Section 3) |
 | **에이전트 역할** | 설계된 시나리오가 맞는지 **학습/검증** | 목표를 위해 스스로 **경로 탐색** |
 | **주요 가치** | 기획/설계 기반의 정밀한 테스트 생성 | 발견되지 않은 결함 및 사용자 행동 탐색 |
+
+---
+
+
