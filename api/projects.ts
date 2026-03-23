@@ -19,6 +19,24 @@ export const projectsApi = {
         } as Project));
     },
 
+    getById: async (projectId: string) => {
+        const response = await api.get<any>(`/projects/${projectId}`);
+        const p = response.data;
+        return {
+            id: p.id,
+            customerAccountId: p.customer_account_id,
+            name: p.name,
+            description: p.description,
+            domain: p.domain,
+            createdAt: p.created_at,
+            targetDevices: p.target_devices || [],
+            environments: p.environments || {},
+            objectRepo: p.object_repo || [],
+            mobileConfig: p.mobile_config || {},
+            categories: p.categories || []
+        } as Project;
+    },
+
     create: async (data: { name: string; description?: string; domain?: string; targetDevices?: string[] }) => {
         const payload = {
             name: data.name,

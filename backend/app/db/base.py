@@ -7,3 +7,4 @@ from app.models.project import Project, ProjectAccess
 # although User.py defined CustomerAccount, so it's loaded via models.user
 from app.models.test import TestScript, TestHistory, TestSchedule, Scenario, Persona, TestObject, TestAction, TestDataset, ActionMap
 from app.models.ai import AiExplorationSession
+from app.models.knowledge import KnowledgeDocument, KnowledgeMap, KnowledgeItem

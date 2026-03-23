@@ -17,7 +17,8 @@ import {
   Database,
   ClipboardList,
   Bot, // Added
-  PlaySquare // Added
+  PlaySquare, // Added
+  BookOpen // Added
 } from 'lucide-react';
 import { ViewMode, TestScript, ScriptStatus, UserRole, Project } from '../types';
 import Logo from './Logo';
@@ -37,6 +38,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, onSwitchPro
     { id: ViewMode.STEP_RUNNER, label: 'Step Flow', icon: PlaySquare },
     { id: ViewMode.AI_EXPLORATION, label: 'AI Exploration', icon: Bot },
     { id: ViewMode.AI_GENERATOR, label: 'AI Generator', icon: Sparkles },
+    { id: ViewMode.KNOWLEDGE_REPO, label: '지식 저장소', icon: BookOpen },
     { id: ViewMode.DATASET_STUDIO, label: 'DataSet Studio', icon: Database },
     { id: ViewMode.LIBRARY, label: 'Asset Library', icon: Library },
     { id: ViewMode.SCHEDULES, label: 'Test Scheduler', icon: CalendarClock },

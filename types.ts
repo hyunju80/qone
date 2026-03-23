@@ -15,7 +15,8 @@ export enum ViewMode {
   DEVICE_FARM = 'device_farm',
   CMS = 'cms', // Customer Management System (Super Admin)
   DESIGN_CENTER = 'design_center', // Asset Management
-  DATASET_STUDIO = 'dataset_studio'
+  DATASET_STUDIO = 'dataset_studio',
+  KNOWLEDGE_REPO = 'knowledge_repo'
 }
 
 export type UserRole = 'Super Admin' | 'Admin' | 'Manager' | 'QA Engineer' | 'Viewer';
@@ -429,5 +430,19 @@ export interface TestStep {
   true_jump_no?: number;
   false_jump_no?: number;
   assertText?: string;
+}
+
+export interface KnowledgeDocument {
+  id: string;
+  projectId: string;
+  title: string;
+  file_path: string;
+  category: string;
+  depth_1: string;
+  depth_2?: string;
+  depth_3?: string;
+  extracted_text?: string;
+  parsed_data?: Record<string, any>;
+  created_at: string;
 }
 

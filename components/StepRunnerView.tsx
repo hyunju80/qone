@@ -1966,20 +1966,20 @@ const StepRunnerView: React.FC<StepRunnerViewProps> = ({ activeProject }) => {
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Retry Count (on failure)</label>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Retry Count</label>
                                         <div className="flex items-center gap-4">
                                             <input
                                                 type="range"
-                                                min="1"
-                                                max="10"
-                                                value={tryCount}
-                                                onChange={(e) => setTryCount(parseInt(e.target.value))}
+                                                min="0"
+                                                max="9"
+                                                value={tryCount - 1}
+                                                onChange={(e) => setTryCount(parseInt(e.target.value) + 1)}
                                                 className="flex-1 accent-indigo-600"
                                             />
-                                            <span className="w-12 text-center py-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg font-black text-sm">{tryCount}</span>
+                                            <span className="w-12 text-center py-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg font-black text-sm">{tryCount - 1}</span>
                                         </div>
-                                        <p className="mt-1 text-[10px] text-gray-500 font-medium italic">Stops immediately on the first success.</p>
                                     </div>
+                                    <p className="mt-1 text-[10px] text-gray-500 font-medium italic">Stops immediately on the first success.</p>
                                 </div>
 
                                 <div className="flex gap-3 mt-8">

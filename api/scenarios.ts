@@ -78,21 +78,21 @@ export const scenariosApi = {
         return response.data;
     },
 
-    // Map Persistence
+    // Map Persistence (Moved to Knowledge Repository)
     saveActionMap: async (payload: { project_id: string, url: string, title: string, map_json: any }) => {
-        const response = await api.post('/scenarios/maps', payload);
+        const response = await api.post('/knowledge/maps', payload);
         return response.data;
     },
     listActionMaps: async (projectId: string) => {
-        const response = await api.get(`/scenarios/maps?project_id=${projectId}`);
+        const response = await api.get(`/knowledge/maps/${projectId}`);
         return response.data;
     },
     deleteActionMap: async (mapId: string) => {
-        const response = await api.delete(`/scenarios/maps/${mapId}`);
+        const response = await api.delete(`/knowledge/maps/${mapId}`);
         return response.data;
     },
     updateActionMap: async (mapId: string, payload: { title?: string, map_json?: any }) => {
-        const response = await api.put(`/scenarios/maps/${mapId}`, payload);
+        const response = await api.put(`/knowledge/maps/${mapId}`, payload);
         return response.data;
     },
     // New Persistence Methods
@@ -149,5 +149,25 @@ export const scenariosApi = {
         tags?: string[]
     }): Promise<void> => {
         await api.put(`/scenarios/${id}`, data);
+    },
+
+    // Knowledge Documents (RAG)
+    getDocuments: async (projectId: string) => {
+        const response = await api.get(`/knowledge/documents/${projectId}`);
+        return response.data;
+    },
+    uploadDocument: async (formData: FormData) => {
+        const response = await api.post('/knowledge/documents', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        return response.data;
+    },
+    deleteDocument: async (docId: string) => {
+        const response = await api.delete(`/knowledge/documents/${docId}`);
+        return response.data;
+    },
+    getDocumentItems: async (docId: string) => {
+        const response = await api.get(`/knowledge/documents/${docId}/items`);
+        return response.data;
     }
 };

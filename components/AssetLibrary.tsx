@@ -643,14 +643,18 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
             </div>
 
             <div className="mb-6 space-y-3 mt-auto relative z-10">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-1">
                 <div className="p-2 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 transition-colors">
-                  <div className="text-[8px] text-gray-600 font-black uppercase tracking-tighter mb-1">Success Rate</div>
+                  <div className="text-[7px] text-gray-600 font-black uppercase tracking-tighter mb-1">Success</div>
                   <div className="text-xs font-bold text-gray-900 dark:text-gray-200 transition-colors">{script.successRate}%</div>
                 </div>
                 <div className="p-2 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 transition-colors">
-                  <div className="text-[8px] text-gray-600 font-black uppercase tracking-tighter mb-1">Total Runs</div>
+                  <div className="text-[7px] text-gray-600 font-black uppercase tracking-tighter mb-1">Runs</div>
                   <div className={`text-xs font-bold ${script.isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-600'}`}>{script.runCount || 0}</div>
+                </div>
+                <div className="p-2 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 transition-colors">
+                  <div className="text-[7px] text-gray-600 font-black uppercase tracking-tighter mb-1">Retry</div>
+                  <div className={`text-xs font-bold ${script.isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-600'}`}>{(script.try_count || 1) - 1}</div>
                 </div>
               </div>
               <div className="flex items-center justify-between text-[9px] text-gray-500">
@@ -742,14 +746,18 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
             </div>
 
             <div className="mb-6 space-y-3 mt-auto relative z-10">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-1">
                 <div className="p-2 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 transition-colors">
-                  <div className="text-[8px] text-gray-600 font-black uppercase tracking-tighter mb-1">Success Rate</div>
+                  <div className="text-[7px] text-gray-600 font-black uppercase tracking-tighter mb-1">Success</div>
                   <div className="text-xs font-bold text-gray-900 dark:text-gray-200 transition-colors">{step.successRate ?? 0}%</div>
                 </div>
                 <div className="p-2 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 transition-colors">
-                  <div className="text-[8px] text-gray-600 font-black uppercase tracking-tighter mb-1">Total Runs</div>
+                  <div className="text-[7px] text-gray-600 font-black uppercase tracking-tighter mb-1">Runs</div>
                   <div className={`text-xs font-bold ${step.isActive !== false ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-600'}`}>{step.runCount || 0}</div>
+                </div>
+                <div className="p-2 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 transition-colors">
+                  <div className="text-[7px] text-gray-600 font-black uppercase tracking-tighter mb-1">Retry</div>
+                  <div className={`text-xs font-bold ${step.isActive !== false ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-600'}`}>{(step.try_count || 1) - 1}</div>
                 </div>
               </div>
               <div className="flex items-center justify-between text-[9px] text-gray-500">
@@ -1436,15 +1444,15 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ scripts, activeProjectId, p
                       <div className="flex items-center gap-4 bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-3">
                         <input
                           type="range"
-                          min="1"
-                          max="10"
-                          value={newManualScript.try_count}
-                          onChange={e => setNewManualScript({ ...newManualScript, try_count: parseInt(e.target.value) })}
+                          min="0"
+                          max="9"
+                          value={newManualScript.try_count - 1}
+                          onChange={e => setNewManualScript({ ...newManualScript, try_count: parseInt(e.target.value) + 1 })}
                           className="flex-1 accent-indigo-600"
                         />
                         <div className="flex flex-col items-center">
-                          <span className="text-[14px] font-black text-indigo-600 dark:text-indigo-400">{newManualScript.try_count}</span>
-                          <span className="text-[8px] font-bold text-gray-400 uppercase">Tries</span>
+                          <span className="text-[14px] font-black text-indigo-600 dark:text-indigo-400">{newManualScript.try_count - 1}</span>
+                          <span className="text-[8px] font-bold text-gray-400 uppercase">Retry</span>
                         </div>
                       </div>
                       <p className="text-[9px] text-gray-500 italic px-1">"Indicates how many times to retry on failure."</p>

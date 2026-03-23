@@ -75,6 +75,21 @@ def create_project(
     db.refresh(db_obj)
     return db_obj
 
+@router.get("/{project_id}", response_model=schemas.Project)
+def read_project(
+    *,
+    db: Session = Depends(deps.get_db),
+    project_id: str,
+    current_user: models.User = Depends(deps.get_current_active_user),
+) -> Any:
+    """
+    Get project by ID.
+    """
+    project = crud.project.get(db, id=project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
 @router.put("/{project_id}", response_model=schemas.Project)
 def update_project(
     *,

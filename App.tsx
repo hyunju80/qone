@@ -32,6 +32,7 @@ import AiExploration from './components/AiExploration'; // Added
 import StepRunnerView from './components/StepRunnerView'; // Added
 import DataSetStudio from './components/DataSetStudio'; // Added
 import DesignCenter from './components/DesignCenter/DesignCenter'; // Added
+import KnowledgeRepoView from './components/KnowledgeRepoView';
 import Logo from './components/Logo';
 import { ViewMode, TestScript, ScriptStatus, ScriptOrigin, User, Project, Persona, TestHistory, Message, TestSchedule, Device, ApprovalTask, TargetDevice, CustomerAccount, SubscriptionPlan, Scenario } from './types';
 import { MOCK_SCRIPTS, MOCK_USERS, MOCK_PROJECTS, PERSONAS as MOCK_PERSONAS, MOCK_HISTORY, MOCK_SCHEDULES, MOCK_DEVICES, MOCK_TASKS, MOCK_ALL_CUSTOMERS } from './constants';
@@ -695,6 +696,8 @@ const AppContent: React.FC = () => {
             onAlert={showAlert}
           />
         );
+      case ViewMode.KNOWLEDGE_REPO:
+        return <KnowledgeRepoView activeProjectId={activeProject.id} onAlert={showAlert} />;
       case ViewMode.CMS:
         return (
           <CustomerHub
