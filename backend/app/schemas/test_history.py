@@ -46,3 +46,11 @@ class TestHistoryInDBBase(TestHistoryBase):
 
 class TestHistory(TestHistoryInDBBase):
     healing_logs: List[SelfHealingLog] = []
+
+class TestHistorySummary(BaseModel):
+    total: int
+    passed: int
+    failed: int
+    rate: float
+    pipelineRuns: int
+    scheduledRuns: int

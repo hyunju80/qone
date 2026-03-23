@@ -28,6 +28,36 @@ def read_history(
         return crud.history.get_by_project(db, project_id=project_id, skip=skip, limit=limit)
     return []
 
+@router.get("/summary", response_model=schemas.TestHistorySummary)
+def read_history_summary(
+    db: Session = Depends(deps.get_db),
+    project_id: str = "",
+    current_user: models.User = Depends(deps.get_current_active_user),
+) -> Any:
+    """
+    Get summary statistics for history.
+    """
+    from app.models.test import TestHistory
+    
+    if not project_id:
+        return {"total": 0, "passed": 0, "failed": 0, "rate": 0, "pipelineRuns": 0, "scheduledRuns": 0}
+    
+    total = db.query(TestHistory).filter(TestHistory.project_id == project_id).count()
+    passed = db.query(TestHistory).filter(TestHistory.project_id == project_id, TestHistory.status == 'passed').count()
+    failed = total - passed
+    rate = round((passed / total) * 100, 1) if total > 0 else 0
+    pipelineRuns = db.query(TestHistory).filter(TestHistory.project_id == project_id, TestHistory.trigger == 'pipeline').count()
+    scheduledRuns = db.query(TestHistory).filter(TestHistory.project_id == project_id, TestHistory.trigger == 'scheduled').count()
+    
+    return {
+        "total": total,
+        "passed": passed,
+        "failed": failed,
+        "rate": rate,
+        "pipelineRuns": pipelineRuns,
+        "scheduledRuns": scheduledRuns
+    }
+
 @router.post("/", response_model=schemas.TestHistory)
 def create_history_entry(
     *,

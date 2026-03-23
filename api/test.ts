@@ -120,6 +120,12 @@ export const testApi = {
         });
         return response.data.map(mapHistory);
     },
+    getHistorySummary: async (projectId: string) => {
+        const response = await api.get<any>('/history/summary', {
+            params: { project_id: projectId }
+        });
+        return response.data;
+    },
     createHistory: async (data: any) => {
         const response = await api.post<TestHistory>('/history/', data);
         return response.data;

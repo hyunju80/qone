@@ -228,7 +228,7 @@ const TestDashboard: React.FC<TestDashboardProps> = ({ history, activeProject, o
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                         <div className="flex items-center gap-3">
                             <h3 className="text-lg font-black text-gray-900 dark:text-white">
-                                Script Stability Board
+                                Asset Stability Board
                             </h3>
                             {allDates.length > 0 && (
                                 <span className="px-3 py-1 bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 text-[10px] font-bold rounded-full uppercase tracking-tighter whitespace-nowrap">
