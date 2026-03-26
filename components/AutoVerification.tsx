@@ -228,7 +228,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
     return (
         <div className="flex h-full w-full gap-8 p-8 overflow-hidden bg-gray-50 dark:bg-[#0c0e12]">
             {/* 1. Left Panel: Ready to Verify Queue */}
-            <div className="w-[560px] flex flex-col shrink-0 overflow-y-auto custom-scrollbar pr-2 pb-2 transition-all">
+            <div className="w-[550px] flex flex-col shrink-0 overflow-y-auto custom-scrollbar pr-2 pb-2 transition-all">
                 <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl flex flex-col shadow-sm overflow-hidden mb-8 shrink-0">
                     <div className="px-8 py-7 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
                         <div className="flex items-center gap-4">

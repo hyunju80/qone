@@ -58,16 +58,16 @@ export interface KnowledgeHierarchyItem {
 }
 
 export const scenariosApi = {
-    analyzeUrl: async (url: string, prompt?: string, projectId?: string, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
-        const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-url', { url, prompt, project_id: projectId }, { signal });
+    analyzeUrl: async (url: string, prompt?: string, projectId?: string, personaId?: string, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
+        const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-url', { url, prompt, project_id: projectId, persona_id: personaId }, { signal });
         return response.data;
     },
-    analyzeUpload: async (files: { name: string, type: string, data: string }[], prompt?: string, projectId?: string, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
-        const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-upload', { files, prompt, project_id: projectId }, { signal });
+    analyzeUpload: async (files: { name: string, type: string, data: string }[], prompt?: string, projectId?: string, personaId?: string, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
+        const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-upload', { files, prompt, project_id: projectId, persona_id: personaId }, { signal });
         return response.data;
     },
-    analyzeKnowledge: async (itemIds: string[], projectId: string, prompt?: string, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
-        const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-knowledge', { item_ids: itemIds, project_id: projectId, prompt }, { signal });
+    analyzeKnowledge: async (itemIds: string[], projectId: string, prompt?: string, personaId?: string, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
+        const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-knowledge', { item_ids: itemIds, project_id: projectId, prompt, persona_id: personaId }, { signal });
         return response.data;
     },
     generateScenarios: async (data: GenerateScenariosRequest): Promise<GenerateScenariosResponse> => {
@@ -75,17 +75,18 @@ export const scenariosApi = {
         return response.data;
     },
     // New Map-Based Generation Methods
-    mapActionFlow: async (url: string, maxDepth: number = 1, excludeSelectors?: string[], includeSelector?: string): Promise<{ status: string, map: any }> => {
+    mapActionFlow: async (url: string, maxDepth: number = 1, excludeSelectors?: string[], includeSelector?: string, contentSelector?: string): Promise<{ status: string, map: any }> => {
         const response = await api.post<{ status: string, map: any }>('/scenarios/map-action-flow', {
             url,
             max_depth: maxDepth,
             exclude_selectors: excludeSelectors,
-            include_selector: includeSelector
+            include_selector: includeSelector,
+            content_selector: contentSelector
         });
         return response.data;
     },
-    generateFromMap: async (actionMap: any, prompt?: string, projectId?: string): Promise<AnalyzeUrlResponse> => {
-        const response = await api.post<AnalyzeUrlResponse>('/scenarios/generate-from-map', { action_map: actionMap, prompt, project_id: projectId });
+    generateFromMap: async (actionMap: any, prompt?: string, projectId?: string, personaId?: string): Promise<AnalyzeUrlResponse> => {
+        const response = await api.post<AnalyzeUrlResponse>('/scenarios/generate-from-map', { action_map: actionMap, prompt, project_id: projectId, persona_id: personaId });
         return response.data;
     },
 

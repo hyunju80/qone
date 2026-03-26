@@ -29,6 +29,7 @@ class AnalyzeUrlRequest(BaseModel):
     url: str
     prompt: Optional[str] = None
     project_id: Optional[str] = None
+    persona_id: Optional[str] = None
 
 class TestCase(BaseModel):
     id: Optional[str] = None
@@ -111,6 +112,13 @@ async def analyze_url(
                     cats_str = ", ".join([f"'{c.name}'" + (f" (Desc: {c.description})" if c.description else "") for c in pschema.categories])
                     categories_context = f"\n\n[Project Categories Context]\nThis project uses the following predefined categories for taxonomy: {cats_str}.\nYou MUST carefully assign exactly one of these categories to each generated scenario based on its purpose. If none fit perfectly, pick the closest match. Put this value in the 'category' field."
 
+        persona_context = ""
+        if request.persona_id:
+            from app.models.test import Persona
+            persona = db.query(Persona).filter(Persona.id == request.persona_id).first()
+            if persona:
+                persona_context = f"\n\n[Testing Persona Context]\nYou are acting as the following user persona:\n- Name: {persona.name}\n- Goal: {persona.description}\n- Skill Level: {persona.skill_level}\n\n[Instruction]\nTailor the test scenarios and steps to match this persona's perspective, knowledge level, and specific testing goals. Provide thoughts and edge cases that this persona would likely find important."
+
         # 3. Construct Prompt for ONE-STEP Generation
         system_prompt = """You are an Expert QA Automation Engineer.
             Analyze the provided web page context (Screenshot + DOM Structure).
@@ -152,6 +160,7 @@ async def analyze_url(
             system_prompt += f"\n\n[Additional User Context]\n{request.prompt}"
         
         system_prompt += categories_context
+        system_prompt += persona_context
 
         decoded_image = base64.b64decode(crawl_result['screenshot'])
         prompt_contents = [
@@ -307,6 +316,7 @@ class AnalyzeUploadRequest(BaseModel):
     files: List[UploadedFile]
     prompt: str = ""
     project_id: Optional[str] = None
+    persona_id: Optional[str] = None
 
 @router.post("/analyze-upload", response_model=AnalyzeUrlResponse)
 async def analyze_upload(
@@ -342,6 +352,13 @@ async def analyze_upload(
                 if pschema.categories:
                     cats_str = ", ".join([f"'{c.name}'" + (f" (Desc: {c.description})" if c.description else "") for c in pschema.categories])
                     categories_context = f"\n\n[Project Categories Context]\nThis project uses the following predefined categories for taxonomy: {cats_str}.\nYou MUST carefully assign exactly one of these categories to each generated scenario based on its purpose. If none fit perfectly, pick the closest match. Put this value in the 'category' field."
+
+        persona_context = ""
+        if request.persona_id:
+            from app.models.test import Persona
+            persona = db.query(Persona).filter(Persona.id == request.persona_id).first()
+            if persona:
+                persona_context = f"\n\n[Testing Persona Context]\nYou are acting as the following user persona:\n- Name: {persona.name}\n- Goal: {persona.description}\n- Skill Level: {persona.skill_level}\n\n[Instruction]\nTailor the test scenarios and steps to match this persona's perspective, knowledge level, and specific testing goals."
         
         # 3. Construct Prompt
         prompt_parts = []
@@ -379,6 +396,8 @@ async def analyze_upload(
             prompt_parts.append(f"Additional User Context: {request.prompt}")
             
         prompt_parts.append(categories_context)
+        if persona_context:
+            prompt_parts.append(persona_context)
 
         for idx, file in enumerate(request.files):
             try:
@@ -626,6 +645,7 @@ class AnalyzeKnowledgeRequest(BaseModel):
     item_ids: List[str]
     prompt: str = ""
     project_id: str
+    persona_id: Optional[str] = None
 
 @router.post("/analyze-knowledge", response_model=AnalyzeUrlResponse)
 async def analyze_knowledge(
@@ -661,6 +681,13 @@ async def analyze_knowledge(
             
             knowledge_context += f"{header}{path_info}\nDescription: {description}\n"
 
+        persona_context = ""
+        if request.persona_id:
+            from app.models.test import Persona
+            persona = db.query(Persona).filter(Persona.id == request.persona_id).first()
+            if persona:
+                persona_context = f"\n\n[Testing Persona Context]\nYou are acting as the following user persona:\n- Name: {persona.name}\n- Goal: {persona.description}\n- Skill Level: {persona.skill_level}\n\n[Instruction]\nTailor the test scenarios and steps to match this persona's perspective and expertise."
+
         # 3. Call Gemini
         from google import genai
         from google.genai import types
@@ -681,6 +708,9 @@ async def analyze_knowledge(
 
         if request.prompt:
             system_prompt += f"\n\n[Additional User Context]\n{request.prompt}"
+
+        if persona_context:
+            system_prompt += persona_context
 
         response = await client.aio.models.generate_content(
             model=settings.GEMINI_MODEL,
@@ -884,14 +914,16 @@ def update_scenario(
 class MapActionFlowRequest(BaseModel):
     url: str
     max_depth: int = 1
-    max_siblings: int = 15
+    max_siblings: int = 30
     exclude_selectors: Optional[List[str]] = None
     include_selector: Optional[str] = None
+    content_selector: Optional[str] = None
 
 class GenerateFromMapRequest(BaseModel):
     action_map: Dict[str, Any]
     prompt: Optional[str] = None
     project_id: Optional[str] = None
+    persona_id: Optional[str] = None
 
 @router.post("/map-action-flow")
 async def map_action_flow(req: MapActionFlowRequest):
@@ -901,7 +933,8 @@ async def map_action_flow(req: MapActionFlowRequest):
             max_depth=req.max_depth, 
             max_siblings=req.max_siblings, 
             exclude_selectors=req.exclude_selectors, 
-            include_selector=req.include_selector
+            include_selector=req.include_selector,
+            content_selector=req.content_selector
         )
         return {"status": "success", "map": result}
     except Exception as e:
@@ -931,6 +964,13 @@ async def generate_from_map(
                 if pschema.categories:
                     cats_str = ", ".join([f"'{c.name}'" + (f" (Desc: {c.description})" if c.description else "") for c in pschema.categories])
                     categories_context = f"\n\n[Project Categories Context]\nThis project uses the following predefined categories for taxonomy: {cats_str}.\nYou MUST carefully assign exactly one of these categories to each generated scenario based on its purpose. If none fit perfectly, pick the closest match. Put this value in the 'category' field."
+
+        persona_context = ""
+        if request.persona_id:
+            from app.models.test import Persona
+            persona = db.query(Persona).filter(Persona.id == request.persona_id).first()
+            if persona:
+                persona_context = f"\n\n[Testing Persona Context]\nYou are acting as the following user persona:\n- Name: {persona.name}\n- Goal: {persona.description}\n- Skill Level: {persona.skill_level}\n\n[Instruction]\nTailor the test cases to match this persona's perspective and expertise. If the persona is an 'Expert', generate more rigorous and detailed edge cases."
 
         system_prompt = """You are an Expert QA Automation Engineer.
             Analyze the provided JSON 'Action Flow Map' which details the interactable elements of a Web Application up to a certain depth.
@@ -968,6 +1008,8 @@ async def generate_from_map(
             system_prompt += f"\n\n[Additional User Context]\n{request.prompt}"
             
         system_prompt += categories_context
+        if persona_context:
+            system_prompt += persona_context
 
         map_json_str = json.dumps(request.action_map, ensure_ascii=False)
         prompt_contents = [

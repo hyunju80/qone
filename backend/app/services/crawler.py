@@ -121,6 +121,9 @@ class CrawlerService:
             "page": page
         }
         
+        # Clear overlays (popups) on initial load
+        await self._clear_overlays(page)
+        
         return await self._get_state_impl(session_id)
 
     async def _get_active_page(self, session_id: str) -> Page:
@@ -159,6 +162,10 @@ class CrawlerService:
     async def _perform_action_impl(self, session_id: str, action_type: str, selector: str = None, value: str = None) -> Dict[str, Any]:
         page = await self._get_active_page(session_id)
         
+        # Periodically clear overlays before actions to handle newly appeared popups
+        if action_type in ["click", "type"]:
+            await self._clear_overlays(page)
+
         try:
             if action_type == "click":
                 # Convert jQuery :contains to Playwright :has-text
@@ -240,6 +247,43 @@ class CrawlerService:
             "html_structure": clean_html,
             "screenshot": screenshot_b64
         }
+
+    async def _clear_overlays(self, page: Page):
+        """
+        Injects JavaScript to find and hide common overlay elements (popups, modals, notices)
+        """
+        script = """
+        () => {
+            const popupSelectors = [
+                'div[id*="notice"]', 'div[class*="notice"]', 
+                'div[id*="popup"]', 'div[class*="popup"]',
+                'div[id*="layer"]', 'div[class*="layer"]',
+                'div[id*="modal"]', 'div[class*="modal"]',
+                '.layer-wrap', '.pop-layer', '.dimmed',
+                '#lyr-notice-main'
+            ];
+            
+            let clearedCount = 0;
+            popupSelectors.forEach(selector => {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(el => {
+                    const style = window.getComputedStyle(el);
+                    if (style.position === 'fixed' || style.position === 'absolute' || parseInt(style.zIndex) > 10) {
+                        el.style.display = 'none';
+                        el.style.visibility = 'hidden';
+                        el.style.opacity = '0';
+                        el.style.pointerEvents = 'none';
+                        clearedCount++;
+                    }
+                });
+            });
+            return clearedCount;
+        }
+        """
+        try:
+            await page.evaluate(script)
+        except:
+            pass
 
     async def close_session(self, session_id: str):
         if self._bg_thread and self._bg_thread.is_alive():

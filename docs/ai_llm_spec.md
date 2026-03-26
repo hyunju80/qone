@@ -35,6 +35,11 @@ The generated 'steps' MUST NOT be implementation-specific UI actions (e.g., "Cli
 Instead, the 'steps' MUST be high-level User Intents or Business Logic goals (e.g., "Authenticate as an Admin", "Navigate to the billing section").
 These scenarios will be executed by an Autonomous AI Browser Agent that will figure out the actual UI interactions on its own. Focus strictly on WHAT needs to be done and verified, not HOW to do it.
 
+[Testing Persona Context]
+{persona_context}  (Includes: Name, Goal, Skill Level)
+[Instruction]
+Tailor the test scenarios and steps to match this persona's perspective and expertise. If the persona is an 'Expert', generate more rigorous and detailed edge cases.
+
 [Design Rules]
 1. Output must be a valid JSON object with a single key 'scenarios'.
 2. 'scenarios' is a list of objects, each MUST have:
@@ -64,6 +69,7 @@ Language: Korean.
 *   **Screenshot**: Base64 encoded JPEG 이미지 (멀티모달 주입).
 *   **DOM Structure**: `html_structure` (Step Flow를 통해 텍스트 노드 위주로 단순화된 HTML).
 *   **Context**: 사용자가 추가로 입력한 프롬프트 (예: "로그인 기능 위주로 생성해줘").
+*   **Persona Context**: 선택한 페르소나의 정보 (Derivation logic in `scenarios.py`).
 *   **Project Categories Context**:
     `This project uses the following predefined categories for taxonomy: {cats_str}. You MUST carefully assign exactly one of these categories to each generated scenario.`
 
@@ -338,6 +344,7 @@ SCENARIOS TO IMPLEMENT: {scenarios_json}
    - `input_value`: Data to type or URL to navigate to
    - `description`: Korean explanation of the step
 3. Add a 'final_assertion' step at the end based on the Expected Result.
+4. TAILOR TO PERSONA: Ensure the level of detail and step complexity matches the provided USER PERSONA.
 ```
 
 ### 7.2. Output Schema
@@ -455,7 +462,7 @@ graph TD
 ### 10.3. 핵심 차이점 요약 (Key Comparison)
 | 구분 | AI Generator (Smart Gen) | AI Exploration (Discovery) |
 | :--- | :--- | :--- |
-| **출발점** | 설계서, 화면 구조 (정적 분석) | 사용자 목표, 페르소나 (동적 탐색) |
+| **출발점** | 설계서, 화면 구조, **페르소나** | 사용자 목표, **페르소나** |
 | **핵심 LLM** | Scenario Designer (Section 2) | Self-Driving Agent (Section 3) |
 | **에이전트 역할** | 설계된 시나리오가 맞는지 **학습/검증** | 목표를 위해 스스로 **경로 탐색** |
 | **주요 가치** | 기획/설계 기반의 정밀한 테스트 생성 | 발견되지 않은 결함 및 사용자 행동 탐색 |

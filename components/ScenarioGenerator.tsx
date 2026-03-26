@@ -161,10 +161,19 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
 
       let result;
       if (selectedKnowledgeItemIds.length > 0) {
-        result = await scenariosApi.analyzeKnowledge(selectedKnowledgeItemIds, combinedPrompt, activeProject.id, abortControllerRef.current.signal);
+        // Fix: Argument order in scenariosApi.analyzeKnowledge is (itemIds, projectId, prompt, personaId, signal)
+        result = await scenariosApi.analyzeKnowledge(selectedKnowledgeItemIds, activeProject.id, combinedPrompt, selectedPersonaId, abortControllerRef.current.signal);
       } else if (uploadedFiles.length > 0) {
         const filesPayload = uploadedFiles.map(f => ({ name: f.name, type: f.type, data: f.data }));
-        result = await scenariosApi.analyzeUpload(filesPayload, combinedPrompt, activeProject.id, abortControllerRef.current.signal);
+        result = await scenariosApi.analyzeUpload(filesPayload, combinedPrompt, activeProject.id, selectedPersonaId, abortControllerRef.current.signal);
+      } else if (selectedMapIds.length > 0) {
+        // Support generating from the first selected map
+        const targetMap = savedMaps.find(m => m.id === selectedMapIds[0]);
+        if (targetMap && targetMap.map_json) {
+          result = await scenariosApi.generateFromMap(targetMap.map_json, combinedPrompt, activeProject.id, selectedPersonaId);
+        } else {
+          result = { scenarios: [] };
+        }
       } else {
         await new Promise(r => setTimeout(r, 2000));
         result = { scenarios: [] };
@@ -297,7 +306,7 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
     <div className="h-full w-full bg-gray-50/50 dark:bg-[#0c0e12] p-8 overflow-hidden flex flex-col transition-all duration-700">
       <div className="flex-1 flex gap-8 min-h-0 overflow-hidden">
         {/* 1. Left Panel: AI Source Selection */}
-        <div className="w-[420px] flex flex-col shrink-0 overflow-y-auto custom-scrollbar pr-2 pb-2">
+        <div className="w-[500px] flex flex-col shrink-0 overflow-y-auto custom-scrollbar pr-2 pb-2">
           <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl flex flex-col shadow-sm transition-all overflow-hidden mb-8 shrink-0">
             <div className="px-8 py-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-white/50 dark:bg-white/5 backdrop-blur-sm shrink-0">
               <div className="flex items-center gap-4">

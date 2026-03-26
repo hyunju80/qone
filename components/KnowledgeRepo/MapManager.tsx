@@ -13,6 +13,7 @@ const MapManager: React.FC<MapManagerProps> = ({ activeProjectId, onAlert }) => 
   const [mapDepth, setMapDepth] = useState(1);
   const [excludeSelectors, setExcludeSelectors] = useState('');
   const [includeSelector, setIncludeSelector] = useState('');
+  const [contentSelector, setContentSelector] = useState('');
 
   const [isMapping, setIsMapping] = useState(false);
   const [actionMap, setActionMap] = useState<any>(null);
@@ -59,9 +60,10 @@ const MapManager: React.FC<MapManagerProps> = ({ activeProjectId, onAlert }) => 
       const excludes = excludeSelectors.trim() ? excludeSelectors.split(',').map(s => s.trim()).filter(Boolean) : undefined;
       const result = await scenariosApi.mapActionFlow(
         targetInput,
-        selectedNode ? 1 : mapDepth,
+        mapDepth,
         excludes,
-        includeSelector
+        includeSelector,
+        contentSelector
       );
 
       if (selectedNode && actionMap) {
@@ -230,6 +232,19 @@ const MapManager: React.FC<MapManagerProps> = ({ activeProjectId, onAlert }) => 
                 placeholder="e.g. main, #content"
                 className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-2 focus:ring-emerald-500/20 outline-none dark:text-white"
               />
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-gray-400 uppercase block mb-1.5">Main Content Area (Sub-pages)</label>
+              <input
+                type="text"
+                value={contentSelector}
+                onChange={e => setContentSelector(e.target.value)}
+                placeholder="e.g. #content, main"
+                className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 px-4 text-sm font-medium focus:ring-2 focus:ring-emerald-500/20 outline-none dark:text-white"
+              />
+              <p className="mt-1.5 text-[8px] text-gray-400 font-bold uppercase tracking-widest leading-tight">
+                * Used for Depth 1+ nodes to avoid redundant header/footer mapping.
+              </p>
             </div>
 
             <div>
