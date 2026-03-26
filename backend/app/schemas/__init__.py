@@ -8,4 +8,5 @@ from .test_history import TestHistory, TestHistoryCreate, TestHistoryUpdate, Tes
 from .test_schedule import TestSchedule, TestScheduleCreate, TestScheduleUpdate
 from .ai import ChatRequest, ChatResponse, ChatMessage, DataGenerationRequest, DataGenerationResponse, TestDataRow
 from .persona import Persona, PersonaCreate, PersonaUpdate
+from .knowledge import KnowledgeDocument, KnowledgeDocumentCreate, KnowledgeDocumentUpdate, KnowledgeItem, KnowledgeItemCreate, KnowledgeItemUpdate, KnowledgeMap, KnowledgeMapCreate, KnowledgeMapUpdate, KnowledgeHierarchyItem
 from . import self_healing

@@ -622,6 +622,118 @@ async def generate_scenarios(
             f.write(trace_str)
         raise HTTPException(500, f"Generation Error: {str(e)}")
 
+class AnalyzeKnowledgeRequest(BaseModel):
+    item_ids: List[str]
+    prompt: str = ""
+    project_id: str
+
+@router.post("/analyze-knowledge", response_model=AnalyzeUrlResponse)
+async def analyze_knowledge(
+    *,
+    request: AnalyzeKnowledgeRequest,
+    db: Any = Depends(deps.get_db),
+) -> Any:
+    """
+    Generate scenarios from selected KnowledgeItems (RAG).
+    """
+    if not settings.GOOGLE_API_KEY:
+        raise HTTPException(500, "Server Configuration Error: GOOGLE_API_KEY is missing.")
+
+    try:
+        # 1. Fetch KnowledgeItems
+        from app.models.knowledge import KnowledgeItem
+        items = db.query(KnowledgeItem).filter(KnowledgeItem.id.in_(request.item_ids)).all()
+        
+        if not items:
+            raise HTTPException(400, "No valid KnowledgeItems found for the given IDs.")
+
+        # 2. Extract and merge content
+        knowledge_context = ""
+        for it in items:
+            # Construct a descriptive header for each item
+            header = f"\n[Document Item: {it.title or 'Untitled'}]"
+            path_info = f"\nPath: {it.classification or ''} > {it.depth_1 or ''} > {it.depth_2 or ''} > {it.depth_3 or ''}"
+            
+            # Get description from content JSON
+            description = ""
+            if isinstance(it.content, dict):
+                description = it.content.get("Description", it.content.get("raw_text_snippet", ""))
+            
+            knowledge_context += f"{header}{path_info}\nDescription: {description}\n"
+
+        # 3. Call Gemini
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+
+        system_prompt = f"""You are an Expert QA Automation Engineer.
+            Analyze the following technical documentation retrieved from the project's Knowledge Repository.
+            Your goal is to design a comprehensive Test Scenario Suite based strictly on these requirements.
+
+            [TECHNICAL DOCUMENTATION]
+            {knowledge_context}
+
+            [CRITICAL INSTRUCTION]
+            The generated 'steps' MUST NOT be implementation-specific UI actions.
+            Instead, the 'steps' MUST be high-level User Intents or Business Logic goals.
+            Language: Korean.
+            """
+
+        if request.prompt:
+            system_prompt += f"\n\n[Additional User Context]\n{request.prompt}"
+
+        response = await client.aio.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=system_prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "OBJECT",
+                    "properties": {
+                        "scenarios": {
+                            "type": "ARRAY",
+                            "items": {
+                                "type": "OBJECT",
+                                "properties": {
+                                    "title": {"type": "STRING"},
+                                    "description": {"type": "STRING"},
+                                    "category": {"type": "STRING"},
+                                    "testCases": {
+                                        "type": "ARRAY",
+                                        "items": {
+                                            "type": "OBJECT",
+                                            "properties": {
+                                                "title": {"type": "STRING"},
+                                                "preCondition": {"type": "STRING"},
+                                                "inputData": {"type": "STRING"},
+                                                "steps": {"type": "ARRAY", "items": {"type": "STRING"}},
+                                                "expectedResult": {"type": "STRING"}
+                                            },
+                                            "required": ["title", "preCondition", "inputData", "steps", "expectedResult"]
+                                        }
+                                    }
+                                },
+                                "required": ["title", "description", "testCases"]
+                            }
+                        }
+                    },
+                    "required": ["scenarios"]
+                }
+            )
+        )
+        
+        result = json.loads(response.text)
+        return AnalyzeUrlResponse(
+            scenarios=result.get('scenarios', []),
+            dom_context=""
+        )
+
+    except Exception as e:
+        import traceback
+        trace_str = traceback.format_exc()
+        print(f"Knowledge Analysis Error: {e}\n{trace_str}")
+        raise HTTPException(500, f"Error: {str(e)}")
+
 # --- PERSISTENCE CRUD ---
 
 from app.models.test import Scenario as ScenarioModel

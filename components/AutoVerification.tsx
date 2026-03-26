@@ -3,7 +3,7 @@ import {
     Play, RotateCcw, CheckCircle2, AlertCircle, Bot, Target,
     ChevronRight, Save, Activity, Globe, Smartphone, ShieldCheck,
     Search, ListChecks, ArrowRight, Loader2, Sparkles, Tablet, Square, XCircle,
-    User, Lock
+    User, Lock, ChevronDown, Filter, Database, AlignLeft, CheckSquare
 } from 'lucide-react';
 import { Project, Persona, Scenario, TestScript, TestCase, ScriptOrigin } from '../types';
 import { scenariosApi } from '../api/scenarios';
@@ -21,6 +21,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
     const [scenarios, setScenarios] = useState<Scenario[]>([]);
     const [loadingList, setLoadingList] = useState(true);
     const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
+    const [expandedScenarioId, setExpandedScenarioId] = useState<string | null>(null);
     const [listSearch, setListSearch] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
@@ -38,7 +39,6 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
     const [selectedPersonaId, setSelectedPersonaId] = useState<string>(personas[0]?.id || '');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [enableAiTest, setEnableAiTest] = useState(false);
 
     const selectedScenario = scenarios.find(s => s.id === selectedScenarioId);
 
@@ -49,12 +49,18 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
     // Update local state when a scenario is selected to auto-populate platform/target
     useEffect(() => {
         if (selectedScenario) {
-            if (selectedScenario.platform) setPlatform(selectedScenario.platform as 'WEB' | 'APP');
-            if (selectedScenario.target) setTargetUrl(selectedScenario.target);
-            if (selectedScenario.personaId) setSelectedPersonaId(selectedScenario.personaId);
-            setEnableAiTest(selectedScenario.enable_ai_test || false);
+            setPlatform((selectedScenario.platform as 'WEB' | 'APP') || 'WEB');
+            setTargetUrl(selectedScenario.target || '');
+            setSelectedPersonaId(selectedScenario.personaId || personas[0]?.id || '');
+            // Update credentials if they belong to the scenario's default or just reset
+            setUsername('');
+            setPassword('');
+        } else {
+            // Reset when nothing selected
+            setTargetUrl('');
+            setPlatform('WEB');
         }
-    }, [selectedScenario]);
+    }, [selectedScenarioId, selectedScenario]);
 
     const fetchScenarios = async () => {
         setLoadingList(true);
@@ -220,383 +226,307 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
     };
 
     return (
-        <div className="flex h-full w-full overflow-hidden bg-gray-50 dark:bg-[#0c0e12]">
-            {/* List Panel (1st) */}
-            <div className="w-[400px] bg-white dark:bg-[#111318] border-r border-gray-200 dark:border-gray-800 flex flex-col shrink-0 transition-colors">
-                <div className="p-5 border-b border-gray-200 dark:border-gray-800 flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                        <div className="flex flex-col">
-                            <span className="text-[11px] font-black text-indigo-600 uppercase tracking-widest">Ready to Verify ({filteredScenarios.length})</span>
-                            <span className="text-[9px] text-gray-500 uppercase font-black tracking-widest">Target Queue</span>
+        <div className="flex h-full w-full gap-8 p-8 overflow-hidden bg-gray-50 dark:bg-[#0c0e12]">
+            {/* 1. Left Panel: Ready to Verify Queue */}
+            <div className="w-[560px] flex flex-col shrink-0 overflow-y-auto custom-scrollbar pr-2 pb-2 transition-all">
+                <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl flex flex-col shadow-sm overflow-hidden mb-8 shrink-0">
+                    <div className="px-8 py-7 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="p-2.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl">
+                                <ListChecks className="w-6 h-6 text-indigo-500" />
+                            </div>
+                            <div className="flex flex-col">
+                                <h2 className="text-[13px] font-black text-gray-800 dark:text-gray-200 uppercase tracking-[0.15em] leading-tight">
+                                    Ready to Verify
+                                </h2>
+                                <p className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-tight">
+                                    Queue: {filteredScenarios.length} Scenarios
+                                </p>
+                            </div>
                         </div>
-                        <button onClick={fetchScenarios} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-900 rounded-lg text-gray-400"><RotateCcw className="w-4 h-4" /></button>
+                        <button onClick={fetchScenarios} className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-400 transition-colors"><RotateCcw className="w-4 h-4" /></button>
                     </div>
 
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                        <input value={listSearch} onChange={e => setListSearch(e.target.value)} placeholder="검색..." className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-lg py-1.5 pl-9 pr-3 text-xs outline-none focus:border-indigo-500" />
-                    </div>
-
-                    {uniqueCategories.length > 0 && (
-                        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1">
-                            <button onClick={() => setSelectedCategory('ALL')} className={`px-2 py-1 rounded-full text-[9px] font-black uppercase whitespace-nowrap transition-all ${selectedCategory === 'ALL' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'} `}>ALL</button>
-                            {uniqueCategories.map(cat => (
-                                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-2 py-1 rounded-full text-[9px] font-black uppercase whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'} `}>
-                                    {cat}
-                                </button>
-                            ))}
+                    <div className="p-8 space-y-6">
+                        <div className="relative group">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
+                            <input
+                                value={listSearch}
+                                onChange={e => setListSearch(e.target.value)}
+                                placeholder="Search prototypes..."
+                                className="w-full bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-gray-800 rounded-xl py-3 pl-11 pr-4 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
+                            />
                         </div>
-                    )}
+
+                        {uniqueCategories.length > 0 && (
+                            <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-2">
+                                <button onClick={() => setSelectedCategory('ALL')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategory === 'ALL' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'} `}>ALL</button>
+                                {uniqueCategories.map(cat => (
+                                    <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'} `}>
+                                        {cat}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+                <div className="px-4 py-2 flex items-center justify-between shrink-0">
+                    <h3 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <Database className="w-3 h-3" /> Scenario Repository
+                    </h3>
+                    <span className="text-[9px] font-black text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full uppercase tracking-widest">{filteredScenarios.length}</span>
+                </div>
+                <div className="flex flex-col gap-3">
                     {loadingList ? (
-                        <div className="py-20 flex flex-col items-center opacity-20">
-                            <Loader2 className="w-8 h-8 animate-spin mb-2" />
-                            <p className="text-[10px] font-black uppercase">Loading...</p>
+                        <div className="py-20 flex flex-col items-center opacity-40 animate-pulse">
+                            <Loader2 className="w-10 h-10 animate-spin text-indigo-500 mb-4" />
+                            <p className="text-[11px] font-black uppercase tracking-widest">Hydrating Queue...</p>
                         </div>
                     ) : filteredScenarios.length === 0 ? (
-                        <div className="py-20 flex flex-col items-center opacity-20 text-center">
-                            <ShieldCheck className="w-12 h-12 mb-4" />
-                            <p className="text-[10px] font-black uppercase">No scenarios pending</p>
-                            <p className="text-[8px] mt-1 max-w-[180px]">목록이 비어있거나 필터에 맞는 항목이 없습니다.</p>
+                        <div className="py-20 flex flex-col items-center text-center opacity-30">
+                            <ShieldCheck className="w-20 h-20 mb-6 text-gray-300" />
+                            <p className="text-xs font-black uppercase tracking-[0.2em]">Queue Empty</p>
                         </div>
                     ) : (
-                        filteredScenarios.map(s => (
-                            <button
-                                key={s.id}
-                                onClick={() => setSelectedScenarioId(s.id)}
-                                className={`w-full text-left p-4 rounded-2xl border transition-all flex items-start gap-4 ${selectedScenarioId === s.id ? 'bg-indigo-600/10 border-indigo-500 shadow-md transform scale-[1.02]' : 'bg-white dark:bg-[#16191f] border-gray-200 dark:border-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700'} `}
-                            >
-                                <div className={`p-2 rounded-xl shrink-0 transition-colors ${selectedScenarioId === s.id ? 'bg-indigo-600 text-white' : 'bg-gray-50 dark:bg-gray-900 text-gray-400'} `}><ListChecks className="w-5 h-5" /></div>
-                                <div className="min-w-0 flex-1">
-                                    {s.category && (
-                                        <div className="mb-1.5 flex items-center gap-2">
-                                            <span className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[8px] font-black rounded uppercase tracking-widest border border-indigo-100 dark:border-indigo-500/20">{s.category}</span>
+                        filteredScenarios.map(s => {
+                            const isExpanded = expandedScenarioId === s.id;
+                            const isSelected = selectedScenarioId === s.id;
+                            return (
+                                <div key={s.id} className={`bg-white dark:bg-[#16191f] border transition-all duration-500 rounded-3xl overflow-hidden ${isSelected ? 'border-indigo-400 shadow-xl ring-2 ring-indigo-500/10' : 'border-gray-200 dark:border-gray-800 shadow-sm hover:border-indigo-300'} `}>
+                                    <div
+                                        onClick={() => {
+                                            setExpandedScenarioId(isExpanded ? null : s.id);
+                                            setSelectedScenarioId(s.id);
+                                        }}
+                                        className={`p-6 px-8 cursor-pointer flex items-center justify-between transition-all ${isExpanded ? 'bg-indigo-50/50 dark:bg-indigo-900/10 border-b border-indigo-100 dark:border-indigo-800/50' : 'hover:bg-gray-50/50 dark:hover:bg-white/5'} `}
+                                    >
+                                        <div className="flex items-center gap-6 flex-1 min-w-0">
+                                            <div className={`p-2.5 rounded-2xl transition-all ${isSelected ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 scale-110' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 group-hover:bg-indigo-50'}`}>
+                                                <Target className="w-5 h-5" />
+                                            </div>
+                                            <div className="min-w-0 flex-1 space-y-1">
+                                                <div className="flex items-center gap-2 mb-0.5">
+                                                    {s.category && <span className="px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 text-[8px] font-black rounded uppercase tracking-wider">{s.category}</span>}
+                                                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{s.testCases.length} Nodes</span>
+                                                </div>
+                                                <h3 className={`font-black uppercase tracking-tight transition-all ${isExpanded ? 'text-sm text-gray-900 dark:text-white' : 'text-[13px] text-gray-700 dark:text-gray-300 truncate'} `}>{s.title}</h3>
+                                                {isExpanded && <p className="text-[10px] text-gray-500 font-bold tracking-tight leading-relaxed">{s.description}</p>}
+                                            </div>
+                                        </div>
+                                        <ChevronDown className={`w-5 h-5 text-indigo-500 transition-all duration-500 ${isExpanded ? 'rotate-180 scale-125' : 'opacity-40'} `} />
+                                    </div>
+
+                                    {isExpanded && (
+                                        <div className="p-8 space-y-6 bg-white dark:bg-[#111318] animate-in slide-in-from-top-2 duration-300">
+                                            {s.testCases.map((tc, tcIdx) => (
+                                                <div key={tc.id || tcIdx} className="bg-gray-50/30 dark:bg-white/5 border border-gray-100 dark:border-gray-800/50 rounded-2xl p-6 relative group/node hover:border-indigo-300 transition-all">
+                                                    <div className="absolute top-8 left-0 w-1 h-3/4 bg-indigo-500/20 group-hover:bg-indigo-500 rounded-r-full transition-colors" />
+                                                    <div className="flex items-center gap-4 mb-4">
+                                                        <span className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 font-black flex items-center justify-center text-[10px] shadow-sm">{tcIdx + 1}</span>
+                                                        <span className="font-black text-xs text-gray-800 dark:text-gray-200 uppercase tracking-wide">{tc.title}</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-6 pl-2">
+                                                        <div className="space-y-2">
+                                                            <label className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2 mb-1.5 ml-1"><Filter className="w-3 h-3" /> Pre-condition</label>
+                                                            <div className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 bg-white dark:bg-black/20 p-3 rounded-xl border border-gray-100 dark:border-gray-800 leading-relaxed shadow-sm min-h-[60px]">{tc.preCondition || '-'}</div>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2 mb-1.5 ml-1"><Database className="w-3 h-3" /> Input Data</label>
+                                                            <div className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-black/20 p-3 rounded-xl border border-gray-100 dark:border-gray-800 font-mono shadow-sm min-h-[60px] truncate">{tc.inputData || 'N/A'}</div>
+                                                        </div>
+                                                        <div className="col-span-2 space-y-3">
+                                                            <label className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1"><AlignLeft className="w-3 h-3" /> Steps</label>
+                                                            <div className="space-y-2.5 pl-1">
+                                                                {tc.steps.map((step, sIdx) => (
+                                                                    <div key={sIdx} className="flex gap-3 items-start group/step">
+                                                                        <span className="text-[10px] font-black text-indigo-400 tabular-nums shrink-0 pt-0.5">{sIdx + 1}.</span>
+                                                                        <span className="text-[10px] font-semibold text-gray-700 dark:text-gray-300 leading-tight">{step}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        <div className="col-span-2 space-y-2">
+                                                            <label className="text-[9px] font-black text-emerald-600 dark:text-emerald-500 uppercase tracking-widest flex items-center gap-2 ml-1"><CheckCircle2 className="w-3 h-3" /> Expected Result</label>
+                                                            <div className="bg-emerald-50/30 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl p-4 text-[11px] font-bold text-emerald-800 dark:text-emerald-400 italic shadow-sm leading-relaxed">"{tc.expectedResult}"</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
-                                    <div className="text-xs font-black text-gray-900 dark:text-gray-200 truncate group-hover:text-indigo-600 transition-colors">{s.title}</div>
-                                    <div className="text-[10px] text-gray-500 dark:text-gray-400 line-clamp-2 mt-1 leading-relaxed">{s.description}</div>
                                 </div>
-                            </button>
-                        ))
+                            );
+                        })
                     )}
                 </div>
             </div>
 
-            {/* Main Verification View */}
-            <div className="flex-1 flex flex-col overflow-hidden relative">
-                {selectedScenario ? (
-                    <div className="flex flex-col h-full animate-in fade-in transition-colors">
-                        {/* Context Header (Two-Row Layout Restored) */}
-                        <div className="px-8 py-6 bg-white dark:bg-[#111318] border-b border-gray-200 dark:border-gray-800 flex flex-col gap-5 transition-colors">
-                            <div className="flex items-center justify-between">
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-1"><Bot className="w-3.5 h-3.5" /> Autonomous Verification</span>
-                                    <h2 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight leading-tight">{selectedScenario.title}</h2>
+            {/* 2. Right Panel: Verification Console */}
+            <div className="flex-1 flex flex-col overflow-hidden transition-all h-full">
+                <div className="bg-white dark:bg-[#111318] border border-gray-200 dark:border-gray-800 rounded-3xl p-8 flex flex-col shadow-sm overflow-hidden h-full">
+                    {selectedScenario ? (
+                        <div className="flex flex-col h-full animate-in fade-in transition-colors">
+                            {/* Unified Console Header */}
+                            <div className="flex items-center justify-between shrink-0 mb-8 border-b border-gray-100 dark:border-gray-800 pb-8">
+                                <div className="flex items-center gap-5">
+                                    <div className="p-3 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl shadow-sm ring-1 ring-indigo-500/20 animate-pulse">
+                                        <Activity className="w-8 h-8 text-indigo-600" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <h2 className="text-[16px] font-black text-gray-900 dark:text-white uppercase tracking-tight leading-tight flex items-center gap-3">
+                                            Autonomous Verification
+                                            <div className={`h-[24px] px-3 rounded-full text-[9px] font-black uppercase flex items-center gap-2 border transition-all ${isRunning ? 'bg-amber-100 border-amber-200 text-amber-600' : isComplete ? 'bg-emerald-100 border-emerald-200 text-emerald-600' : 'bg-gray-100 border-gray-200 text-gray-500'} `}>
+                                                <div className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-amber-500 animate-pulse' : isComplete ? 'bg-emerald-500' : 'bg-gray-400'} `} />
+                                                {isRunning ? 'Running' : isComplete ? 'Finished' : 'Standby'}
+                                            </div>
+                                        </h2>
+                                        <p className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mt-0.5">
+                                            Engine: AI-Driven Auto Exploration
+                                        </p>
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-3">
+
+                                <div className="flex items-center gap-4">
                                     {isRunning ? (
                                         <button
                                             onClick={stopVerification}
                                             disabled={isStopping}
-                                            className="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-lg shadow-red-600/20 active:scale-95 transition-all disabled:opacity-50"
+                                            className="px-8 py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-3 shadow-md hover:shadow-lg active:scale-[0.98] transition-all duration-200"
                                         >
-                                            {isStopping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4 fill-current" />}
-                                            Stop Verification
+                                            <Square className="w-4 h-4 fill-current" /> Stop Verification
                                         </button>
+                                    ) : isComplete ? (
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                onClick={() => { setIsComplete(false); setSteps([]); }}
+                                                className="px-6 py-3.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-gray-600 text-xs font-black uppercase tracking-widest rounded-xl flex items-center gap-3 transition-all duration-200 shadow-sm hover:shadow-md"
+                                            >
+                                                <RotateCcw className="w-4 h-4" /> RE-VERIFY
+                                            </button>
+                                            <button
+                                                onClick={handleSaveAsAsset}
+                                                className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-widest rounded-xl flex items-center gap-3 shadow-md hover:shadow-lg active:scale-[0.98] transition-all duration-200"
+                                            >
+                                                <Save className="w-4 h-4" /> Save as Asset
+                                            </button>
+                                        </div>
                                     ) : (
-                                        <>
-                                            {!isComplete && (
-                                                <button
-                                                    onClick={() => setSelectedScenarioId(null)}
-                                                    className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-xs font-black uppercase text-gray-500 transition-colors"
-                                                >
-                                                    Cancel
-                                                </button>
-                                            )}
-                                            {!isComplete ? (
-                                                <button
-                                                    onClick={startVerification}
-                                                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
-                                                >
-                                                    <Play className="w-4 h-4 fill-current" /> Auto-Verify
-                                                </button>
-                                            ) : (
-                                                <div className="flex items-center gap-3">
-                                                    <button
-                                                        onClick={() => { setIsComplete(false); setSteps([]); }}
-                                                        className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-xs font-black uppercase text-gray-500 transition-colors"
-                                                    >
-                                                        Reset
-                                                    </button>
-                                                    <button
-                                                        onClick={handleSaveAsAsset}
-                                                        className="px-6 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-lg shadow-green-600/20 active:scale-95 transition-all"
-                                                    >
-                                                        <Save className="w-4 h-4" /> Save as Asset
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </>
+                                        <button
+                                            onClick={startVerification}
+                                            className="px-10 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-3 shadow-md hover:shadow-lg active:scale-[0.98] transition-all duration-200 animate-in zoom-in-95"
+                                        >
+                                            <Play className="w-5 h-5 fill-current ml-1" /> Start Auto-Verify
+                                        </button>
                                     )}
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-8 pt-5 border-t border-gray-100 dark:border-gray-800">
-                                <div className="flex flex-col">
-                                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Target {platform === 'WEB' ? 'URL' : 'App ID'}</span>
-                                    <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-1.5 focus-within:border-indigo-500 transition-all">
-                                        {platform === 'WEB' ? <Globe className="w-3.5 h-3.5 text-indigo-400" /> : <Tablet className="w-3.5 h-3.5 text-indigo-400" />}
-                                        <input value={targetUrl} onChange={e => setTargetUrl(e.target.value)} placeholder={platform === 'WEB' ? "https://example.com" : "com.example.app"} className="bg-transparent text-xs w-64 outline-none font-medium text-gray-900 dark:text-gray-100 placeholder:text-gray-400" />
-                                    </div>
+                            {/* Configuration Bar */}
+                            <div className="grid grid-cols-3 gap-6 mb-8 p-6 bg-gray-50/50 dark:bg-black/20 rounded-2xl border border-gray-100 dark:border-gray-800/50 shrink-0">
+                                <div className="col-span-2 space-y-1.5">
+                                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-2"><Globe className="w-3 h-3 text-indigo-400" /> Target {platform === 'WEB' ? 'URL' : 'App ID'}</label>
+                                    <input value={targetUrl} onChange={e => setTargetUrl(e.target.value)} placeholder={platform === 'WEB' ? "https://example.com" : "com.example.app"} className="w-full bg-white dark:bg-black/20 border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 px-4 text-xs font-bold font-mono outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all" />
                                 </div>
-                                
-                                <div className="flex flex-col">
-                                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Credentials (Optional)</span>
-                                    <div className="flex items-center gap-2">
-                                        <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-1.5 focus-within:border-indigo-500 transition-all">
-                                            <User className="w-3.5 h-3.5 text-gray-400" />
-                                            <input 
-                                                value={username} 
-                                                onChange={e => setUsername(e.target.value)} 
-                                                placeholder="Username" 
-                                                className="bg-transparent text-xs w-32 outline-none font-medium text-gray-900 dark:text-gray-100 placeholder:text-gray-400" 
-                                            />
-                                        </div>
-                                        <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-1.5 focus-within:border-indigo-500 transition-all">
-                                            <Lock className="w-3.5 h-3.5 text-gray-400" />
-                                            <input 
-                                                type="password"
-                                                value={password} 
-                                                onChange={e => setPassword(e.target.value)} 
-                                                placeholder="Password" 
-                                                className="bg-transparent text-xs w-32 outline-none font-medium text-gray-900 dark:text-gray-100 placeholder:text-gray-400" 
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col">
-                                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">AI Fallback</span>
-                                    <button
-                                        onClick={() => setEnableAiTest(!enableAiTest)}
-                                        className={`h-[34px] px-4 rounded-lg text-[10px] font-black uppercase flex items-center gap-2 shadow-sm border transition-all ${enableAiTest ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-500'} `}
-                                    >
-                                        <Bot className={`w-3.5 h-3.5 ${enableAiTest ? 'text-white' : 'text-gray-400'} `} />
-                                        {enableAiTest ? 'ENABLED' : 'DISABLED'}
-                                    </button>
-                                </div>
-
-                                <div className="flex flex-col">
-                                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Status</span>
-                                    <div className={`h-[34px] px-4 rounded-lg text-[10px] font-black uppercase flex items-center gap-2 shadow-sm border transition-all ${isRunning ? 'bg-amber-100 border-amber-200 text-amber-600' : isComplete ? 'bg-emerald-100 border-emerald-200 text-emerald-600' : 'bg-gray-100 border-gray-200 text-gray-500'} `}>
-                                        <div className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-amber-500 animate-pulse' : isComplete ? 'bg-emerald-500' : 'bg-gray-400'} `} />
-                                        {isRunning ? 'Running' : isComplete ? 'Finished' : 'Standby'}
+                                <div className="space-y-1.5">
+                                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-2"><User className="w-3 h-3" /> Credentials</label>
+                                    <div className="flex gap-2">
+                                        <input value={username} onChange={e => setUsername(e.target.value)} placeholder="User" className="w-1/2 bg-white dark:bg-black/20 border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 px-3 text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all" />
+                                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Pass" className="w-1/2 bg-white dark:bg-black/20 border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 px-3 text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all" />
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="flex-1 flex overflow-hidden">
-                            {/* Left: Scenario Steps (2nd) */}
-                            <div className="w-[480px] border-r border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-black/20 overflow-y-auto p-6 space-y-4 custom-scrollbar transition-colors">
-                                <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2 transition-colors"><Target className="w-4 h-4 text-indigo-400" /> Scenario Steps</div>
-                                {selectedScenario.testCases.map((tc, idx) => (
-                                    <div key={tc.id || idx} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm space-y-3 transition-colors">
-                                        <div className="flex items-center gap-3 pb-2 border-b border-gray-50 dark:border-gray-800">
-                                            <span className="w-5 h-5 rounded bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-[10px] font-black text-indigo-600 shrink-0 transition-colors">{idx + 1}</span>
-                                            <div className="text-xs font-black text-gray-900 dark:text-gray-200 truncate">{tc.title}</div>
-                                        </div>
-
-                                        {tc.preCondition && (
-                                            <div className="space-y-1">
-                                                <div className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Pre-condition</div>
-                                                <div className="text-[10px] text-gray-600 dark:text-gray-400 leading-relaxed bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-100 dark:border-gray-800">{tc.preCondition}</div>
-                                            </div>
-                                        )}
-
-                                        {tc.inputData && (
-                                            <div className="space-y-1">
-                                                <div className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Input Data</div>
-                                                <div className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/5 p-2 rounded-lg border border-indigo-100 dark:border-indigo-500/10 truncate">{tc.inputData}</div>
-                                            </div>
-                                        )}
-
-                                        <div className="space-y-2">
-                                            <div className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Execution Steps</div>
-                                            <div className="space-y-1.5">
-                                                {tc.steps.map((s, si) => (
-                                                    <div key={si} className="text-[10px] text-gray-500 flex gap-2 items-start">
-                                                        <span className="text-gray-300 dark:text-gray-700 font-bold tracking-tighter shrink-0 mt-0.5">STP.{si + 1}</span>
-                                                        <span className="leading-tight">{s}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        {tc.expectedResult && (
-                                            <div className="space-y-1 pt-2 border-t border-gray-50 dark:border-gray-800">
-                                                <div className="text-[8px] font-black text-green-600 dark:text-green-500 uppercase tracking-widest">Expected Result</div>
-                                                <div className="text-[10px] text-green-700 dark:text-green-400 leading-tight italic">"{tc.expectedResult}"</div>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Right: Execution Log (3rd) */}
-                            <div className="flex-1 bg-[#f8fafc] dark:bg-black/40 overflow-y-auto p-8 space-y-6 custom-scrollbar transition-colors">
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest flex items-center gap-2 transition-colors"><Activity className="w-4 h-4 text-green-500" /> Execution Log</div>
+                            {/* Execution Log */}
+                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-2">
+                                <div className="flex items-center gap-3 mb-6 transition-colors">
+                                    <AlignLeft className="w-4 h-4 text-emerald-500" />
+                                    <span className="text-[11px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">Execution Log Trace</span>
                                 </div>
 
-                                {steps.length === 0 && !isRunning && !error && (
-                                    <div className="h-[400px] flex flex-col items-center justify-center text-gray-400 dark:text-gray-600 border border-dashed border-gray-200 dark:border-gray-800 rounded-[2rem] space-y-4">
-                                        <Sparkles className="w-12 h-12 opacity-10" />
-                                        <p className="text-xs font-black uppercase tracking-widest opacity-50">Ready to execute autonomous verification</p>
+                                {steps.length === 0 && !isRunning && (
+                                    <div className="h-full min-h-[400px] flex flex-col items-center justify-center text-gray-300 dark:text-gray-700 bg-gray-50/30 dark:bg-black/10 rounded-3xl border-2 border-dashed border-gray-100 dark:border-gray-800 transition-all">
+                                        <Sparkles className="w-20 h-20 mb-4 opacity-10" />
+                                        <p className="text-xs font-black uppercase tracking-[0.3em] opacity-40 italic">Ready to execute autonomous verification</p>
                                     </div>
                                 )}
 
                                 {error && (
-                                    <div className="p-4 bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl flex items-center gap-3 text-red-500 animate-in shake duration-500 transition-colors">
-                                        <AlertCircle className="w-5 h-5" />
-                                        <span className="text-xs font-bold">{error}</span>
+                                    <div className="p-5 bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl flex items-center gap-4 text-red-600 mb-8 animate-in shake transition-all">
+                                        <AlertCircle className="w-6 h-6" />
+                                        <span className="text-xs font-black uppercase tracking-tight">{error}</span>
                                     </div>
                                 )}
 
                                 {isComplete && steps.length > 0 && (
-                                    <div className={`p-6 rounded-3xl border-2 mb-8 animate-in slide-in-from-top-4 duration-500 ${steps[steps.length - 1]?.status === 'Failed'
-                                        ? 'bg-red-50 dark:bg-red-500/5 border-red-100 dark:border-red-500/20'
-                                        : 'bg-emerald-50 dark:bg-emerald-500/5 border-emerald-100 dark:border-emerald-500/20'
-                                        } `}>
-                                        <div className="flex items-start gap-4">
-                                            <div className={`p-3 rounded-2xl ${steps[steps.length - 1]?.status === 'Failed' ? 'bg-red-100 dark:bg-red-500/20 text-red-600' : 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600'} `}>
-                                                {steps[steps.length - 1]?.status === 'Failed' ? <XCircle className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6" />}
+                                    <div className={`p-8 rounded-3xl border-2 mb-10 transition-all animate-in zoom-in-95 duration-500 ${steps[steps.length - 1]?.status === 'Failed' ? 'bg-red-50 dark:bg-red-500/5 border-red-100/50' : 'bg-emerald-50 dark:bg-emerald-500/5 border-emerald-100/50'} `}>
+                                        <div className="flex items-center gap-6">
+                                            <div className={`p-4 rounded-2xl shadow-sm ${steps[steps.length - 1]?.status === 'Failed' ? 'bg-white text-red-600' : 'bg-white text-emerald-600'} `}>
+                                                {steps[steps.length - 1]?.status === 'Failed' ? <XCircle className="w-8 h-8" /> : <CheckCircle2 className="w-8 h-8" />}
                                             </div>
-                                            <div className="flex-1 min-w-0">
-                                                <h3 className={`text - sm font - black uppercase tracking - wider mb - 1 ${steps[steps.length - 1]?.status === 'Failed' ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'} `}>
-                                                    Verification {steps[steps.length - 1]?.status === 'Failed' ? 'Failed' : 'Success'}
-                                                </h3>
-                                                <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed break-words">
-                                                    {steps[steps.length - 1]?.status === 'Failed'
-                                                        ? `검증 중 오류가 발생했습니다: ${steps[steps.length - 1]?.observation} `
-                                                        : "시나리오의 모든 단계가 성공적으로 완료되었습니다."}
-                                                </p>
-                                            </div>
-                                            <div className="text-right shrink-0">
-                                                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total Steps</div>
-                                                <div className="text-xl font-black text-gray-900 dark:text-white transition-colors">{steps.length}</div>
+                                            <div className="flex-1">
+                                                <h3 className={`text-[11px] font-black uppercase tracking-[0.2em] mb-1 ${steps[steps.length - 1]?.status === 'Failed' ? 'text-red-700' : 'text-emerald-700'} `}>FINAL STATUS: {steps[steps.length - 1]?.status === 'Failed' ? 'FAILED' : 'PASSED'}</h3>
+                                                <p className="text-sm font-bold text-gray-800 dark:text-gray-200 leading-tight">Verification complete with {steps.length} successful actions.</p>
                                             </div>
                                         </div>
                                     </div>
                                 )}
 
-                                <div className="space-y-6">
+                                <div className="space-y-10 pl-6 border-l-2 border-gray-100 dark:border-gray-800/50 ml-4 relative">
                                     {steps.map((step, idx) => (
-                                        <div key={idx} className="relative pl-8 border-l-2 border-gray-200 dark:border-gray-800 last:border-transparent transition-colors">
-                                            <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 ${step.status === 'Completed' ? 'bg-emerald-500 border-emerald-900' :
-                                                step.status === 'Failed' ? 'bg-red-500 border-red-900' : 'bg-indigo-500 border-indigo-900'
-                                                } `} />
-
-                                            <div className="bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl p-5 hover:border-indigo-500/30 transition-colors">
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest transition-colors">Step {step.step_number || idx + 1}</span>
-                                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${step.matching_score >= 80 ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400' :
-                                                            step.matching_score >= 50 ? 'border-yellow-500/30 text-yellow-600 dark:text-yellow-400' : 'border-gray-200 dark:border-gray-700 text-gray-500'
-                                                            } transition-colors`}>
-                                                            Score: {step.matching_score ?? 0}
-                                                        </span>
+                                        <div key={idx} className="relative transition-all animate-in slide-in-from-left-4 duration-500">
+                                            <div className={`absolute -left-[35px] top-6 w-5 h-5 rounded-full border-[3px] shadow-sm z-10 transition-all ${step.status === 'Completed' ? 'bg-emerald-500 border-white dark:border-[#111318]' : step.status === 'Failed' ? 'bg-red-500 border-white dark:border-[#111318]' : 'bg-indigo-500 border-white dark:border-[#111318]'} `} />
+                                            <div className="bg-white dark:bg-[#0c0e12] border border-gray-100 dark:border-gray-800/80 rounded-3xl p-8 shadow-sm hover:shadow-md transition-all">
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.25em]">STEP {step.step_number || idx + 1}</span>
+                                                        <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${step.matching_score >= 80 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'} `}>Score: {step.matching_score ?? 0}%</div>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="text-[10px] font-black uppercase text-gray-500 bg-gray-200 dark:bg-gray-900 px-2 py-1 rounded transition-colors ml-2">
-                                                            {step.action_type}
-                                                        </div>
+                                                    <div className="text-[9px] font-black uppercase text-gray-400 bg-gray-50 dark:bg-white/5 p-2 rounded-xl border border-gray-100 dark:border-gray-800">{step.action_type}</div>
+                                                </div>
+                                                <h4 className="text-[17px] font-black text-gray-900 dark:text-white mb-4 leading-tight uppercase tracking-tight">{step.description}</h4>
+                                                <div className="grid grid-cols-2 gap-6 mb-6">
+                                                    <div className="p-4 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-gray-800/30">
+                                                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 mb-2"><AlignLeft className="w-3 h-3" /> Execution Context</span>
+                                                        <p className="text-[11px] font-bold text-gray-700 dark:text-gray-300 italic leading-relaxed">"{step.thought}"</p>
+                                                    </div>
+                                                    <div className="p-4 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-gray-800/30 overflow-hidden">
+                                                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 mb-2"><Target className="w-3 h-3" /> Target Element</span>
+                                                        <p className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400 truncate">{step.action_target || 'Global Context'}</p>
                                                     </div>
                                                 </div>
-
-                                                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 transition-colors">{step.description}</h3>
-
-                                                <div className="grid grid-cols-2 gap-4 mb-4 text-xs">
-                                                    <div className="p-3 bg-white dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700/50 rounded-lg transition-colors">
-                                                        <span className="block text-gray-500 font-bold uppercase mb-1">Score Breakdown</span>
-                                                        <div className="space-y-1">
-                                                            {step.score_breakdown && Object.entries(step.score_breakdown).map(([key, val]) => (
-                                                                <div key={key} className="flex justify-between">
-                                                                    <span className="text-gray-600 dark:text-gray-400 capitalize transition-colors">{key.replace('_', ' ')}</span>
-                                                                    <span className={`font-bold transition-colors ${(val as number) >= 80 ? 'text-emerald-600 dark:text-emerald-400' : (val as number) >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'
-                                                                        } `}>{val as number}</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-3 bg-white dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700/50 rounded-lg transition-colors">
-                                                        <span className="block text-gray-500 font-bold uppercase mb-1">Target</span>
-                                                        <span className="text-gray-800 dark:text-gray-300 break-all transition-colors">{step.action_target || 'N/A'}</span>
-                                                    </div>
-                                                </div>
-
-                                                <div className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed italic bg-white dark:bg-gray-900/30 p-3 rounded-lg border border-gray-200 dark:border-gray-800/50 mb-3 transition-colors">
-                                                    <div className="mb-2">
-                                                        <span className="text-gray-500 font-bold uppercase text-[10px] block mb-1">Reasoning</span>
-                                                        "{step.thought}"
-                                                    </div>
-
-                                                    {(step.observation || step.expectation || step.expected_text) && (
-                                                        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-200 dark:border-gray-800/30 mt-2 transition-colors">
-                                                            {step.observation && (
-                                                                <div className="col-span-2">
-                                                                    <span className={`${step.status === 'Failed' ? 'text-red-600/70 dark:text-red-500/70' : 'text-emerald-600/70 dark:text-emerald-500/70'} font-bold uppercase text-[10px] block mb-1 transition-colors`}>Actual (Observation)</span>
-                                                                    <span className={`${step.status === 'Failed' ? 'text-red-700 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'} not-italic transition-colors`}>{step.observation}</span>
-                                                                </div>
-                                                            )}
-                                                            {step.expectation && (
-                                                                <div>
-                                                                    <span className="text-indigo-600/70 dark:text-indigo-400/70 font-bold uppercase text-[10px] block mb-1 transition-colors">Goal Intention</span>
-                                                                    <span className="text-gray-700 dark:text-gray-300 not-italic transition-colors">{step.expectation}</span>
-                                                                </div>
-                                                            )}
-                                                            {step.expected_text && step.expected_text.trim() !== "" && (
-                                                                <div>
-                                                                    <span className="text-blue-600/70 dark:text-blue-400/70 font-bold uppercase text-[10px] block mb-1 transition-colors flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Rule Assertion</span>
-                                                                    <span className="text-gray-900 dark:text-white font-mono not-italic bg-blue-50 dark:bg-blue-500/10 px-2 py-1 rounded border border-blue-200 dark:border-blue-500/30 transition-colors">"{step.expected_text}"</span>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {step.action_value && (
-                                                    <div className="pt-2 border-t border-gray-200 dark:border-gray-800/50 flex gap-4 text-xs transition-colors">
-                                                        <div>
-                                                            <span className="text-gray-600 font-bold uppercase mr-2">Input Value:</span>
-                                                            <span className="text-gray-600 dark:text-gray-300 font-mono transition-colors">{step.action_value.includes("password") ? "*****" : step.action_value}</span>
-                                                        </div>
+                                                {step.observation && (
+                                                    <div className={`p-5 rounded-2xl border-l-4 ${step.status === 'Failed' ? 'bg-red-50/30 border-red-500 text-red-800' : 'bg-emerald-50/30 border-emerald-500 text-emerald-800'} animate-in slide-in-from-top-2`}>
+                                                        <span className="text-[9px] font-black uppercase tracking-widest block mb-2 opacity-60">Observation Result</span>
+                                                        <p className="text-xs font-bold leading-relaxed">{step.observation}</p>
                                                     </div>
                                                 )}
                                             </div>
                                         </div>
                                     ))}
                                     {isRunning && (
-                                        <div className="py-8 flex flex-col items-center gap-4 animate-in fade-in duration-500 transition-colors">
-                                            <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
-                                            <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em]">AI Thinking...</span>
+                                        <div className="py-20 flex flex-col items-center gap-6 animate-pulse">
+                                            <div className="relative">
+                                                <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" />
+                                                <Bot className="w-5 h-5 text-indigo-600 absolute inset-0 m-auto" />
+                                            </div>
+                                            <span className="text-[11px] font-black text-gray-500 uppercase tracking-[0.4em] ml-2">AI Analyzing Real-time UI...</span>
                                         </div>
                                     )}
                                 </div>
                             </div>
                         </div>
-                    </div>
-                ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center p-20 text-center text-gray-400 bg-white dark:bg-[#0c0e12] transition-colors">
-                        <Activity className="w-16 h-16 mb-8 opacity-10" />
-                        <h2 className="text-xl font-black uppercase tracking-widest mb-2 transition-colors">Auto-Verification Engine</h2>
-                        <p className="max-w-md text-xs font-medium uppercase tracking-[0.2em] leading-relaxed transition-colors opacity-50">
-                            왼쪽 대기 목록에서 시나리오를 선택하여 자율 검증을 시작하세요.<br />
-                            AI가 각 단계를 실제 UI에서 구동하고 결과를 자산으로 변환합니다.
-                        </p>
-                    </div>
-                )}
+                    ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center p-20 text-center bg-transparent transition-all animate-in fade-in duration-1000">
+                            <div className="p-8 bg-indigo-50 dark:bg-indigo-900/10 rounded-full mb-10 shadow-inner">
+                                <Activity className="w-24 h-24 text-indigo-600/20" />
+                            </div>
+                            <h2 className="text-xl font-black uppercase tracking-[0.2em] mb-4 text-gray-400 opacity-40">Verification Engine Standby</h2>
+                            <p className="max-w-md text-xs font-bold uppercase tracking-[0.1em] text-gray-400 leading-relaxed italic opacity-40">
+                                Please select a scenario from the sidebar to initialize the autonomous verification cycle.
+                            </p>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

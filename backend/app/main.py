@@ -12,11 +12,16 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
+from fastapi.staticfiles import StaticFiles
+
 app = FastAPI(
     title="Q-ONE AI Automation Agent",
     description="Backend API for Q-ONE AI Testing Solution",
     version="0.1.0",
 )
+
+# Mount uploads directory for images and docs
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Startup Event: Initialize Scheduler
 @app.on_event("startup")

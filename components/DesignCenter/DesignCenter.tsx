@@ -24,39 +24,39 @@ const DesignCenter: React.FC<DesignCenterProps> = ({ activeProject, user, person
                 <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
                     <button
                         onClick={() => setActiveTab('personas')}
-                        className={`px-4 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${activeTab === 'personas'
+                        className={`px-4 py-3 text-[11px] font-black uppercase tracking-widest flex items-center gap-2 border-b-2 transition-all ${activeTab === 'personas'
                             ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                             : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                             }`}
                     >
-                        <Users className="w-4 h-4" /> Personas
+                        <Users className="w-4 h-4" /> PERSONAS
                     </button>
                     <button
                         onClick={() => setActiveTab('objects')}
-                        className={`px-4 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${activeTab === 'objects'
+                        className={`px-4 py-3 text-[11px] font-black uppercase tracking-widest flex items-center gap-2 border-b-2 transition-all ${activeTab === 'objects'
                             ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                             : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                             }`}
                     >
-                        <Target className="w-4 h-4" /> Object Repository
+                        <Target className="w-4 h-4" /> OBJECT REPOSITORY
                     </button>
                     <button
                         onClick={() => setActiveTab('actions')}
-                        className={`px-4 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${activeTab === 'actions'
+                        className={`px-4 py-3 text-[11px] font-black uppercase tracking-widest flex items-center gap-2 border-b-2 transition-all ${activeTab === 'actions'
                             ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                             : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                             }`}
                     >
-                        <Code className="w-4 h-4" /> Action Library
+                        <Code className="w-4 h-4" /> ACTION LIBRARY
                     </button>
                     <button
                         onClick={() => setActiveTab('data')}
-                        className={`px-4 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${activeTab === 'data'
+                        className={`px-4 py-3 text-[11px] font-black uppercase tracking-widest flex items-center gap-2 border-b-2 transition-all ${activeTab === 'data'
                             ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                             : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                             }`}
                     >
-                        <Library className="w-4 h-4" /> Global Data
+                        <Library className="w-4 h-4" /> GLOBAL DATA
                     </button>
                 </div>
             </div>

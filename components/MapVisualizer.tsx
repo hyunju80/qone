@@ -23,11 +23,13 @@ const ScreenNode = ({ data, selected }: NodeProps) => {
     // Dynamic color based on depth
     const getDepthStyles = (depth: number) => {
         switch (depth) {
-            case 0: return { border: 'border-indigo-500', header: 'bg-indigo-500', dot: 'bg-indigo-500' };
-            case 1: return { border: 'border-emerald-500', header: 'bg-emerald-500', dot: 'bg-emerald-500' };
-            case 2: return { border: 'border-purple-500', header: 'bg-purple-500', dot: 'bg-purple-500' };
-            case 3: return { border: 'border-amber-500', header: 'bg-amber-500', dot: 'bg-amber-500' };
-            default: return { border: 'border-cyan-500', header: 'bg-cyan-500', dot: 'bg-cyan-500' };
+            case 0: return { border: 'border-indigo-600', header: 'bg-indigo-600', dot: 'bg-indigo-600' };
+            case 1: return { border: 'border-emerald-600', header: 'bg-emerald-600', dot: 'bg-emerald-600' };
+            case 2: return { border: 'border-amber-500', header: 'bg-amber-500', dot: 'bg-amber-500' };
+            case 3: return { border: 'border-rose-500', header: 'bg-rose-500', dot: 'bg-rose-500' };
+            case 4: return { border: 'border-violet-500', header: 'bg-violet-500', dot: 'bg-violet-500' };
+            case 5: return { border: 'border-cyan-500', header: 'bg-cyan-500', dot: 'bg-cyan-500' };
+            default: return { border: 'border-slate-500', header: 'bg-slate-500', dot: 'bg-slate-500' };
         }
     };
 
@@ -103,7 +105,7 @@ const MapVisualizer: React.FC<MapVisualizerProps> = ({ actionMap, onNodeSelect }
                 data: {
                     title: node.title,
                     url: node.url,
-                    depth: node.depth ?? level,
+                    depth: level,
                     elements: node.interactable_elements
                 }
             });
@@ -159,8 +161,8 @@ const MapVisualizer: React.FC<MapVisualizerProps> = ({ actionMap, onNodeSelect }
     }, [initialNodes, initialEdges, setNodes, setEdges]);
 
     const handleNodeClick = useCallback((event: React.MouseEvent, node: any) => {
-        if (onNodeSelect && node.data?.url) {
-            onNodeSelect(node.data.url);
+        if (onNodeSelect) {
+            onNodeSelect({ id: node.id, ...node.data });
         }
     }, [onNodeSelect]);
 

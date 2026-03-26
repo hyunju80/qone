@@ -54,34 +54,37 @@ const AIGeneratorView: React.FC<AIGeneratorViewProps> = ({
     return (
         <div className="h-full flex flex-col bg-gray-50 dark:bg-[#0c0e12] overflow-hidden transition-colors">
             {/* Minimal Pipeline Header & Tabs */}
-            <div className="flex items-center justify-between px-8 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#16191f] transition-colors shrink-0">
-                <div className="flex gap-2 py-4">
+            <div className="flex-none px-8 pt-4 pb-0 bg-white dark:bg-[#16191f] border-b border-gray-200 dark:border-gray-800 transition-colors shrink-0">
+                <div className="flex gap-2">
                     <button
                         onClick={() => setActiveTab('scenario')}
-                        className={`px-4 py-2 flex items-center gap-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === 'scenario'
-                            ? 'bg-indigo-600 text-white shadow-md'
-                            : 'bg-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        className={`px-6 py-3 flex items-center gap-2 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === 'scenario'
+                            ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                            : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-gray-300'
                             }`}
                     >
-                        <FileText className="w-3.5 h-3.5" /> 1. Scenarios
+                        <FileText className="w-4 h-4" /> 1. Scenarios
                     </button>
-                    <div className="w-8 flex items-center justify-center text-gray-300 dark:text-gray-700">-</div>
+                    <div className="w-8 flex items-center justify-center text-gray-200 dark:text-gray-800">
+                        <span className="w-1 h-1 bg-current rounded-full opacity-20" />
+                    </div>
                     <button
                         onClick={() => setActiveTab('verification')}
-                        className={`px-4 py-2 flex items-center gap-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === 'verification'
-                            ? 'bg-indigo-600 text-white shadow-md'
-                            : 'bg-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        className={`px-6 py-3 flex items-center gap-2 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === 'verification'
+                            ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                            : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-gray-300'
                             }`}
                     >
-                        <Activity className="w-3.5 h-3.5" /> 2. Auto-Verification
+                        <Activity className="w-4 h-4" /> 2. Auto-Verification
                     </button>
                 </div>
             </div>
 
             {/* Content Area */}
             <div className="flex-1 overflow-hidden relative">
-                {activeTab === 'scenario' && (
-                    <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-0 animate-in fade-in duration-300">
+                <div className="absolute inset-0 overflow-hidden p-0 animate-in fade-in duration-300">
+                    {activeTab === 'scenario' && (
+
                         <ScenarioGenerator
                             activeProject={activeProject}
                             personas={personas}
@@ -100,10 +103,10 @@ const AIGeneratorView: React.FC<AIGeneratorViewProps> = ({
                             onUpdatePersistedEditingId={onUpdateLastEditingScenarioId}
                             onAlert={onAlert}
                         />
-                    </div>
-                )}
-                {activeTab === 'verification' && (
-                    <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-0 animate-in fade-in duration-300">
+
+                    )}
+                    {activeTab === 'verification' && (
+
                         <AutoVerification
                             activeProject={activeProject}
                             personas={personas}
@@ -111,8 +114,9 @@ const AIGeneratorView: React.FC<AIGeneratorViewProps> = ({
                                 onSyncScript(script);
                             }}
                         />
-                    </div>
-                )}
+
+                    )}
+                </div>
             </div>
         </div>
     );

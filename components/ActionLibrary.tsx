@@ -31,7 +31,7 @@ const ActionLibrary: React.FC<ActionLibraryProps> = ({ isOpen, onClose, onInsert
       assetsApi.getActions(activeProject.id).then(actions => {
         const mapped: ActionLibraryItem[] = actions.map(a => ({
           id: a.id,
-          projectId: a.project_id || 'global',
+          projectId: a.projectId || 'global',
           name: a.name,
           category: (a.category as any) || 'Custom',
           description: a.description || '',
@@ -44,7 +44,7 @@ const ActionLibrary: React.FC<ActionLibraryProps> = ({ isOpen, onClose, onInsert
           example: `await ${a.name}(${Object.keys(a.parameters || {}).map(k => `"${k}"`).join(', ')});`,
           usageCount: 0,
           isPrioritized: false,
-          isGlobal: !a.project_id
+          isGlobal: !a.projectId
         }));
         setAllActions(mapped);
       }).catch(err => console.error("Failed to load actions", err));

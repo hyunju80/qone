@@ -50,6 +50,13 @@ export interface GenerateScenariosResponse {
     scenarios: BackendScenario[];
 }
 
+export interface KnowledgeHierarchyItem {
+    name: string;
+    level: string;
+    item_ids: string[];
+    children: KnowledgeHierarchyItem[];
+}
+
 export const scenariosApi = {
     analyzeUrl: async (url: string, prompt?: string, projectId?: string, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
         const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-url', { url, prompt, project_id: projectId }, { signal });
@@ -57,6 +64,10 @@ export const scenariosApi = {
     },
     analyzeUpload: async (files: { name: string, type: string, data: string }[], prompt?: string, projectId?: string, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
         const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-upload', { files, prompt, project_id: projectId }, { signal });
+        return response.data;
+    },
+    analyzeKnowledge: async (itemIds: string[], projectId: string, prompt?: string, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
+        const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-knowledge', { item_ids: itemIds, project_id: projectId, prompt }, { signal });
         return response.data;
     },
     generateScenarios: async (data: GenerateScenariosRequest): Promise<GenerateScenariosResponse> => {
@@ -152,6 +163,10 @@ export const scenariosApi = {
     },
 
     // Knowledge Documents (RAG)
+    getHierarchy: async (projectId: string): Promise<KnowledgeHierarchyItem[]> => {
+        const response = await api.get(`/knowledge/hierarchy/${projectId}`);
+        return response.data;
+    },
     getDocuments: async (projectId: string) => {
         const response = await api.get(`/knowledge/documents/${projectId}`);
         return response.data;

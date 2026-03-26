@@ -127,6 +127,7 @@ const AppContent: React.FC = () => {
       case ViewMode.STEP_RUNNER: return 'Step Flow';
       case ViewMode.DESIGN_CENTER: return 'Design Center';
       case ViewMode.SETTINGS: return 'Setting';
+      case ViewMode.KNOWLEDGE_REPO: return 'Knowledge Repo';
       default: return view.replace('_', ' ');
     }
   };

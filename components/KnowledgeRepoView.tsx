@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import RagManager from './KnowledgeRepo/RagManager';
 import MapManager from './KnowledgeRepo/MapManager';
 
+import { Database, Map as MapIcon, Info, Search } from 'lucide-react';
+
 const KnowledgeRepoView: React.FC<{
   activeProjectId?: string;
   onAlert: (title: string, message: string, type: 'success' | 'error' | 'info') => void;
@@ -11,43 +13,42 @@ const KnowledgeRepoView: React.FC<{
   if (!activeProjectId) return null;
 
   return (
-    <div className="p-8 h-full bg-gray-50 dark:bg-[#0f1115] overflow-y-auto">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-white mb-2">지식 저장소</h1>
-          <p className="text-gray-500 dark:text-gray-400">RAG 문서 및 Navigation Map을 관리하여 AI 시나리오 생성에 활용합니다.</p>
-        </div>
-        
-        <div className="bg-white/50 dark:bg-[#16191f]/50 p-1.5 rounded-xl flex gap-1 w-fit border border-gray-200 dark:border-gray-800">
+    <div className="h-full w-full flex flex-col bg-gray-50 dark:bg-[#0c0e12] overflow-hidden transition-colors">
+      {/* Design Center Style Tab Navigation */}
+      <div className="flex-none px-6 pt-4 pb-0 bg-white dark:bg-[#111318] border-b border-gray-200 dark:border-gray-800 transition-colors">
+        <div className="flex gap-2">
           <button
             onClick={() => setActiveTab('RAG')}
-            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-              activeTab === 'RAG' 
-                ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm' 
-                : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-300'
-            }`}
+            className={`px-6 py-3 text-[11px] font-black uppercase tracking-widest flex items-center gap-2 border-b-2 transition-all ${activeTab === 'RAG'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'
+              }`}
           >
-            문서 관리 (RAG)
+            <Database className="w-4 h-4" /> DOCUMENT INVENTORY
           </button>
           <button
             onClick={() => setActiveTab('MAP')}
-            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-              activeTab === 'MAP' 
-                ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm' 
-                : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-300'
-            }`}
+            className={`px-6 py-3 text-[11px] font-black uppercase tracking-widest flex items-center gap-2 border-b-2 transition-all ${activeTab === 'MAP'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'
+              }`}
           >
-            앱/웹 맵 관리 (Navigation Map)
+            <MapIcon className="w-4 h-4" /> NAVIGATION MAP
           </button>
         </div>
+      </div>
 
-        {activeTab === 'RAG' && (
-          <RagManager activeProjectId={activeProjectId} onAlert={onAlert} />
-        )}
-        
-        {activeTab === 'MAP' && (
-          <MapManager activeProjectId={activeProjectId} onAlert={onAlert} />
-        )}
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-hidden">
+        <div className="h-full mx-auto px-6 py-6">
+          {activeTab === 'RAG' && (
+            <RagManager activeProjectId={activeProjectId} onAlert={onAlert} />
+          )}
+
+          {activeTab === 'MAP' && (
+            <MapManager activeProjectId={activeProjectId} onAlert={onAlert} />
+          )}
+        </div>
       </div>
     </div>
   );

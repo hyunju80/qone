@@ -108,105 +108,143 @@ const DataSetStudio: React.FC<DataSetStudioProps> = ({ activeProject, onAlert })
     };
 
     return (
-        <div className="flex h-full w-full overflow-hidden bg-gray-50 dark:bg-[#0c0e12]">
+        <div className="flex h-full w-full gap-8 p-8 overflow-hidden bg-gray-50 dark:bg-[#0c0e12]">
             {/* Sidebar: Asset List */}
-            <div className="w-[300px] border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111318] flex flex-col shrink-0 transition-colors">
-                <div className="p-6 border-b border-gray-200 dark:border-gray-800 bg-indigo-50/30 dark:bg-indigo-500/5 space-y-4">
-                    <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center gap-2">
-                            <div className="w-1 h-3.5 bg-indigo-600 rounded-full" />
-                            <span className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-tight">Verified Test Assets</span>
+            <div className="w-[500px] flex flex-col shrink-0 overflow-y-auto custom-scrollbar pr-2 pb-2 transition-all">
+                <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl flex flex-col shadow-sm overflow-hidden mb-8 shrink-0 transition-colors">
+                    <div className="px-8 py-7 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="p-2.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl transition-all">
+                                <Database className="w-6 h-6 text-indigo-500" />
+                            </div>
+                            <div className="flex flex-col">
+                                <h2 className="text-[13px] font-black text-gray-800 dark:text-gray-200 uppercase tracking-[0.15em] leading-tight">
+                                    Verified Test Assets
+                                </h2>
+                                <p className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-tight">
+                                    Queue: {filteredScripts.length} Assets
+                                </p>
+                            </div>
                         </div>
-                        <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium leading-relaxed">
-                            Select a verified test asset to create and map intelligent datasets.
-                        </p>
+                        <button onClick={fetchScripts} className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-400 transition-colors"><RotateCcw className="w-4 h-4" /></button>
                     </div>
 
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Search assets..."
-                            value={listSearch}
-                            onChange={(e) => setListSearch(e.target.value)}
-                            className="w-full bg-gray-50 dark:bg-black/40 border border-gray-200 dark:border-gray-800 rounded-xl py-2 pl-9 pr-4 text-[11px] outline-none focus:border-indigo-500/50 transition-all"
-                        />
-                    </div>
+                    <div className="p-8 space-y-6">
+                        <div className="relative group">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
+                            <input
+                                value={listSearch}
+                                onChange={e => setListSearch(e.target.value)}
+                                placeholder="Search verified assets..."
+                                className="w-full bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-gray-800 rounded-xl py-3 pl-11 pr-4 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
+                            />
+                        </div>
 
-                    <div className="flex flex-wrap gap-1.5">
-                        <button
-                            onClick={() => setSelectedCategory('ALL')}
-                            className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase transition-all ${selectedCategory === 'ALL' ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200'}`}
-                        >
-                            All
-                        </button>
-                        {uniqueCategories.map(cat => (
-                            <button
-                                key={cat}
-                                onClick={() => setSelectedCategory(cat)}
-                                className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase transition-all ${selectedCategory === cat ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200'}`}
-                            >
-                                {cat}
-                            </button>
-                        ))}
+                        {uniqueCategories.length > 0 && (
+                            <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-2">
+                                <button onClick={() => setSelectedCategory('ALL')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategory === 'ALL' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'} `}>ALL</button>
+                                {uniqueCategories.map(cat => (
+                                    <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'} `}>
+                                        {cat}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+                <div className="px-4 py-2 flex items-center justify-between shrink-0">
+                    <h3 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <Database className="w-3 h-3" /> Asset Repository
+                    </h3>
+                    <span className="text-[9px] font-black text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full uppercase tracking-widest">{filteredScripts.length}</span>
+                </div>
+                <div className="flex flex-col gap-3">
                     {loadingScripts ? (
-                        <div className="py-20 flex flex-col items-center opacity-20">
-                            <Loader2 className="w-8 h-8 animate-spin mb-2" />
-                            <p className="text-[10px] font-black uppercase">Loading...</p>
+                        <div className="py-20 flex flex-col items-center opacity-40 animate-pulse">
+                            <Loader2 className="w-10 h-10 animate-spin text-indigo-500 mb-4" />
+                            <p className="text-[11px] font-black uppercase tracking-widest">Hydrating Assets...</p>
                         </div>
                     ) : filteredScripts.length === 0 ? (
-                        <div className="py-20 flex flex-col items-center opacity-20 text-center">
-                            <Database className="w-12 h-12 mb-4" />
-                            <p className="text-[10px] font-black uppercase tracking-widest">No matching assets</p>
-                            <p className="text-[8px] mt-1 max-w-[180px]">검색 결과가 없거나 Step 2에서 검증을 완료하고 자산을 생성하세요.</p>
+                        <div className="py-20 flex flex-col items-center text-center opacity-30">
+                            <Database className="w-20 h-20 mb-6 text-gray-300" />
+                            <p className="text-xs font-black uppercase tracking-[0.2em]">No Matching Assets</p>
                         </div>
                     ) : (
-                        filteredScripts.map(s => (
-                            <button
-                                key={s.id}
-                                onClick={() => { setSelectedScriptId(s.id); setGeneratedData(s.dataset || []); }}
-                                className={`w-full text-left p-4 rounded-2xl border transition-all flex items-start gap-3 ${selectedScriptId === s.id ? 'bg-indigo-600/10 border-indigo-500 shadow-md' : 'bg-white dark:bg-[#16191f] border-gray-200 dark:border-gray-800 hover:border-gray-300'}`}
-                            >
-                                <div className="p-2 bg-gray-50 dark:bg-gray-900 rounded-lg shrink-0 transition-colors">
-                                    {s.platform === 'APP' ? <Smartphone className="w-4 h-4 text-indigo-500" /> : <Globe className="w-4 h-4 text-indigo-500" />}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div className="text-xs font-black text-gray-900 dark:text-gray-200 truncate">{s.name}</div>
-                                        {s.category && (
-                                            <span className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-500 text-[8px] font-black rounded uppercase shrink-0">
-                                                {s.category}
-                                            </span>
-                                        )}
+                        filteredScripts.map(s => {
+                            const isSelected = selectedScriptId === s.id;
+                            return (
+                                <div key={s.id} onClick={() => { setSelectedScriptId(s.id); setGeneratedData(s.dataset || []); }} className={`bg-white dark:bg-[#16191f] border transition-all duration-500 rounded-3xl overflow-hidden cursor-pointer ${isSelected ? 'border-indigo-400 shadow-xl ring-2 ring-indigo-500/10' : 'border-gray-200 dark:border-gray-800 shadow-sm hover:border-indigo-300'} `}>
+                                    <div className="p-6 px-8 flex items-center justify-between">
+                                        <div className="flex items-center gap-6 flex-1 min-w-0">
+                                            <div className={`p-2.5 rounded-2xl transition-all ${isSelected ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 scale-110' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 group-hover:bg-indigo-50'}`}>
+                                                {s.platform === 'APP' ? <Smartphone className="w-6 h-6" /> : <Globe className="w-6 h-6" />}
+                                            </div>
+                                            <div className="flex flex-col min-w-0">
+                                                <div className="flex items-center gap-3 mb-1">
+                                                    <h3 className="text-[13px] font-black text-gray-800 dark:text-gray-100 uppercase tracking-[0.05em] truncate">{s.name}</h3>
+                                                    {s.category && (
+                                                        <span className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[8px] font-black rounded uppercase tracking-widest">{s.category}</span>
+                                                    )}
+                                                </div>
+                                                <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Data Rows: {s.dataset?.length || 0}</p>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="text-[9px] text-gray-500 mt-0.5 line-clamp-1">Data Rows: {s.dataset?.length || 0}</div>
                                 </div>
-                            </button>
-                        ))
+                            );
+                        })
                     )}
                 </div>
             </div>
 
             {/* Main Studio Area */}
-            <div className="flex-1 flex flex-col overflow-hidden relative">
+            <div className="flex-1 flex flex-col overflow-hidden transition-all h-full bg-white dark:bg-[#111318] border border-gray-200 dark:border-gray-800 rounded-3xl shadow-sm">
                 {selectedScript ? (
                     <div className="flex flex-col h-full animate-in fade-in transition-colors">
-                        {/* Header / Config */}
-                        <div className="px-8 py-6 bg-white dark:bg-[#111318] border-b border-gray-200 dark:border-gray-800 flex items-center justify-between transition-colors">
-                            <div className="flex items-center gap-8">
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" /> Intelligent DataSet Generation</span>
-                                    <h2 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight truncate max-w-sm">{selectedScript.name}</h2>
+                        {/* Unified Console Header */}
+                        <div className="px-8 py-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-white/50 dark:bg-white/5 backdrop-blur-sm shrink-0">
+                            <div className="flex items-center gap-4">
+                                <div className="p-2.5 bg-indigo-600/10 text-indigo-600 rounded-xl shadow-inner transition-all">
+                                    <Sparkles className="w-6 h-6" />
                                 </div>
+                                <div className="flex flex-col">
+                                    <div className="flex items-center gap-3 mb-0.5">
+                                        <h2 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">{selectedScript.name}</h2>
+                                        <span className={`px-2 py-0.5 bg-green-500/10 text-green-500 text-[8px] font-black uppercase tracking-widest rounded-full border border-green-500/20`}>VERIFIED</span>
+                                    </div>
+                                    <p className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                                        ENGINE: INTELLIGENT DATASET STUDIO
+                                    </p>
+                                </div>
+                            </div>
 
-                                <div className="h-8 w-px bg-gray-100 dark:bg-gray-800" />
+                            <div className="flex items-center gap-3">
+                                <button
+                                    disabled={isGenerating}
+                                    onClick={handleGenerateData}
+                                    className="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 shadow-md hover:shadow-lg active:scale-[0.98] transition-all duration-200"
+                                >
+                                    {isGenerating ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <Sparkles className="w-4 h-4 fill-current text-white" />}
+                                    Generate
+                                </button>
+                                <button
+                                    disabled={generatedData.length === 0}
+                                    onClick={handleSaveDataset}
+                                    className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 shadow-md hover:shadow-lg active:scale-[0.98] transition-all duration-200"
+                                >
+                                    <Save className="w-4 h-4 text-white" />
+                                    Apply & Save
+                                </button>
+                            </div>
+                        </div>
 
-                                <div className="flex items-center gap-3">
-                                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Strategies:</span>
-                                    <div className="flex gap-1">
+                        <div className="flex-1 flex flex-col overflow-hidden p-8 pt-6">
+
+                            {/* Configuration Bar */}
+                            <div className="grid grid-cols-4 gap-6 mb-8 p-6 bg-gray-50/50 dark:bg-black/20 rounded-2xl border border-gray-100 dark:border-gray-800/50 shrink-0">
+                                <div className="col-span-3 space-y-1.5">
+                                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-2"><Zap className="w-3 h-3 text-amber-500" /> Variations / Strategies</label>
+                                    <div className="flex gap-2">
                                         {[
                                             { id: 'VALID', label: 'Valid', icon: UserCheck, color: 'text-green-500' },
                                             { id: 'INVALID', label: 'Invalid', icon: AlertCircle, color: 'text-amber-500' },
@@ -215,143 +253,123 @@ const DataSetStudio: React.FC<DataSetStudioProps> = ({ activeProject, onAlert })
                                             <button
                                                 key={type.id}
                                                 onClick={() => toggleDataType(type.id)}
-                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase transition-all ${dataTypes.includes(type.id) ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-white dark:bg-[#16191f] border-gray-200 dark:border-gray-800 text-gray-500'}`}
+                                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${dataTypes.includes(type.id) ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-white dark:bg-black/20 border-gray-200 dark:border-gray-800 text-gray-500'} `}
                                             >
-                                                <type.icon className={`w-3 h-3 ${dataTypes.includes(type.id) ? 'text-white' : type.color}`} />
+                                                <type.icon className={`w-3.5 h-3.5 ${dataTypes.includes(type.id) ? 'text-white' : type.color}`} />
                                                 {type.label}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
-
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Rows:</span>
+                                <div className="space-y-1.5">
+                                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-2"><List className="w-3 h-3" /> Rows</label>
                                     <select
                                         value={variationCount}
                                         onChange={e => setVariationCount(Number(e.target.value))}
-                                        className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-2 py-1 text-[10px] font-black outline-none focus:border-indigo-500 transition-colors"
+                                        className="w-full bg-white dark:bg-black/20 border border-gray-200 dark:border-gray-800 rounded-xl py-2.5 px-4 text-xs font-black outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all appearance-none cursor-pointer"
                                     >
-                                        {[3, 5, 10, 20].map(c => <option key={c} value={c}>{c}</option>)}
+                                        {[3, 5, 10, 20].map(c => <option key={c} value={c}>{c} Samples</option>)}
                                     </select>
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-3">
-                                <button
-                                    disabled={isGenerating}
-                                    onClick={handleGenerateData}
-                                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
-                                >
-                                    {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 fill-current" />}
-                                    Generate Data
-                                </button>
-                                <button
-                                    disabled={generatedData.length === 0}
-                                    onClick={handleSaveDataset}
-                                    className="px-6 py-2.5 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-lg shadow-green-600/20 active:scale-95 transition-all"
-                                >
-                                    <Save className="w-4 h-4" />
-                                    Apply & Save
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Data Grid Area */}
-                        <div className="flex-1 overflow-hidden p-8 flex flex-col transition-colors">
-                            <div className="bg-white dark:bg-[#111318] border border-gray-200 dark:border-gray-800 rounded-[2rem] flex flex-col flex-1 overflow-hidden shadow-sm transition-colors">
-                                <div className="px-8 py-5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between transition-colors">
-                                    <div className="flex items-center gap-3">
-                                        <TableIcon className="w-5 h-5 text-indigo-500" />
-                                        <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight transition-colors">DataSet Mapping Table</h3>
-                                    </div>
-                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-4 transition-colors">
-                                        <span>Total Rows: {generatedData.length}</span>
-                                    </div>
-                                </div>
-                                <div className="flex-1 overflow-auto custom-scrollbar">
-                                    {generatedData.length === 0 ? (
-                                        <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4">
-                                            <Search className="w-12 h-12 opacity-10" />
-                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-30">No data generated yet. Click 'Generate Data' above.</p>
+                            {/* Data Grid Area */}
+                            <div className="flex-1 bg-gray-50 dark:bg-black/30 rounded-3xl border border-gray-100 dark:border-gray-800 flex flex-col overflow-hidden shadow-inner p-1">
+                                <div className="flex flex-col flex-1 overflow-hidden transition-colors">
+                                    <div className="px-8 py-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-white/40 dark:bg-white/5 backdrop-blur-sm transition-colors">
+                                        <div className="flex items-center gap-3">
+                                            <TableIcon className="w-5 h-5 text-indigo-500" />
+                                            <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight transition-colors">DataSet Mapping Table</h3>
                                         </div>
-                                    ) : (
-                                        <table className="w-full text-left border-collapse transition-colors table-fixed">
-                                            <thead className="sticky top-0 bg-gray-50 dark:bg-gray-900/50 backdrop-blur-md z-10 transition-colors">
-                                                <tr>
-                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[150px]">Field Name</th>
-                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[150px]">Value</th>
-                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[100px]">Data Type</th>
-                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[200px]">Expected UI Response</th>
-                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors">Rational/Description</th>
-                                                    <th className="px-8 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[80px]">Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800 transition-colors">
-                                                {generatedData.map((row, idx) => (
-                                                    <tr key={idx} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                                                        <td className="px-8 py-4 text-[11px] font-black text-gray-900 dark:text-gray-200">
-                                                            {row.field}
-                                                        </td>
-                                                        <td className="px-8 py-4">
-                                                            <input
-                                                                type="text"
-                                                                value={row.value}
-                                                                onChange={(e) => {
-                                                                    const newData = [...generatedData];
-                                                                    newData[idx].value = e.target.value;
-                                                                    setGeneratedData(newData);
-                                                                }}
-                                                                className="w-full text-[11px] font-medium font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-1 rounded border border-indigo-100 dark:border-indigo-500/20 outline-none focus:border-indigo-500 transition-colors"
-                                                            />
-                                                        </td>
-                                                        <td className="px-8 py-4 text-[10px]">
-                                                            <span className={`px-2 py-0.5 rounded font-black uppercase ${row.type === 'VALID' ? 'bg-green-100 text-green-600' :
-                                                                row.type === 'SECURITY' ? 'bg-red-100 text-red-600' :
-                                                                    'bg-amber-100 text-amber-600'
-                                                                }`}>
-                                                                {row.type}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-8 py-4">
-                                                            <input
-                                                                type="text"
-                                                                placeholder="Expected UI Text..."
-                                                                value={row.expected_result || ''}
-                                                                onChange={(e) => {
-                                                                    const newData = [...generatedData];
-                                                                    newData[idx].expected_result = e.target.value;
-                                                                    setGeneratedData(newData);
-                                                                }}
-                                                                className="w-full text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 rounded border border-emerald-100 dark:border-emerald-500/20 outline-none focus:border-emerald-500 transition-colors"
-                                                            />
-                                                        </td>
-                                                        <td className="px-8 py-4">
-                                                            <div className="text-[10px] text-gray-500 dark:text-gray-400 line-clamp-2 transition-colors">{row.description}</div>
-                                                        </td>
-                                                        <td className="px-8 py-4">
-                                                            <button
-                                                                onClick={() => setGeneratedData(prev => prev.filter((_, i) => i !== idx))}
-                                                                className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
-                                                            >
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </button>
-                                                        </td>
+                                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-4 transition-colors">
+                                            <span>Total Rows: {generatedData.length}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 overflow-auto custom-scrollbar">
+                                        {generatedData.length === 0 ? (
+                                            <div className="h-full flex flex-col items-center justify-center text-gray-300 dark:text-gray-700 space-y-4 py-20">
+                                                <TableIcon className="w-20 h-20 mb-4 opacity-10" />
+                                                <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40 italic">Ready to hydrate intelligent dataset</p>
+                                            </div>
+                                        ) : (
+                                            <table className="w-full text-left border-collapse transition-colors table-fixed">
+                                                <thead className="sticky top-0 bg-gray-100/80 dark:bg-gray-900/80 backdrop-blur-md z-10 transition-colors">
+                                                    <tr>
+                                                        <th className="px-8 py-5 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[150px]">Field Name</th>
+                                                        <th className="px-8 py-5 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[180px]">Generated Value</th>
+                                                        <th className="px-8 py-5 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[110px]">Type</th>
+                                                        <th className="px-8 py-5 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[220px]">Expected UI State</th>
+                                                        <th className="px-8 py-5 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors">Rational Reasoning</th>
+                                                        <th className="px-8 py-5 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 transition-colors w-[100px] text-center">Action</th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    )}
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100/50 dark:divide-gray-800/50 transition-colors">
+                                                    {generatedData.map((row, idx) => (
+                                                        <tr key={idx} className="group hover:bg-indigo-50/30 dark:hover:bg-indigo-500/5 transition-colors">
+                                                            <td className="px-8 py-5 text-[11px] font-black text-gray-800 dark:text-gray-200">
+                                                                {row.field}
+                                                            </td>
+                                                            <td className="px-8 py-5">
+                                                                <input
+                                                                    type="text"
+                                                                    value={row.value}
+                                                                    onChange={(e) => {
+                                                                        const newData = [...generatedData];
+                                                                        newData[idx].value = e.target.value;
+                                                                        setGeneratedData(newData);
+                                                                    }}
+                                                                    className="w-full text-[11px] font-black font-mono text-indigo-600 dark:text-indigo-400 bg-white dark:bg-black/20 border border-gray-200 dark:border-gray-800 px-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
+                                                                />
+                                                            </td>
+                                                            <td className="px-8 py-5">
+                                                                <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${row.type === 'VALID' ? 'bg-green-500/10 text-green-500 border border-green-500/20' :
+                                                                    row.type === 'SECURITY' ? 'bg-red-500/10 text-red-600 border border-red-500/20' :
+                                                                        'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                                                                    }`}>
+                                                                    {row.type}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-8 py-5">
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Expected state..."
+                                                                    value={row.expected_result || ''}
+                                                                    onChange={(e) => {
+                                                                        const newData = [...generatedData];
+                                                                        newData[idx].expected_result = e.target.value;
+                                                                        setGeneratedData(newData);
+                                                                    }}
+                                                                    className="w-full text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-white dark:bg-black/20 border border-gray-200 dark:border-gray-800 px-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all shadow-sm"
+                                                                />
+                                                            </td>
+                                                            <td className="px-8 py-5">
+                                                                <div className="text-[10px] font-medium text-gray-500 dark:text-gray-400 leading-relaxed transition-colors">{row.description}</div>
+                                                            </td>
+                                                            <td className="px-8 py-5 text-center">
+                                                                <button
+                                                                    onClick={() => setGeneratedData(prev => prev.filter((_, i) => i !== idx))}
+                                                                    className="p-2 text-gray-300 hover:text-red-500 transition-colors bg-gray-50 dark:bg-gray-800 rounded-lg hover:shadow-sm"
+                                                                >
+                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center p-20 text-center text-gray-400 bg-white dark:bg-[#0c0e12] transition-colors">
-                        <Layout className="w-16 h-16 mb-8 opacity-10" />
-                        <h2 className="text-xl font-black uppercase tracking-widest mb-2 transition-colors">DataSet Studio</h2>
-                        <p className="max-w-md text-xs font-medium uppercase tracking-[0.2em] leading-relaxed transition-colors opacity-50">
-                            검증된 자산을 선택하여 지능형 테스트 데이터셋을 생성하고 매핑하세요.<br />
-                            정상, 비정상, 보안 시나리오를 위한 다양한 데이터가 자동으로 구성됩니다.
+                    <div className="h-full flex flex-col items-center justify-center p-20 text-center transition-all">
+                        <Database className="w-16 h-16 text-indigo-500 opacity-20 mb-8" />
+                        <h2 className="text-2xl font-black uppercase tracking-[0.2em] text-gray-800 dark:text-gray-200 mb-4 transition-colors opacity-40">DataSet Studio</h2>
+                        <p className="max-w-md text-[10px] font-bold uppercase tracking-[0.15em] leading-[2] transition-colors opacity-30 px-10">
+                            Select a verified test asset to create and map intelligent datasets.<br />
+                            Automatically configure valid, invalid, and security scenarios.
                         </p>
                     </div>
                 )}
