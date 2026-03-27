@@ -493,7 +493,7 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
                 </div>
                 <div className="flex flex-col">
                   <h2 className="text-[13px] font-black text-gray-800 dark:text-gray-200 uppercase tracking-[0.15em] leading-tight flex items-center gap-2">
-                    Prototype Inventory
+                    Scenario Sandbox
                     <span className="text-indigo-500 dark:text-indigo-400 font-black tracking-tight ml-1 text-[11px]">({persistedScenarios.length})</span>
                   </h2>
                   <p className="text-[9px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest leading-tight">
@@ -551,13 +551,15 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
                                 />
                               </div>
                             ) : (
-                              <h3 className="text-xs font-black text-gray-800 dark:text-gray-200 truncate uppercase tracking-tight">{s.title || 'Untitled Prototype'}</h3>
+                              <h3 className="text-xs font-black text-gray-800 dark:text-gray-200 truncate uppercase tracking-tight">{s.title || 'Untitled Scenario Draft'}</h3>
                             )}
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="flex items-center gap-2 border-r border-gray-200 dark:border-gray-800 pr-3 mr-1" onClick={e => e.stopPropagation()}>
-                            <button onClick={(e) => { e.stopPropagation(); handleApprove(s.id); }} className={`px-4 py-1.5 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-sm hover:bg-indigo-500 border border-indigo-600 active:scale-95 transition-all flex items-center gap-2 ${isExpanded ? '' : 'hidden sm:flex'}`}><ArrowRight className="w-3 h-3" /> {isExpanded ? 'Register' : 'Save'}</button>
+                            <button onClick={(e) => { e.stopPropagation(); handleApprove(s.id); }} className="px-4 py-1.5 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-sm hover:bg-indigo-500 border border-indigo-600 active:scale-95 transition-all flex items-center gap-2">
+                              <ArrowRight className="w-3 h-3" /> Register
+                            </button>
                             <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} className="p-1.5 text-gray-300 hover:text-red-500 transition-colors bg-gray-100 dark:bg-gray-800 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                           <ChevronDown className={`w-4 h-4 text-indigo-500 transition-all duration-500 ${isExpanded ? 'rotate-180 scale-125' : ''}`} />

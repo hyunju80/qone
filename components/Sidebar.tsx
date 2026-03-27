@@ -32,20 +32,50 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, onSwitchProject, scripts, userRole }) => {
-  const navItems = [
-    { id: ViewMode.CONSOLE, label: 'Main Console', icon: Terminal },
-    { id: ViewMode.DESIGN_CENTER, label: 'Design Center', icon: LayoutGrid },
-    { id: ViewMode.STEP_RUNNER, label: 'Step Flow', icon: PlaySquare },
-    { id: ViewMode.AI_EXPLORATION, label: 'AI Exploration', icon: Bot },
-    { id: ViewMode.AI_GENERATOR, label: 'AI Generator', icon: Sparkles },
-    { id: ViewMode.KNOWLEDGE_REPO, label: 'Knowledge Repo', icon: BookOpen },
-    { id: ViewMode.DATASET_STUDIO, label: 'DataSet Studio', icon: Database },
-    { id: ViewMode.LIBRARY, label: 'Asset Library', icon: Library },
-    { id: ViewMode.SCHEDULES, label: 'Test Scheduler', icon: CalendarClock },
-    { id: ViewMode.PIPELINE, label: 'Pipeline Watcher', icon: Activity },
-    { id: ViewMode.HISTORY, label: 'Execution Status', icon: History },
-    { id: ViewMode.REPORTS, label: 'Analytics & Reports', icon: BarChart3 },
-    { id: ViewMode.DEVICE_FARM, label: 'Device Farm', icon: Smartphone },
+  const navGroups = [
+    {
+      label: '',
+      items: [
+        { id: ViewMode.CONSOLE, label: 'Agent Control Center', icon: Terminal },
+      ]
+    },
+    {
+      label: 'Asset Management',
+      items: [
+        { id: ViewMode.KNOWLEDGE_REPO, label: 'Knowledge Repo', icon: BookOpen },
+        { id: ViewMode.DESIGN_CENTER, label: 'Design Center', icon: LayoutGrid },
+        { id: ViewMode.LIBRARY, label: 'Asset Library', icon: Library },
+        { id: ViewMode.DATASET_STUDIO, label: 'DataSet Studio', icon: Database },
+      ]
+    },
+    {
+      label: 'Test Generation',
+      items: [
+        { id: ViewMode.AI_GENERATOR, label: 'AI Generator', icon: Sparkles },
+        { id: ViewMode.AI_EXPLORATION, label: 'AI Exploration', icon: Bot },
+        { id: ViewMode.STEP_RUNNER, label: 'Step Flow', icon: PlaySquare },
+      ]
+    },
+    {
+      label: 'Execution Control',
+      items: [
+        { id: ViewMode.SCHEDULES, label: 'Test Scheduler', icon: CalendarClock },
+        { id: ViewMode.PIPELINE, label: 'CI/CD Intelligence', icon: Activity },
+      ]
+    },
+    {
+      label: 'Results & Analytics',
+      items: [
+        { id: ViewMode.HISTORY, label: 'Execution Status', icon: History },
+        { id: ViewMode.REPORTS, label: 'Analytics & Reports', icon: BarChart3 },
+      ]
+    },
+    {
+      label: 'Infrastructure',
+      items: [
+        { id: ViewMode.DEVICE_FARM, label: 'Device Farm', icon: Smartphone },
+      ]
+    }
   ];
 
   const goldenStats = useMemo(() => {
@@ -78,22 +108,31 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, onSwitchPro
           </div>
         </div>
 
-        <nav className="space-y-1 mb-8">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => onViewChange(item.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${activeView === item.id
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200'
-                }`}
-            >
-              <item.icon className={`w-4 h-4 ${activeView === item.id ? 'text-white' : ''}`} />
-              {item.label}
-              {item.id === ViewMode.PIPELINE && (
-                <span className="ml-auto w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-              )}
-            </button>
+        <nav className="space-y-6 mb-8">
+          {navGroups.map((group) => (
+            <div key={group.label} className="space-y-1">
+              <h3 className="px-3 text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-2 selection:bg-none">
+                {group.label}
+              </h3>
+              <div className="space-y-1">
+                {group.items.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => onViewChange(item.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm font-medium ${activeView === item.id
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
+                      : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200'
+                      }`}
+                  >
+                    <item.icon className={`w-4 h-4 ${activeView === item.id ? 'text-white' : ''}`} />
+                    {item.label}
+                    {item.id === ViewMode.PIPELINE && (
+                      <span className="ml-auto w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 

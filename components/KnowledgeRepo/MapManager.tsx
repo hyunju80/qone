@@ -178,7 +178,7 @@ const MapManager: React.FC<MapManagerProps> = ({ activeProjectId, onAlert }) => 
               </div>
               <div className="flex flex-col">
                 <h2 className={`text-[13px] font-black ${selectedNode ? 'text-indigo-600' : 'text-gray-800 dark:text-gray-200'} uppercase tracking-[0.15em] leading-tight`}>
-                  {selectedNode ? 'Sub-node Expansion' : 'Map Generation'}
+                  {selectedNode ? 'Sub-node Expansion' : 'Map Setting'}
                 </h2>
                 <p className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-tight">
                   {selectedNode ? `Adding nodes to ${selectedNode.title}` : 'Analyze UI Action Flows'}
@@ -307,7 +307,7 @@ const MapManager: React.FC<MapManagerProps> = ({ activeProjectId, onAlert }) => 
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-[8px] font-black rounded uppercase tracking-wider shadow-sm">NAV MAP</span>
+                      <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-[8px] font-black rounded uppercase tracking-wider shadow-sm">FLOW MAP</span>
                       <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{Object.keys(m.map_json || {}).length} Nodes</span>
                     </div>
                     <h4 className="text-[11px] font-black text-gray-800 dark:text-gray-200 truncate uppercase tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
@@ -439,7 +439,7 @@ const MapManager: React.FC<MapManagerProps> = ({ activeProjectId, onAlert }) => 
             <h3 className="text-sm font-black uppercase tracking-widest mb-4">Save Action Map</h3>
             <input
               id="map-title-input"
-              defaultValue={`Map - ${targetInput} (${new Date().toLocaleDateString()})`}
+              defaultValue={`Action Flow Map - ${targetInput} (${new Date().toLocaleDateString()})`}
               className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl py-3 px-4 text-sm font-bold focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all mb-6"
             />
             <div className="flex gap-3">

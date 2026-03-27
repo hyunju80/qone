@@ -414,7 +414,7 @@ const RagManager: React.FC<RagManagerProps> = ({ activeProjectId, onAlert }) => 
               </div>
               <div className="flex flex-col">
                 <h2 className="text-[13px] font-black text-gray-800 dark:text-gray-200 uppercase tracking-[0.15em] leading-tight">
-                  Knowledge Inventory
+                  Document Repository
                 </h2>
                 <p className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-tight">
                   {documents.length} Registered Documents
@@ -549,7 +549,7 @@ const RagManager: React.FC<RagManagerProps> = ({ activeProjectId, onAlert }) => 
                 <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-2">Delete Document?</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Are you sure you want to delete <span className="font-bold text-gray-900 dark:text-white">"{docToDelete.title}"</span>?
-                  This will also remove all extracted inventory items.
+                  This will also remove all associated repository data.
                 </p>
               </div>
 

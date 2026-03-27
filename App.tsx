@@ -111,8 +111,8 @@ const AppContent: React.FC = () => {
   // Helper to get consistent View Titles
   const getViewTitle = (view: ViewMode) => {
     switch (view) {
-      case ViewMode.CONSOLE: return 'Main Console';
-      case ViewMode.PIPELINE: return 'Pipeline Watcher';
+      case ViewMode.CONSOLE: return 'Agent Control Center';
+      case ViewMode.PIPELINE: return 'CI/CD Intelligence';
       case ViewMode.SCHEDULES: return 'Test Scheduler';
       case ViewMode.DEVICE_FARM: return 'Device Farm';
       case ViewMode.SCENARIO_GENERATOR: return 'Scenario Generator';
@@ -170,7 +170,7 @@ const AppContent: React.FC = () => {
   };
 
   // Sidebar State (Moved to top level to fix Hook rules)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Default to false for Hub
 
   const filteredScripts = useMemo(() => scripts.filter(s => s.projectId === activeProject?.id), [scripts, activeProject]);
   const filteredHistory = useMemo(() => history.filter(h => h.projectId === activeProject?.id), [history, activeProject]);
@@ -526,7 +526,7 @@ const AppContent: React.FC = () => {
     if (!activeProject) return null;
     switch (currentView) {
       case ViewMode.CONSOLE:
-        return <MainConsole activeProject={activeProject} assets={filteredScripts} history={filteredHistory} schedules={filteredSchedules} messages={currentConsoleMessages} onMessagesChange={handleConsoleMessagesChange} onRecordHistory={(h) => setHistory(prev => [h, ...prev])} onAddSchedule={(s) => setSchedules(prev => [...prev, s])} />;
+        return <MainConsole activeProject={activeProject} assets={filteredScripts} history={filteredHistory} schedules={filteredSchedules} messages={currentConsoleMessages} onMessagesChange={handleConsoleMessagesChange} onAlert={showAlert} />;
       case ViewMode.AI_EXPLORATION: // Added
         return <AiExploration
           activeProject={activeProject}
@@ -650,7 +650,11 @@ const AppContent: React.FC = () => {
           }}
         />;
       case ViewMode.PIPELINE:
-        return <PipelineWatcher activeProject={activeProject} scripts={filteredScripts} tasks={approvalTasks} onUpdateTasks={setApprovalTasks} onUpdateScript={(s) => setScripts(prev => prev.map(old => old.id === s.id ? s : old))} onAddScript={(s) => setScripts(prev => [s, ...prev])} onReviewInGenerator={(id) => { setFocusedDiscoveryId(id); setCurrentView(ViewMode.AI_GENERATOR); }} />;
+        return <PipelineWatcher
+          activeProject={activeProject}
+          scripts={scripts}
+          history={history}
+        />;
       case ViewMode.SCHEDULES:
         return <SchedulerView schedules={filteredSchedules} scripts={filteredScripts} activeProject={activeProject} onAddSchedule={handleCreateSchedule} onUpdateSchedule={handleUpdateSchedule} onDeleteSchedule={handleDeleteSchedule} onAlert={showAlert} />;
       case ViewMode.DEVICE_FARM:
@@ -808,6 +812,11 @@ const AppContent: React.FC = () => {
               console.log(`[App] Auto-refreshing data for view: ${view}`);
               testApi.getScripts(activeProject.id).then(setScripts).catch(console.error);
               testApi.getHistory(activeProject.id).then(setHistory).catch(console.error);
+            }
+
+            // Auto-hide sidebar when returning to Console
+            if (view === ViewMode.CONSOLE) {
+              setIsSidebarOpen(false);
             }
 
             setCurrentView(view);

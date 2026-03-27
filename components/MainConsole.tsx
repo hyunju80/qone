@@ -1,9 +1,15 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, Sparkles, Play, Terminal, Activity, Loader2, RefreshCw, AlertCircle, CheckCircle2, FileText, Download, Table as TableIcon, CalendarClock, Eye, Search, Zap, Hash, List, BarChart3, Clock, Key } from 'lucide-react';
-import LiveView from './LiveView';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import {
+  Send, Bot, Sparkles, Play, Terminal, Activity, Loader2, RefreshCw,
+  AlertCircle, CheckCircle2, FileText, Download, Table as TableIcon,
+  CalendarClock, Eye, Search, Zap, Hash, List, BarChart3, Clock, Key,
+  ShieldCheck, Bell, ChevronRight, MessageSquare, ClipboardCheck,
+  TrendingUp, PieChart, Info, ArrowUpRight, Check, X, Filter, Settings as SettingsIcon
+} from 'lucide-react';
 import { Message, Project, TestScript, TestHistory, TestSchedule } from '../types';
 import { testApi } from '../api/test';
+import { useTheme } from '../src/context/ThemeContext';
 
 interface MainConsoleProps {
   activeProject: Project;
@@ -12,494 +18,330 @@ interface MainConsoleProps {
   schedules: TestSchedule[];
   messages: Message[];
   onMessagesChange: (msgs: Message[] | ((prev: Message[]) => Message[])) => void;
-  onStartGeneration?: () => void;
-  onRecordHistory?: (history: TestHistory) => void;
-  onAddSchedule?: (schedule: TestSchedule) => void;
+  onAlert: (title: string, msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-const MainConsole: React.FC<MainConsoleProps> = ({
+interface ApprovalItem {
+  id: string;
+  type: 'GENERATOR' | 'HEALING' | 'JIRA';
+  title: string;
+  description: string;
+  timestamp: string;
+  urgency: 'low' | 'medium' | 'high';
+}
+
+const MOCK_APPROVALS: ApprovalItem[] = [
+  { id: 'app_1', type: 'GENERATOR', title: 'Scenario Draft: Payment Cancel', description: '3 new flows generated based on Policy Manual v2.', timestamp: '12m ago', urgency: 'medium' },
+  { id: 'app_2', type: 'HEALING', title: 'Self-Healing: Login Button', description: 'Selector updated from ID to ARIA-Label for stability.', timestamp: '1h ago', urgency: 'high' },
+  { id: 'app_3', type: 'JIRA', title: 'Defect Ticket: API 500', description: 'Critical failure detected in Order service. Ready to sync.', timestamp: '3h ago', urgency: 'high' },
+];
+
+const AgenticHub: React.FC<MainConsoleProps> = ({
   activeProject,
   assets,
   history,
   schedules,
   messages,
   onMessagesChange,
-  onStartGeneration,
-  onRecordHistory,
-  onAddSchedule
+  onAlert
 }) => {
+
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-
-  const [executionStatus, setExecutionStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
-  const [currentStep, setCurrentStep] = useState(0);
-  const [executingScriptName, setExecutingScriptName] = useState<string>('');
+  const [activeAgent, setActiveAgent] = useState<string | null>(null);
+  const [thoughtLog, setThoughtLog] = useState<string>('Ready for mission command...');
+  const [drawerItem, setDrawerItem] = useState<ApprovalItem | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
-
-  const QUICK_ACTIONS = [
-    { label: '테스트 목록 조회', icon: List, prompt: '현재 등록된 모든 테스트 목록 보여줘' },
-    { label: '스케줄 조회', icon: Clock, prompt: '등록된 예약 스케줄 목록 알려줘' },
-    { label: '테스트 추천', icon: Sparkles, prompt: '로그인 로직이 변경되었어. 관련 테스트 추천해주고 바로 실행할 수 있게 해줘' },
-    { label: '오늘 Fail건 조회', icon: AlertCircle, prompt: '오늘 발생한 실패 테스트 결과만 요약해줘' },
-  ];
-
-
-
-  // Real Execution State
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const [screenSrc, setScreenSrc] = useState<string | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-
-  // WebSocket Connection for Live View
-  useEffect(() => {
-    if (!activeRunId) {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      return;
-    }
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/api/v1/run/ws/${activeRunId}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'screen') {
-          setScreenSrc(`data:image/jpeg;base64,${msg.data}`);
-        } else if (msg.type === 'status') {
-          const finalStatus = msg.data as 'success' | 'error';
-          setExecutionStatus(finalStatus);
-          if (finalStatus === 'success' || finalStatus === 'error') {
-            // Keep connected for a moment to show result? Or maybe wait for user explicit action? 
-            // Currently just stays connected until cleanup or next run.
-          }
-        }
-      } catch (e) { console.error(e); }
-    };
-
-    return () => {
-      ws.close();
-    };
-  }, [activeRunId]);
-
-  const handleRunFromChat = async (scriptName: string) => {
-    const targetScript = assets.find(s =>
-      s.name.toLowerCase().includes(scriptName.toLowerCase()) ||
-      scriptName.toLowerCase().includes(s.name.toLowerCase())
-    );
-
-    if (!targetScript) {
-      onMessagesChange(prev => [...prev, {
-        id: `${Date.now()}_err`,
-        role: 'assistant',
-        content: `인증된 스크립트 중 '${scriptName}'을(를) 찾을 수 없습니다.`,
-        type: 'text'
-      }]);
-      return;
-    }
-
-    setExecutingScriptName(targetScript.name);
-    setExecutionStatus('running');
-    setScreenSrc(null); // Reset previous screen
-    setCurrentStep(1);
-
-    try {
-      let run_id;
-      const isStepAsset = targetScript.steps && targetScript.steps.length > 0;
-      const isAppium = targetScript.engine === 'Appium';
-
-      if (isStepAsset) {
-        // Step-by-Step execution (AI Assets with Native Steps)
-        const response = await testApi.runActiveSteps({
-          steps: targetScript.steps,
-          project_id: targetScript.projectId || activeProject.id,
-          platform: targetScript.platform || 'WEB',
-          script_id: targetScript.id,
-          script_name: targetScript.name,
-          trigger: "manual",
-          persona_name: targetScript.persona?.name || 'Default',
-          capture_screenshots: targetScript.captureScreenshots || false,
-          dataset: targetScript.dataset || []
-        });
-        run_id = response.run_id;
-      } else {
-        // Standard String-based script execution
-        const response = await testApi.dryRun({
-          code: targetScript.code,
-          project_id: targetScript.projectId || activeProject.id,
-          script_id: targetScript.id,
-          script_name: targetScript.name,
-          persona_name: targetScript.persona?.name || 'Default',
-          dataset: targetScript.dataset || []
-        });
-        run_id = response.run_id;
-      }
-      setActiveRunId(run_id);
-
-      // Record history locally for immediate feedback (though backend also records it)
-      if (onRecordHistory && !isStepAsset && !isAppium) {
-        onRecordHistory({
-          id: `h_chat_${Date.now()}`,
-          scriptId: targetScript.id,
-          scriptName: targetScript.name,
-          runDate: new Date().toLocaleString(),
-          status: 'passed', // Optimistic? Or wait? 
-          duration: 'Running...',
-          personaName: targetScript.persona?.name || 'Standard User',
-          trigger: 'manual',
-          logs: []
-        });
-      }
-
-      onMessagesChange(prev => [...prev, {
-        id: `sys_start_${Date.now()}`,
-        role: 'assistant',
-        content: `**${targetScript.name}** 테스트 실행을 시작했습니다.\n우측 화면에서 실시간 실행 과정을 확인할 수 있습니다.`,
-        type: 'text'
-      }]);
-
-    } catch (e) {
-      console.error("Failed to start run", e);
-      setExecutionStatus('error');
-    }
-  };
-
+  // Agent Statuses
+  const [agents] = useState({
+    testing: { label: 'Testing', status: 'idle', color: 'indigo' },
+    defect: { label: 'Defect', status: 'idle', color: 'amber' },
+    reporting: { label: 'Reporting', status: 'idle', color: 'emerald' }
+  });
 
   const handleSend = async (customPrompt?: string) => {
     const textToSend = customPrompt || input;
     if (!textToSend.trim() || isProcessing) return;
 
-    const userMessage: Message = { id: '${Date.now()}_u', role: 'user', content: textToSend };
-    onMessagesChange(prev => [...prev, userMessage]);
+    onMessagesChange(prev => [...prev, { id: `u_${Date.now()}`, role: 'user', content: textToSend } as Message]);
     setInput('');
     setIsProcessing(true);
+    setActiveAgent('testing');
+    setThoughtLog('Orchestrator is delegating the goal to Testing Agent...');
 
     try {
-      // Quick Action Intercept (Client-side fast path)
-      let response: any;
+      const aiApi = await import('../api/ai').then(m => m.aiApi);
+      const userMsg: Message = { id: `u_${Date.now()}`, role: 'user', content: textToSend };
+      const response = await aiApi.chat([...messages, userMsg], `Orchestrator mode. Project: ${activeProject.name}. Minimalist summary and action required.`);
 
-      if (textToSend.includes('현재 등록된 모든 테스트 목록 보여줘')) {
-        response = { function_call: { name: 'get_golden_scripts', args: {} } };
-      } else if (textToSend.includes('등록된 예약 스케줄 목록 알려줘')) {
-        response = { function_call: { name: 'get_test_schedules', args: {} } };
-      } else if (/([가-힣a-zA-Z0-9]+)\s*관련/.test(textToSend) || /([가-힣a-zA-Z0-9]+)\s*기능이\s*변경/.test(textToSend)) {
-        const match = textToSend.match(/([가-힣a-zA-Z0-9]+)\s*관련/) || textToSend.match(/([가-힣a-zA-Z0-9]+)\s*기능이\s*변경/);
-        const keyword = match ? match[1] : '전체';
-        response = { function_call: { name: 'recommend_tests', args: { keyword } } };
-      } else if (textToSend.includes('오늘 발생한 실패 테스트')) {
-        response = { function_call: { name: 'summarize_test_results', args: { reportType: 'failures' } } };
-      } else {
-        // Use Backend API
-        // @ts-ignore
-        const aiApi = await import('../api/ai').then(m => m.aiApi);
-        response = await aiApi.chat([...messages, userMessage], `Active Project: ${activeProject.name}`);
-      }
-
-      if (response.error) {
-        throw new Error(response.error);
-      }
-
-      if (response.function_call) {
-        const { name, args } = response.function_call;
-
-        // Handle Tool execution response or Frontend Action
-
-        if (name === 'recommend_tests') {
-          const keyword = (args as any).keyword.toLowerCase();
-          const recommended = assets.filter(a =>
-            a.name.toLowerCase().includes(keyword) ||
-            (a.tags && a.tags.some(t => t.toLowerCase().includes(keyword)))
-          );
-
-          if (recommended.length > 0) {
-            const content = `지능형 분석 결과, **'${keyword}'** 관련 변경사항에 대해 다음 테스트 자산들을 실행할 것을 추천합니다:`;
-            onMessagesChange(prev => [...prev, {
-              id: Date.now().toString(),
-              role: 'assistant',
-              content,
-              type: 'report',
-              reportData: {
-                summary: "추천 테스트 목록",
-                table: {
-                  headers: ["테스트 명", "태그", "실행"],
-                  rows: recommended.map(r => [r.name, r.tags?.join(', ') || '-', "RUN"])
-                }
-              }
-            }]);
-          } else {
-            onMessagesChange(prev => [...prev, { id: `norec_${Date.now()}`, role: 'assistant', content: `'${keyword}'와 관련된 등록된 테스트 자산을 찾지 못했습니다.` }]);
-          }
-        }
-        else if (name === 'summarize_test_results') {
-          const type = (args as any).reportType;
-          const filtered = type === 'failures' ? history.filter(h => h.status === 'failed') : history;
-
-          const total = filtered.length;
-          const passed = filtered.filter(h => h.status === 'passed').length;
-          const failed = total - passed;
-          const passRate = total > 0 ? Math.round((passed / total) * 100) : 0;
-
-          const content = filtered.length > 0
-            ? `프로젝트의 최근 **${total}건**의 테스트 데이터를 기반으로 생성된 요약 리포트입니다.`
-            : "요약할 수 있는 테스트 실행 내역이 존재하지 않습니다.";
-
-          if (filtered.length > 0) {
-            onMessagesChange(prev => [...prev, {
-              id: Date.now().toString(),
-              role: 'assistant',
-              content,
-              type: 'report',
-              reportData: {
-                summary: `${type === 'failures' ? '결함(Failures)' : '전체'} 결과 심층 분석`,
-                metrics: [
-                  { label: '전체 실행', value: total },
-                  { label: '성공률', value: `${passRate}%` },
-                  { label: '실패 건수', value: failed }
-                ],
-                table: {
-                  headers: ["테스트 명", "상태", "일시"],
-                  rows: filtered.slice(0, 10).map(h => [h.scriptName, h.status.toUpperCase(), h.runDate])
-                }
-              }
-            }]);
-          } else {
-            onMessagesChange(prev => [...prev, { id: `nosum_${Date.now()}`, role: 'assistant', content: "데이터가 없습니다." }]);
-          }
-        }
-        else if (name === 'create_test_schedule') {
-          const scriptIds = args.scriptNames?.map((name: string) =>
-            assets.find(a => a.name.toLowerCase().includes(name.toLowerCase()))?.id
-          ).filter(Boolean) || [];
-
-          if (scriptIds.length > 0 && onAddSchedule) {
-            onAddSchedule({
-              id: `sch_ai_${Date.now()}`,
-              projectId: activeProject.id,
-              name: args.name || `${args.scriptNames[0]} AI 스케줄`,
-              scriptIds,
-              cronExpression: args.cronExpression,
-              frequencyLabel: args.frequencyLabel,
-              lastRun: 'Never',
-              nextRun: '자동 계산됨',
-              isActive: true,
-              alertConfig: { channels: ['slack'], criticalOnly: true, failureThreshold: 1 },
-              priority: 'Normal'
-            });
-            onMessagesChange(prev => [...prev, {
-              id: Date.now().toString(),
-              role: 'assistant',
-              content: `새로운 테스트 스케줄 **'${args.name}'** 등록이 완료되었습니다.\n- 대상: ${args.scriptNames.join(', ')}\n- 주기: ${args.frequencyLabel}`
-            }]);
-          } else {
-            onMessagesChange(prev => [...prev, { id: `nosch_${Date.now()}`, role: 'assistant', content: "스케줄을 등록할 대상 스크립트를 자산 라이브러리에서 찾을 수 없습니다. 정확한 스크립트 이름을 입력해 주세요." }]);
-          }
-        }
-        else if (name === 'run_test_script') {
-          handleRunFromChat(args.scriptName);
-          onMessagesChange(prev => [...prev, { id: `run_${Date.now()}`, role: 'assistant', content: `**${args.scriptName}** 테스트를 즉시 실행합니다. 오른쪽 텔레메트리 화면을 확인해 주세요.` }]);
-        }
-        else if (name === 'get_test_schedules') {
-          // Ideally backend returns this data, but if backend returns tool call, we can render it here from props
-          const list = schedules.length > 0
-            ? schedules.map(s => `- **${s.name}**: ${s.frequencyLabel}`).join('\n')
-            : "현재 등록된 예약 스케줄이 없습니다.";
-          onMessagesChange(prev => [...prev, { id: `list_sch_${Date.now()}`, role: 'assistant', content: `현재 프로젝트에 설정된 테스트 스케줄입니다:\n\n${list}` }]);
-        }
-        else if (name === 'get_golden_scripts') {
-          const list = assets.map(a => `- **${a.name}**`).join('\n');
-          onMessagesChange(prev => [...prev, { id: `list_gold_${Date.now()}`, role: 'assistant', content: `현재 워크스페이스에 등록된 골든 스크립트 목록입니다:\n\n${list}` }]);
-        }
-
-      } else {
-        // Text Response
-        onMessagesChange(prev => [...prev, {
-          id: `txt_${Date.now()}`,
-          role: 'assistant',
-          content: response.text || "응답을 생성할 수 없습니다."
-        }]);
-      }
-    } catch (error: any) {
-      console.error("Gemini Execution Error:", error);
-      let errorMsg = `분석 중 오류가 발생했습니다: ${error.message || error}`;
-      if (error?.message?.includes('429') || error?.status === 429 || error?.message?.includes('quota') || error?.message?.includes('missing')) {
-        errorMsg = "⚠️ **Backend Error**: API Key 설정이나 서버 상태를 확인해주세요.";
-      }
-      onMessagesChange(prev => [...prev, {
-        id: '${Date.now()}_err',
-        role: 'assistant',
-        content: errorMsg,
-        type: 'text'
-      }]);
+      onMessagesChange(prev => [...prev, { id: `ai_${Date.now()}`, role: 'assistant', content: response.text || "Command received." } as Message]);
+      setThoughtLog('Mission objective acknowledged. Monitoring execution...');
+    } catch (e) {
+      setThoughtLog('Error in command dispatch.');
     } finally {
       setIsProcessing(false);
+      setTimeout(() => setActiveAgent(null), 3000);
     }
   };
 
-  const handleCustomAction = (row: string[]) => {
-    handleRunFromChat(row[0]);
-  };
+  const passRate = useMemo(() => {
+    if (history.length === 0) return 0;
+    const passed = history.filter(h => h.status === 'passed').length;
+    return Math.round((passed / history.length) * 100);
+  }, [history]);
+
+  // Theme-aware styles
+  const bgClass = isDark ? 'bg-[#0c0e12]' : 'bg-[#f8faff]';
+  const textClass = isDark ? 'text-gray-100' : 'text-gray-900';
+  const subTextClass = isDark ? 'text-gray-500' : 'text-gray-400';
+  const cardBgClass = isDark ? 'bg-white/[0.02] border-white/5 backdrop-blur-sm shadow-2xl' : 'bg-white border-gray-100 shadow-sm';
+  const inputBgClass = isDark ? 'bg-gray-900/50' : 'bg-white';
+  const borderClass = isDark ? 'border-white/5' : 'border-gray-100';
 
   return (
-    <div className="flex h-full w-full overflow-hidden transition-colors duration-300">
-      <div className="flex-1 flex flex-col border-r border-gray-200 dark:border-gray-800 h-full bg-gray-50 dark:bg-[#0f1115]">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth custom-scrollbar">
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === 'user' ? 'bg-gray-200 dark:bg-gray-700' : 'bg-indigo-600'}`}>
-                  {msg.role === 'user' ? <span className="text-[10px] font-bold text-gray-700 dark:text-gray-300">ME</span> : <Bot className="w-4 h-4 text-white" />}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <div className={`p-4 rounded-2xl ${msg.role === 'user' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-200 shadow-sm dark:shadow-none'}`}>
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+    <div className={`flex h-full w-full ${bgClass} ${textClass} overflow-hidden font-sans relative transition-colors duration-500`}>
+
+      {/* Background Ambience */}
+      <div className={`absolute inset-0 ${isDark ? 'bg-gradient-to-tr from-[#0c0e12] via-[#11141d] to-[#0c0e12]' : 'bg-gradient-to-tr from-[#f8faff] via-[#ffffff] to-[#f8faff]'} pointer-events-none`} />
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/5 blur-[120px] rounded-full pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-violet-600/5 blur-[120px] rounded-full pointer-events-none" />
+
+      <div className="flex-1 flex flex-col z-10 overflow-y-auto overflow-x-hidden no-scrollbar">
+
+        {/* HEADER: Agent Orbs */}
+        <header className="flex items-center justify-between px-10 py-8">
+          <div className="flex items-center gap-12">
+            {[agents.testing, agents.defect, agents.reporting].map(a => (
+              <div key={a.label} className="flex flex-col items-center gap-3 group cursor-pointer">
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center relative transition-all duration-700 ${activeAgent === a.label.toLowerCase() ? 'scale-110 shadow-[0_0_30px_rgba(79,70,229,0.3)]' : 'opacity-80'
+                  }`}>
+                  <div className={`absolute inset-0 rounded-full border-2 border-${a.color}-500/20 ${activeAgent === a.label.toLowerCase() ? 'animate-ping' : ''}`} />
+                  <div className={`w-full h-full rounded-full ${isDark ? `bg-${a.color}-500/10 border-${a.color}-500/30` : `bg-${a.color}-50 border-${a.color}-100`} border backdrop-blur-md flex items-center justify-center transition-colors`}>
+                    {a.label === 'Testing' ? <Bot className={`w-6 h-6 text-${a.color}-500`} /> :
+                      a.label === 'Defect' ? <ShieldCheck className={`w-6 h-6 text-${a.color}-500`} /> :
+                        <BarChart3 className={`w-6 h-6 text-${a.color}-500`} />}
                   </div>
-
-                  {msg.reportData && (
-                    <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                      {/* Metrics Card Grid */}
-                      {msg.reportData.metrics && (
-                        <div className="grid grid-cols-3 gap-2">
-                          {msg.reportData.metrics.map((m, i) => (
-                            <div key={i} className="bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-3 rounded-xl flex flex-col items-center justify-center shadow-sm">
-                              <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest mb-1">{m.label}</span>
-                              <span className="text-sm font-black text-indigo-600 dark:text-indigo-400">{m.value}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Detailed Table */}
-                      {msg.reportData.table && (
-                        <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-md dark:shadow-xl transition-colors">
-                          <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950/50 flex items-center justify-between">
-                            <span className="text-[9px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-[0.2em]">{msg.reportData.summary}</span>
-                            <BarChart3 className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-                          </div>
-                          <table className="w-full text-left text-[11px]">
-                            <thead className="bg-gray-100 dark:bg-gray-900/50 text-gray-500 uppercase font-black text-[9px] border-b border-gray-200 dark:border-gray-700">
-                              <tr>
-                                {msg.reportData.table.headers.map((h, i) => <th key={i} className="px-4 py-2">{h}</th>)}
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                              {msg.reportData.table.rows.map((row, i) => (
-                                <tr key={i} className="hover:bg-indigo-50 dark:hover:bg-indigo-500/5 transition-colors">
-                                  <td className="px-4 py-3 font-bold text-gray-800 dark:text-gray-300 truncate max-w-[150px]">{row[0]}</td>
-                                  <td className="px-4 py-3">
-                                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${row[1] === 'PASSED' ? 'bg-green-600/10 text-green-500' : row[1] === 'FAILED' ? 'bg-red-600/10 text-red-500' : 'text-gray-500'}`}>
-                                      {row[1]}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-right">
-                                    {row[2] === "RUN" ? (
-                                      <button
-                                        onClick={() => handleCustomAction(row)}
-                                        className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-black uppercase transition-all"
-                                      >
-                                        <Play className="w-3 h-3" /> RUN
-                                      </button>
-                                    ) : (
-                                      <span className="text-gray-600 text-[9px] mono">{row[2]}</span>
-                                    )}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {/* Status Glow */}
+                  <div className={`absolute -bottom-1 w-2 h-2 rounded-full bg-${a.color}-500 shadow-[0_0_8px_rgb(99,102,241)]`} />
                 </div>
+                <span className={`text-[10px] font-black uppercase tracking-[0.3em] ${subTextClass} group-hover:${isDark ? 'text-gray-300' : 'text-gray-600'} transition-colors`}>{a.label}</span>
               </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="text-right">
+              <span className={`text-[9px] font-black ${subTextClass} uppercase tracking-widest block mb-0.5`}>Project Integrity</span>
+              <span className={`text-xl font-black ${textClass} tracking-tighter transition-colors`}>{passRate}% <span className="text-[10px] text-emerald-500 uppercase tracking-widest ml-1 font-black">Stable</span></span>
             </div>
-          ))}
-          {isProcessing && (
-            <div className="flex justify-start">
-              <div className="flex gap-3 animate-pulse">
-                <div className="w-8 h-8 rounded-full bg-indigo-600/50 flex items-center justify-center"><Bot className="w-4 h-4 text-white" /></div>
-                <div className="px-4 py-2 bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm dark:shadow-none"><span className="text-[10px] text-gray-500 font-bold uppercase">Oracle is analyzing...</span></div>
-              </div>
+            <div className={`w-px h-10 ${isDark ? 'bg-gray-800' : 'bg-gray-200'}`} />
+            <div className="flex gap-2">
+              <button className={`p-3 ${isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-100 shadow-sm'} border rounded-2xl hover:bg-white/10 transition-all`}><Bell className="w-5 h-5 text-gray-400" /></button>
+              <button className={`p-3 ${isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-100 shadow-sm'} border rounded-2xl hover:bg-white/10 transition-all`}><SettingsIcon className="w-5 h-5 text-gray-400" /></button>
             </div>
-          )}
-        </div>
+          </div>
+        </header>
 
-        <div className="p-5 bg-gray-50 dark:bg-[#0c0e12] border-t border-gray-200 dark:border-gray-800 space-y-4 transition-colors">
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-            <div className="flex items-center gap-2 whitespace-nowrap">
-              {QUICK_ACTIONS.map((action, idx) => (
+        {/* HERO: Command Center */}
+        <section className="flex-none flex flex-col items-center justify-start px-10 max-w-5xl mx-auto w-full pt-4 pb-12">
+          <div className="w-full mb-8 animate-in fade-in slide-in-from-top-4 duration-1000">
+            <h1 className={`text-2xl font-black tracking-tight text-center ${textClass} mb-6 transition-colors`}>
+              What is the goal for <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">today?</span>
+            </h1>
+            <div className="relative max-w-2xl mx-auto group">
+              <div className="absolute -inset-1 bg-gradient-to-r from-indigo-600 to-violet-600 rounded-[32px] blur opacity-10 group-focus-within:opacity-30 transition-opacity duration-500" />
+              <div className={`relative flex items-center ${inputBgClass} backdrop-blur-2xl border ${borderClass} rounded-[28px] p-2 transition-all group-focus-within:${isDark ? 'border-white/10' : 'border-indigo-200'} shadow-2xl transition-all duration-500`}>
+                <div className="pl-6 pr-4 opacity-50 flex items-center">
+                  {isProcessing ? <Loader2 className="w-6 h-6 animate-spin text-indigo-500" /> : <Zap className="w-6 h-6 text-indigo-400" />}
+                </div>
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                  placeholder="e.g. '결제 시스템 자율 테스트 수행해줘'"
+                  className={`flex-1 bg-transparent py-5 text-lg font-bold outline-none placeholder:text-gray-500/30 ${textClass} transition-colors`}
+                />
                 <button
-                  key={idx}
-                  onClick={() => handleSend(action.prompt)}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-900/50 hover:bg-indigo-50 dark:hover:bg-indigo-600/20 border border-gray-200 dark:border-gray-800 hover:border-indigo-500/50 rounded-full transition-all group shadow-sm dark:shadow-none"
+                  onClick={() => handleSend()}
+                  className="p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[24px] shadow-lg shadow-indigo-600/20 transition-all active:scale-95 ml-2"
                 >
-                  <action.icon className="w-3 h-3 text-gray-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400" />
-                  <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-300">{action.label}</span>
+                  <ArrowUpRight className="w-6 h-6" />
                 </button>
-              ))}
+              </div>
+              <div className="mt-4 flex items-center justify-center gap-6">
+                <span className={`text-[10px] font-black ${isDark ? 'text-gray-600' : 'text-gray-400'} uppercase tracking-widest transition-colors`}>Active Mission:</span>
+                <p className={`text-[11px] font-black tracking-[0.05em] transition-all duration-500 ${isProcessing ? 'text-indigo-500' : (isDark ? 'text-gray-500' : 'text-gray-400')}`}>
+                  {thoughtLog}
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="relative group">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="e.g., '로그인 관련 테스트 추천해줘'"
-              className="w-full bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl py-4 pl-5 pr-14 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 text-gray-900 dark:text-white shadow-sm dark:shadow-inner transition-colors"
-            />
-            <button onClick={() => handleSend()} disabled={isProcessing} className="absolute right-3.5 top-1/2 -translate-y-1/2 p-2.5 bg-indigo-600 text-white rounded-xl active:scale-95 transition-all shadow-lg shadow-indigo-600/20 hover:bg-indigo-500">
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-      <div className="w-[450px] bg-white dark:bg-[#0c0e12] flex flex-col h-full overflow-hidden border-l border-gray-200 dark:border-gray-800 transition-colors">
-        <LiveView status={executionStatus} currentStepIndex={currentStep} availableDevices={activeProject.targetDevices} screenSrc={screenSrc} />
-        <div className="p-6 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/50 transition-colors">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Activity className={`w-4 h-4 ${executionStatus === 'running' ? 'text-indigo-400' : 'text-gray-600'}`} />
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Device Station</span>
-            </div>
-            <div className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${executionStatus === 'running' ? 'bg-indigo-600 text-white animate-pulse' : 'bg-gray-200 dark:bg-gray-800 text-gray-500'}`}>
-              {executionStatus.toUpperCase()}
-            </div>
-          </div>
-          <div className="space-y-4">
-            {executingScriptName && <div className="text-xs font-bold text-gray-900 dark:text-gray-300 truncate">Asset: {executingScriptName}</div>}
-            <div className="w-full h-1 bg-gray-200 dark:bg-gray-900 rounded-full overflow-hidden border border-gray-300 dark:border-gray-800 relative">
-              {executionStatus === 'running' ? (
-                <div className="absolute inset-0 bg-indigo-600 animate-[shimmer_2s_infinite] w-1/3 blur-sm" style={{ transform: 'skewX(-20deg)' }}>
-                  <style>{`
-                        @keyframes shimmer {
-                            0% { left: -50%; }
-                            100% { left: 150%; }
-                        }
-                    `}</style>
+          {/* DASHBOARD: Grid of Approvals & Intelligence */}
+          <div className="w-full grid grid-cols-2 gap-8 mb-4 mt-10 items-stretch">
+
+            {/* Decision Center (Approvals) */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between px-2">
+                <div className="flex items-center gap-2">
+                  <ClipboardCheck className="w-3.5 h-3.5 text-indigo-500" />
+                  <span className={`text-[10px] font-black ${subTextClass} uppercase tracking-[0.2em] transition-colors`}>Decision Center</span>
                 </div>
-              ) : (
-                <div className="h-full bg-indigo-500 transition-all duration-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]" style={{ width: executionStatus === 'success' ? '100%' : '0%' }} />
-              )}
+                <span className={`text-[8px] font-black ${isDark ? 'text-gray-600 border-gray-800' : 'text-gray-400 border-gray-100 bg-white'} uppercase px-2 py-0.5 border rounded-full transition-all`}>{MOCK_APPROVALS.length} Pending</span>
+              </div>
+              <div className="flex flex-col gap-2 h-full">
+                {MOCK_APPROVALS.map(app => (
+                  <div key={app.id} onClick={() => setDrawerItem(app)} className={`p-4 ${cardBgClass} hover:${isDark ? 'bg-white/[0.04]' : 'bg-indigo-50/30'} cursor-pointer transition-all group flex items-center justify-between rounded-[28px] flex-1`}>
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className={`w-1 h-8 rounded-full ${app.urgency === 'high' ? 'bg-indigo-500' : (isDark ? 'bg-gray-800' : 'bg-gray-100')}`} />
+                      <div className="min-w-0">
+                        <span className="text-[8px] font-black text-indigo-500 uppercase tracking-widest mb-0.5 block">{app.type}</span>
+                        <h3 className={`text-xs font-black ${textClass} tracking-tight group-hover:text-indigo-500 transition-colors truncate`}>{app.title}</h3>
+                        <p className={`text-[10px] font-bold ${subTextClass} truncate`}>{app.description}</p>
+                      </div>
+                    </div>
+                    <button className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all active:scale-95">Review</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Intelligence Briefing */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between px-2">
+                <div className="flex items-center gap-2">
+                  <PieChart className="w-3.5 h-3.5 text-emerald-500" />
+                  <span className={`text-[10px] font-black ${subTextClass} uppercase tracking-[0.2em] transition-colors`}>Quality Intelligence</span>
+                </div>
+                <span className="text-[8px] font-bold text-emerald-500 uppercase px-2 py-0.5 bg-emerald-500/10 rounded-full italic border border-emerald-500/20">Optimized</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 h-full">
+                <div className={`p-6 ${cardBgClass} bg-gradient-to-br from-indigo-600/10 to-transparent flex flex-col justify-between rounded-[28px] min-h-[140px]`}>
+                  <div>
+                    <TrendingUp className="w-5 h-5 text-indigo-500 mb-4" />
+                    <span className={`text-[10px] font-black ${subTextClass} uppercase tracking-widest block mb-0.5`}>Weekly Growth</span>
+                    <p className={`text-xl font-black ${textClass} tracking-tighter transition-colors`}>+12% Coverage</p>
+                  </div>
+                  <div className={`w-full h-1 ${isDark ? 'bg-gray-800' : 'bg-gray-100'} rounded-full overflow-hidden mt-4`}>
+                    <div className="h-full bg-indigo-500 w-[65%] shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+                  </div>
+                </div>
+                <div className={`p-6 ${cardBgClass} bg-gradient-to-br from-emerald-600/10 to-transparent flex flex-col justify-between rounded-[28px] min-h-[140px]`}>
+                  <div>
+                    <ShieldCheck className="w-5 h-5 text-emerald-500 mb-4" />
+                    <span className={`text-[10px] font-black ${subTextClass} uppercase tracking-widest block mb-0.5`}>Healed Issues</span>
+                    <p className={`text-xl font-black ${textClass} tracking-tighter transition-colors`}>8 Resolved</p>
+                  </div>
+                  <div className="flex -space-x-2 mt-4">
+                    <div className={`w-8 h-8 rounded-full ${isDark ? 'bg-gray-800' : 'bg-gray-100'} border-2 ${isDark ? 'border-[#0c0e12]' : 'border-white'}`} />
+                    <div className={`w-8 h-8 rounded-full ${isDark ? 'bg-gray-700' : 'bg-gray-200'} border-2 ${isDark ? 'border-[#0c0e12]' : 'border-white'}`} />
+                    <div className="w-8 h-8 rounded-full bg-indigo-600 border-2 border-[#0c0e12] flex items-center justify-center text-[9px] font-black text-white">+5</div>
+                  </div>
+                </div>
+                <div className={`col-span-2 p-6 ${cardBgClass} flex items-center justify-between group cursor-pointer hover:border-indigo-500/30 transition-all rounded-[28px]`}>
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-xl ${isDark ? 'bg-white/5' : 'bg-gray-50 shadow-inner'} flex items-center justify-center group-hover:text-emerald-500 transition-all`}>
+                      <FileText className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className={`text-[9px] font-black ${subTextClass} uppercase tracking-widest block mb-0.5`}>Latest Insight</span>
+                      <h4 className="text-base font-black tracking-tight">Daily QA Executive Summary</h4>
+                    </div>
+                  </div>
+                  <button className={`p-3 rounded-xl ${isDark ? 'bg-white/5' : 'bg-gray-50 shadow-sm'} group-hover:bg-indigo-600 group-hover:text-white transition-all`}><ChevronRight className="w-5 h-5" /></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* FOOTER: Quick Links */}
+        <footer className={`px-10 py-4 border-t ${borderClass} flex items-center justify-center gap-12 transition-colors`}>
+          {[
+            { label: 'Generate Scenarios', icon: Sparkles, color: 'indigo' },
+            { label: 'Asset Library', icon: List, color: 'gray' },
+            { label: 'Test Execution', icon: Play, color: 'emerald' },
+            { label: 'Knowledge Base', icon: Zap, color: 'gray' },
+            { label: 'Project Settings', icon: Key, color: 'gray' }
+          ].map(l => (
+            <button key={l.label} className="flex items-center gap-2 group">
+              <l.icon className={`w-3.5 h-3.5 ${isDark ? 'text-gray-600 group-hover:text-gray-300' : 'text-gray-400 group-hover:text-gray-700'} transition-colors ${l.color !== 'gray' ? `group-hover:text-${l.color}-500` : ''}`} />
+              <span className={`text-[9px] font-black uppercase tracking-[0.2em] ${isDark ? 'text-gray-600 group-hover:text-gray-300' : 'text-gray-400 group-hover:text-gray-700'} transition-colors`}>{l.label}</span>
+            </button>
+          ))}
+        </footer>
+      </div>
+
+      {/* DRAWER: Detail Review */}
+      {drawerItem && (
+        <div className="absolute inset-0 z-[100] flex justify-end">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setDrawerItem(null)} />
+          <div className={`relative w-[500px] h-full ${isDark ? 'bg-[#11141d]' : 'bg-white'} border-l ${borderClass} shadow-2xl animate-in slide-in-from-right duration-500 p-12 flex flex-col transition-colors`}>
+            <div className="flex items-center justify-between mb-12">
+              <span className="text-[11px] font-black text-indigo-500 uppercase tracking-[0.3em] border-b-2 border-indigo-500/20 pb-1">Decision Review</span>
+              <button onClick={() => setDrawerItem(null)} className={`p-2 hover:${isDark ? 'bg-white/5' : 'bg-gray-100'} rounded-full transition-all`}><X className="w-8 h-8 text-gray-400" /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-10 no-scrollbar pr-2">
+              <div>
+                <h2 className="text-3xl font-black tracking-tighter mb-4">{drawerItem.title}</h2>
+                <p className={`text-base font-medium ${subTextClass} leading-relaxed transition-colors`}>{drawerItem.description}</p>
+              </div>
+
+              <div className={`p-8 ${isDark ? 'bg-black/40 border-white/5 shadow-inner' : 'bg-gray-50 border-gray-100 shadow-sm'} rounded-[40px] border space-y-6 transition-colors`}>
+                <div className="flex items-center justify-between text-[11px] font-black text-indigo-500 uppercase tracking-widest">
+                  <span>AI Reasoning Perspective</span>
+                  <Bot className="w-5 h-5" />
+                </div>
+                <p className={`text-sm leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-600'} font-medium`}>
+                  Based on the recent UI updates detected in the staging environment, the existing selector for "Login Submit" was found to be brittle. I have autonomously updated the reference to use the stable Accessibility ID 'btn_login_submit'.
+                </p>
+              </div>
+
+              <div className="space-y-6">
+                <span className={`text-[11px] font-black ${subTextClass} uppercase tracking-[0.2em] block ml-2`}>Proposed Optimization</span>
+                <div className={`p-6 ${isDark ? 'bg-gray-950 border-white/5' : 'bg-white border-gray-100 shadow-md'} rounded-3xl border font-mono text-xs leading-relaxed space-y-1`}>
+                  <div className="text-red-400 opacity-60">- id: "btn-login-03"</div>
+                  <div className="text-emerald-400 font-bold">+ accessible_id: "btn_login_submit"</div>
+                  <div className={`${isDark ? 'text-gray-600' : 'text-gray-400'} mt-2`}>  action: <span className="text-indigo-400">click()</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-12 flex gap-4">
+              <button
+                onClick={() => { onAlert('Success', 'Decision Confirmed.', 'success'); setDrawerItem(null); }}
+                className="flex-1 py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[24px] font-black uppercase tracking-widest text-xs transition-all active:scale-95 shadow-xl shadow-indigo-600/30"
+              >
+                Approve & Execute
+              </button>
+              <button
+                onClick={() => setDrawerItem(null)}
+                className={`px-10 py-5 ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-white border-gray-100 shadow-sm hover:bg-gray-50'} text-gray-400 rounded-[24px] font-black uppercase tracking-widest text-xs transition-all`}
+              >
+                Dismiss
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Animation Styles */}
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes ping {
+          75%, 100% { transform: scale(2); opacity: 0; }
+        }
+        .animate-ping { animation: ping 3s cubic-bezier(0, 0, 0.2, 1) infinite; }
+      `}</style>
     </div>
   );
 };
 
-export default MainConsole;
+export default AgenticHub;

@@ -24,7 +24,7 @@ const KnowledgeRepoView: React.FC<{
                 : 'border-transparent text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'
               }`}
           >
-            <Database className="w-4 h-4" /> DOCUMENT INVENTORY
+            <Database className="w-4 h-4" /> DOCUMENT REPOSITORY
           </button>
           <button
             onClick={() => setActiveTab('MAP')}
@@ -33,7 +33,7 @@ const KnowledgeRepoView: React.FC<{
                 : 'border-transparent text-gray-400 hover:text-gray-900 dark:hover:text-gray-300'
               }`}
           >
-            <MapIcon className="w-4 h-4" /> NAVIGATION MAP
+            <MapIcon className="w-4 h-4" /> ACTION FLOW MAP
           </button>
         </div>
       </div>
