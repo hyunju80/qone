@@ -19,6 +19,7 @@ export interface ExplorationStep {
     observation?: string;
     expected_text?: string;
     screenshot?: string;
+    screenshot_data?: string;
 }
 
 export interface SaveRequest {
@@ -62,10 +63,16 @@ export const explorationApi = {
             user_feedback,
             persona_context,
             override_step,
-            platform
+            platform,
+            capture_screenshots
         };
         const response = await api.post<ExplorationStep>('/exploration/step', payload);
-        return response.data;
+        const data = response.data;
+        // Map backend field to frontend interface
+        if (data.screenshot_data && !data.screenshot) {
+            data.screenshot = data.screenshot_data;
+        }
+        return data;
     },
 
     stop: async (sessionId: string, platform?: string) => {

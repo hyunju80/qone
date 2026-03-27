@@ -146,8 +146,10 @@ const AgenticHub: React.FC<MainConsoleProps> = ({
           </div>
         </header>
 
-        {/* HERO: Command Center */}
-        <section className="flex-none flex flex-col items-center justify-start px-10 max-w-5xl mx-auto w-full pt-4 pb-12">
+        {/* HERO: Command Center (Centered at ~40% height) */}
+        <section className="flex-1 flex flex-col items-center justify-start px-10 w-full overflow-y-visible">
+          <div className="flex-[0.4] h-0" /> {/* Top Spacer to push content down to ~40% position */}
+          <div className="max-w-5xl mx-auto w-full pt-4 pb-12 flex flex-col items-center">
           <div className="w-full mb-8 animate-in fade-in slide-in-from-top-4 duration-1000">
             <h1 className={`text-2xl font-black tracking-tight text-center ${textClass} mb-6 transition-colors`}>
               What is the goal for <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">today?</span>
@@ -258,6 +260,8 @@ const AgenticHub: React.FC<MainConsoleProps> = ({
               </div>
             </div>
           </div>
+          </div>
+          <div className="flex-[0.6]" /> {/* Bottom Spacer to ensure content stays around 40% mark */}
         </section>
 
         {/* FOOTER: Quick Links */}

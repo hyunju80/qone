@@ -33,6 +33,7 @@ import StepRunnerView from './components/StepRunnerView'; // Added
 import DataSetStudio from './components/DataSetStudio'; // Added
 import DesignCenter from './components/DesignCenter/DesignCenter'; // Added
 import KnowledgeRepoView from './components/KnowledgeRepoView';
+import AiAgentLab from './components/AiAgentLab'; // Added
 import Logo from './components/Logo';
 import { ViewMode, TestScript, ScriptStatus, ScriptOrigin, User, Project, Persona, TestHistory, Message, TestSchedule, Device, ApprovalTask, TargetDevice, CustomerAccount, SubscriptionPlan, Scenario } from './types';
 import { MOCK_SCRIPTS, MOCK_USERS, MOCK_PROJECTS, PERSONAS as MOCK_PERSONAS, MOCK_HISTORY, MOCK_SCHEDULES, MOCK_DEVICES, MOCK_TASKS, MOCK_ALL_CUSTOMERS } from './constants';
@@ -118,6 +119,7 @@ const AppContent: React.FC = () => {
       case ViewMode.SCENARIO_GENERATOR: return 'Scenario Generator';
       case ViewMode.AI_GENERATOR: return 'AI Generator';
       case ViewMode.AI_EXPLORATION: return 'AI Exploration';
+      case ViewMode.AI_AGENT_LAB: return 'AI Agent Lab';
       case ViewMode.GENERATOR: return 'Test Generator';
       case ViewMode.DATASET_STUDIO: return 'DataSet Studio';
       case ViewMode.LIBRARY: return 'Asset Library';
@@ -527,8 +529,16 @@ const AppContent: React.FC = () => {
     switch (currentView) {
       case ViewMode.CONSOLE:
         return <MainConsole activeProject={activeProject} assets={filteredScripts} history={filteredHistory} schedules={filteredSchedules} messages={currentConsoleMessages} onMessagesChange={handleConsoleMessagesChange} onAlert={showAlert} />;
-      case ViewMode.AI_EXPLORATION: // Added
+      case ViewMode.AI_EXPLORATION:
         return <AiExploration
+          activeProject={activeProject}
+          personas={personas.filter(p => (p.projectId === activeProject.id || p.projectId === 'global' || !p.projectId) && p.isActive)}
+          onHistoryUpdate={() => {
+            testApi.getHistory(activeProject.id).then(setHistory);
+          }}
+        />;
+      case ViewMode.AI_AGENT_LAB:
+        return <AiAgentLab
           activeProject={activeProject}
           personas={personas.filter(p => (p.projectId === activeProject.id || p.projectId === 'global' || !p.projectId) && p.isActive)}
           onHistoryUpdate={() => {

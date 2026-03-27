@@ -52,7 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, onSwitchPro
       label: 'Test Generation',
       items: [
         { id: ViewMode.AI_GENERATOR, label: 'AI Generator', icon: Sparkles },
-        { id: ViewMode.AI_EXPLORATION, label: 'AI Exploration', icon: Bot },
+        { id: ViewMode.AI_AGENT_LAB, label: 'AI Agent Lab', icon: Bot },
         { id: ViewMode.STEP_RUNNER, label: 'Step Flow', icon: PlaySquare },
       ]
     },

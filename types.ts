@@ -16,7 +16,8 @@ export enum ViewMode {
   CMS = 'cms', // Customer Management System (Super Admin)
   DESIGN_CENTER = 'design_center', // Asset Management
   DATASET_STUDIO = 'dataset_studio',
-  KNOWLEDGE_REPO = 'knowledge_repo'
+  KNOWLEDGE_REPO = 'knowledge_repo',
+  AI_AGENT_LAB = 'ai_agent_lab'
 }
 
 export type UserRole = 'Super Admin' | 'Admin' | 'Manager' | 'QA Engineer' | 'Viewer';
