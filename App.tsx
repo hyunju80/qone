@@ -173,6 +173,7 @@ const AppContent: React.FC = () => {
 
   // Sidebar State (Moved to top level to fix Hook rules)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Default to false for Hub
+  const [activeHistoryTab, setActiveHistoryTab] = useState<'dashboard' | 'history' | 'defects'>('dashboard');
 
   const filteredScripts = useMemo(() => scripts.filter(s => s.projectId === activeProject?.id), [scripts, activeProject]);
   const filteredHistory = useMemo(() => history.filter(h => h.projectId === activeProject?.id), [history, activeProject]);
@@ -528,7 +529,19 @@ const AppContent: React.FC = () => {
     if (!activeProject) return null;
     switch (currentView) {
       case ViewMode.CONSOLE:
-        return <MainConsole activeProject={activeProject} assets={filteredScripts} history={filteredHistory} schedules={filteredSchedules} messages={currentConsoleMessages} onMessagesChange={handleConsoleMessagesChange} onAlert={showAlert} />;
+        return <MainConsole 
+          activeProject={activeProject} 
+          assets={filteredScripts} 
+          history={filteredHistory} 
+          schedules={filteredSchedules} 
+          messages={currentConsoleMessages} 
+          onMessagesChange={handleConsoleMessagesChange} 
+          onAlert={showAlert} 
+          onViewChange={(view: ViewMode, tab?: string) => {
+            setCurrentView(view);
+            if (tab) setActiveHistoryTab(tab as any);
+          }} 
+        />;
       case ViewMode.AI_EXPLORATION:
         return <AiExploration
           activeProject={activeProject}
@@ -642,6 +655,7 @@ const AppContent: React.FC = () => {
           history={filteredHistory}
           scripts={filteredScripts}
           activeProject={activeProject}
+          initialTab={activeHistoryTab}
           onRefresh={() => {
             if (activeProject) {
               testApi.getHistory(activeProject.id)
@@ -697,7 +711,7 @@ const AppContent: React.FC = () => {
           onAlert={showAlert}
         />;
       case ViewMode.REPORTS:
-        return <ReportDashboard history={filteredHistory} scripts={filteredScripts} activeProject={activeProject} />;
+        return <ReportDashboard history={filteredHistory} scripts={filteredScripts} activeProject={activeProject} onAlert={showAlert} />;
       case ViewMode.DATASET_STUDIO:
         return <DataSetStudio activeProject={activeProject} onAlert={showAlert} />;
       case ViewMode.DESIGN_CENTER:

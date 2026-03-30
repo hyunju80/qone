@@ -123,59 +123,58 @@ Language: Korean.
 
 ---
 
-## 3. Autonomous Exploration (자율 주행 및 검증 규격)
+## 3. Agentic Browsing Protocols (에이전틱 브라우징 규격)
+Q-ONE의 자율 브라우징 시스템은 목적에 따라 두 가지 특화된 에이전트 모드로 운영됩니다. 두 모드는 동일한 브라우징 엔진을 공유하지만, 프롬프트의 지향점과 사용자와의 인터랙션 방식에서 차이가 있습니다.
+
+### 3.1. AI Agent Navigator (실험실용: 대화형 탐색 에이전트)
+*   **목적**: 사용자와 실시간으로 소통하며 미지의 UI 경로를 탐색하고 새로운 테스트 시나리오를 발굴.
+*   **LLM 시스템 메시지 (System Prompt)**:
+```text
+You are an AI Agent Navigator in the "AI Agent Lab".
+Goal: {req.goal}
+Persona Context: {req.persona_context}
+Commander's Latest Instruction (User Feedback): {req.user_feedback} 
+
+[CORE MISSION]
+1. Explore the UI dynamically to achieve the requested goal.
+2. If the Commander (User) provides a new instruction via 'user_feedback', prioritize it IMMEDIATELY to override previous plans.
+3. Share your 'thought' process in Korean, explaining WHY you made certain decisions to the user.
+```
+
+### 3.2. AI Scenario Verifier (제너레이터용: 시나리오 검증 에이전트)
+*   **목적**: 이미 생성된 시나리오와 단계(Steps)가 실제 UI에서 충실히 동작하는지 검증하고 확증함.
+*   **LLM 시스템 메시지 (System Prompt)**:
+```text
+You are an AI Scenario Verifier for "AI Generator".
+Scenario to Verify: {req.goal} (Contains structured steps)
+Persona Context: {req.persona_context}
+
+[CORE MISSION]
+1. Follow the provided scenario steps FAITHFULLY. Do not deviate unless the element is missing or UI has changed.
+2. Focus on "Assertion & Landmark Verification". Ensure the 'actual_observed_text' strictly verifies the step outcome.
+3. Report status as 'Failed' if the pre-defined scenario cannot be completed as written.
+```
+
+### 3.3. Common Prompt Logic & Output (공통 추론 및 입출력 규격)
 *   **진입점**: `/exploration/step`
 *   **모델**: 지연 속도를 고려하여 `flash` 모델 선호.
 
-### 3.1. Full Step Prompt (단계별 결정 프롬프트)
-```text
-You are a Self-Driving Browser Agent.
-Goal: {req.goal}
-Persona Context: {req.persona_context}
-User's Latest Feedback / Instruction: {req.user_feedback}
+#### CRITICAL RULES (공통 규칙)
+1.  **ASSERTION VERIFICATION (actual_observed_text)**: 현재 화면에서 발견된 **이전 단계 성공의 증거(Landmark)** 문자열을 반드시 추출하여 기록. (가장 중요)
+2.  **ASSERTION PREDICTION (expected_text)**: 다음 액션 후 나타날 것으로 예상되는 **EXACT 문자열** 미리 예측.
+3.  **STUCK PREVENTION**: 3회 이상 동일 루프 반복 시 'Failed' 처리 및 원인 기술.
+4.  **LANGUAGE**: 모든 'thought', 'observation', 'description' 필드는 **한국어**로 작성.
 
-My Context: {user_context_str}
-
-Current Page: {state['title']} ({state['url']})
-UI Structure (Simplified HTML/XML): {state['html_structure']}
-
-History: {req.history}
-
-Task: Determine the NEXT interaction to move towards the goal.
-
-[CRITICAL RULES for Action Selection]
-1. LOADING WAIT: 3-5초 대기 액션 허용.
-2. STUCK PREVENTION: 알 수 없는 화면에서는 'Failed' 처리.
-3. SCROLLING: 목표 요소가 보이지 않으면 'scroll' 액션 사용.
-4. LOGIN: ID/PW 입력 우선. {{USERNAME}}, {{PASSWORD}} 플레이스홀더 사용 가능.
-5. MULTI-STEP GOALS: 최종 단계까지 'Completed' 지연.
-6. APP SELECTORS: 'accessibility_id' 우선, 텍스트 기반 선택자 활용.
-7. LANGUAGE: 'thought'와 'description'은 반드시 한국어(한국어)로 작성.
-8. ASSERTION PREDICTION (expected_text): 다음 화면에서 나타날 EXACT 문자열 예측.
-9. ASSERTION VERIFICATION (actual_observed_text): 현재 화면에서 발견된 이전 단계 성공의 증거(Landmark Landmark) 문자열 추출. (가장 중요)
-
-Safety Instruction:
-- Never hallucinate passwords.
-- If the field assumes an ID/Email, set action_value to '{{USERNAME}}'.
-- If the field assumes a Password, set action_value to '{{PASSWORD}}'.
-```
-
-### 3.2. Response Schema (ExplorationStep)
+#### Output Schema (JSON)
 ```json
 {
-  "step_number": "integer",
-  "matching_score": "0-100",
-  "score_breakdown": {
-    "Goal_Alignment": "0-100",
-    "Page_Relevance": "0-100",
-    "Action_Confidence": "0-100"
-  },
-  "observation": "현재 화면 관찰 결과 (Landmark 확인 포함)",
-  "thought": "동작 수행 근거 및 사고 과정 (한국어 필수)",
+  "step_number": N,
+  "matching_score": 0-100,
+  "observation": "직전 단계 결과 관찰 내용",
+  "thought": "에이전트의 사고 과정 및 판단 근거",
   "action_type": "click/type/scroll/wait/finish",
-  "action_target": "css_selector (또는 Appium Selector)",
-  "action_value": "입력값 (플레이스홀더 포함)",
-  "expectation": "동작 후 기대 상황 (Expected Outcome)",
+  "action_target": "css_selector or xpath",
+  "action_value": "입력값 또는 스크롤 방향",
   "expected_text": "다음 화면 예측 문자열 (Next State Assertion)",
   "actual_observed_text": "현재 화면 관찰 문자열 (Previous Step Verification)",
   "description": "사용자 화면용 요약 문구",
@@ -184,8 +183,8 @@ Safety Instruction:
 ```
 
 #### 사용 시점 (Trigger)
-*   **UI**: 'AI Exploration' 메뉴에서 목표(Goal)와 페르소나 설정 후 'Start' 버튼 클릭 시 실행.
-*   **Flow**: 'Self-Driving Browser Agent'로서 매 루프마다 현재 화면을 분석하고 다음 행동을 결정하는 실시간 루프로 작동함.
+*   **AI Agent Lab**: 사용자의 실시간 지시 및 목표 달성 시까지 무한 루프 주행.
+*   **Auto-Verification**: 설계된 시나리오의 마지막 스텝을 완료할 때까지 순차 주행.
 
 
 ---
@@ -448,13 +447,24 @@ graph TD
     D --> E["Test Step Asset (JSON)"]
 ```
 
-### 10.2. Workflow 2: AI Exploration (Goal/Persona-Driven)
+### 10.2. Workflow 2: AI Agent Lab (Navigator Agent)
+사용자와의 실시간 피드백 루프를 통한 자율 탐색 및 미션 수행 워크플로입니다.
 ```mermaid
 graph TD
-    I["Goal & Persona Input"] --> J{{"Agent: Autonomous Explorer"}}
-    J -- "Discovery Trace" --> K{{"LLM: Asset Synthesizer"}}
-    K -- "Scenario & Steps" --> L["Unified AssetManager"]
-    L --> M["Test Step Asset (Scenario + Steps)"]
+    I["Real-time Instruction & Goal"] --> J{{"Agent: AI Navigator (Lab Mode)"}}
+    J -- "Interactive Trace" --> K{{"LLM: Asset Synthesizer"}}
+    K -- "Validated Scenario & Steps" --> L["Unified AssetManager"]
+    L --> M["Test Step Asset (Discovery)"]
+```
+
+### 10.3. Workflow 3: AI Generator Verify (Verifier Agent)
+설계된 시나리오의 정합성을 실제 환경에서 자율 주행으로 확증하는 워크플로입니다.
+```mermaid
+graph TD
+    N["Structured Scenario Steps"] --> O{{"Agent: AI Verifier (Validation Mode)"}}
+    O -- "Success/Failure Trace" --> P{{"LLM: Stability Analyst"}}
+    P -- "Refined Selectors & Assertions" --> Q["Unified AssetManager"]
+    Q --> R["Golden Test Asset (Certified)"]
 ```
 
 ![AI Unified Workflow](./images/ai_unified_workflow.png)

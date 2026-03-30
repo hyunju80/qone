@@ -1,8 +1,20 @@
-from sqlalchemy import Column, String, ForeignKey, DateTime, JSON
+from sqlalchemy import Column, String, ForeignKey, DateTime, JSON, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.db.base_class import Base
+
+class ProjectInsight(Base):
+    __tablename__ = "projectinsight"
+    id = Column(String, primary_key=True, index=True)
+    project_id = Column(String, ForeignKey("project.id"), index=True)
+    insight_type = Column(String, default='EXECUTIVE_SUMMARY')
+    title = Column(String)
+    content_markdown = Column(Text)
+    insight_metadata = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    project = relationship("Project", back_populates="insights")
 
 class Project(Base):
     id = Column(String, primary_key=True, index=True)
@@ -21,6 +33,7 @@ class Project(Base):
     scripts = relationship("TestScript", back_populates="project")
     personas = relationship("Persona", back_populates="project")
     scenarios = relationship("Scenario", back_populates="project")
+    insights = relationship("ProjectInsight", back_populates="project", cascade="all, delete-orphan")
     schedules = relationship("TestSchedule", back_populates="project")
     access = relationship("ProjectAccess", back_populates="project")
 

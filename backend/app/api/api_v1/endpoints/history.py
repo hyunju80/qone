@@ -1,14 +1,64 @@
-from typing import Any, List
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app import crud, models, schemas
 from app.schemas import self_healing
 from app.api import deps
-from app.models.test import TestScript, SelfHealingLog
+from app.models.test import TestHistory, TestScript
+from app.models.project import ProjectInsight
+from app.schemas.test_history import TestHistoryCreate, TestHistorySummary, ProjectInsightCreate, ProjectInsight as ProjectInsightSchema
+import uuid
 
 router = APIRouter()
+
+@router.post("/projects/{project_id}/insights", response_model=ProjectInsightSchema)
+def save_project_insight(
+    project_id: str,
+    insight_in: ProjectInsightCreate,
+    db: Session = Depends(deps.get_db)
+):
+    """
+    Saves a new project insight (AI Report).
+    """
+    insight = ProjectInsight(
+        id=str(uuid.uuid4()),
+        project_id=project_id,
+        **insight_in.dict()
+    )
+    db.add(insight)
+    db.commit()
+    db.refresh(insight)
+    return insight
+
+@router.get("/projects/{project_id}/insights", response_model=List[ProjectInsightSchema])
+def get_project_insights(
+    project_id: str,
+    db: Session = Depends(deps.get_db)
+):
+    """
+    Gets all insights for a project.
+    """
+    from app.models.project import ProjectInsight
+    return db.query(ProjectInsight)\
+        .filter(ProjectInsight.project_id == project_id)\
+        .order_by(ProjectInsight.created_at.desc())\
+        .all()
+
+@router.get("/projects/{project_id}/insights/latest", response_model=Optional[ProjectInsightSchema])
+def get_latest_insight(
+    project_id: str,
+    db: Session = Depends(deps.get_db)
+):
+    """
+    Gets the most recent insight for a project.
+    """
+    from app.models.project import ProjectInsight
+    return db.query(ProjectInsight)\
+        .filter(ProjectInsight.project_id == project_id)\
+        .order_by(ProjectInsight.created_at.desc())\
+        .first()
 
 @router.get("/", response_model=List[schemas.TestHistory])
 def read_history(
@@ -37,11 +87,17 @@ def read_history_summary(
     """
     Get summary statistics for history.
     """
-    from app.models.test import TestHistory
+    from app.models.test import TestHistory, TestScript
+    from datetime import datetime, timedelta
     
     if not project_id:
-        return {"total": 0, "passed": 0, "failed": 0, "rate": 0, "pipelineRuns": 0, "scheduledRuns": 0}
+        return {
+            "total": 0, "passed": 0, "failed": 0, "rate": 0, 
+            "pipelineRuns": 0, "scheduledRuns": 0,
+            "total_assets": 0, "active_defects": 0, "weekly_growth": 0
+        }
     
+    # 1. Base Execution Stats
     total = db.query(TestHistory).filter(TestHistory.project_id == project_id).count()
     passed = db.query(TestHistory).filter(TestHistory.project_id == project_id, TestHistory.status == 'passed').count()
     failed = total - passed
@@ -49,13 +105,52 @@ def read_history_summary(
     pipelineRuns = db.query(TestHistory).filter(TestHistory.project_id == project_id, TestHistory.trigger == 'pipeline').count()
     scheduledRuns = db.query(TestHistory).filter(TestHistory.project_id == project_id, TestHistory.trigger == 'scheduled').count()
     
+    # 2. Asset Stats (Golden Asset Fleet)
+    total_assets = db.query(TestScript).filter(TestScript.project_id == project_id).count()
+    
+    # Weekly growth: Created in the last 7 days
+    weekly_growth = 0
+    try:
+        seven_days_ago = datetime.utcnow() - timedelta(days=7)
+        weekly_growth = db.query(TestScript).filter(
+            TestScript.project_id == project_id,
+            TestScript.created_at >= seven_days_ago
+        ).count()
+    except Exception as e:
+        print(f"DEBUG: Failed to calculate weekly growth: {e}")
+        weekly_growth = 0
+
+    # 3. Active Defects (Latest run is failed)
+    # Optimized: Get the latest history for each script in this project
+    # Use joinedload to fetch script origin efficiently
+    all_recent = db.query(TestHistory).filter(
+        TestHistory.project_id == project_id
+    ).options(joinedload(TestHistory.script)).order_by(TestHistory.run_date.desc()).all()
+    
+    seen_scripts = set()
+    active_defects = 0
+    active_defects_by_origin = {"AI": 0, "STEP": 0, "AI_EXPLORATION": 0, "MANUAL": 0}
+    
+    for h in all_recent:
+        if h.script_id and h.script_id not in seen_scripts:
+            seen_scripts.add(h.script_id)
+            if h.status == 'failed':
+                active_defects += 1
+                if h.script:
+                    origin = h.script.origin or "MANUAL"
+                    active_defects_by_origin[origin] = active_defects_by_origin.get(origin, 0) + 1
+    
     return {
         "total": total,
         "passed": passed,
         "failed": failed,
         "rate": rate,
         "pipelineRuns": pipelineRuns,
-        "scheduledRuns": scheduledRuns
+        "scheduledRuns": scheduledRuns,
+        "total_assets": total_assets,
+        "active_defects": active_defects,
+        "weekly_growth": weekly_growth,
+        "active_defects_by_origin": active_defects_by_origin
     }
 
 @router.post("/", response_model=schemas.TestHistory)
@@ -163,9 +258,61 @@ def read_all_healed_assets(
     """
     Get all unique assets that have been healed.
     """
-    # Return all successful healings ordered by date
-    logs = db.query(SelfHealingLog).filter(SelfHealingLog.status == "success").order_by(SelfHealingLog.created_at.desc()).all()
-    return logs
+    all_logs = db.query(SelfHealingLog).filter(
+        SelfHealingLog.status == "success"
+    ).order_by(SelfHealingLog.created_at.desc()).all()
+    
+    seen_scripts = set()
+    unique_logs = []
+    for log in all_logs:
+        if log.script_id not in seen_scripts:
+            unique_logs.append(log)
+            seen_scripts.add(log.script_id)
+            
+    return unique_logs
+
+@router.get("/pending-healing/list", response_model=List[schemas.TestHistory])
+def read_pending_healing(
+    *,
+    db: Session = Depends(deps.get_db),
+    project_id: str
+) -> Any:
+    """
+    Get all failed test histories for scripts that have self-healing enabled.
+    Only returns the latest failure for each unique script.
+    """
+    from app.models.test import TestScript, TestHistory, SelfHealingLog
+    
+    # 1. Fetch ALL recent histories for the project, ordered by newest first
+    all_recent_history = db.query(TestHistory).options(
+        joinedload(TestHistory.script)
+    ).filter(
+        TestHistory.project_id == project_id
+    ).order_by(TestHistory.run_date.desc()).all()
+
+    # 2. De-dupe by script_id to get the LATEST state for each script
+    seen_scripts = set()
+    pending = []
+    
+    for history in all_recent_history:
+        if not history.script_id:
+            continue
+            
+        if history.script_id not in seen_scripts:
+            seen_scripts.add(history.script_id)
+            
+            # Check if the LATEST state is 'failed' and AI-Healing is enabled
+            if history.status == "failed" and history.script and history.script.enable_ai_test:
+                # 3. Exclude if healing is already successful for THIS specific failure
+                already_healed = db.query(SelfHealingLog).filter(
+                    SelfHealingLog.history_id == history.id,
+                    SelfHealingLog.status == "success"
+                ).first()
+                
+                if not already_healed:
+                    pending.append(history)
+                
+    return pending
 
 @router.post("/{history_id}/jira", response_model=schemas.TestHistory)
 def assign_jira(

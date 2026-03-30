@@ -8,7 +8,7 @@ import {
    PieChart, LineChart, Star, Search, X, Loader2,
    FileCode, Terminal, RefreshCw, ChevronRight, Globe, Database,
    Layers, MousePointer2, Shield, Printer, Share2, ClipboardCheck,
-   Info, Target, FileDown, Clock, Cpu, ChevronDown
+   Info, Target, FileDown, Clock, Cpu, ChevronDown, Save
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { TestHistory, TestScript, Project, ScriptStatus, ScriptOrigin } from '../types';
@@ -19,9 +19,11 @@ interface ReportDashboardProps {
    history: TestHistory[];
    scripts: TestScript[];
    activeProject: Project;
+   onAlert?: (title: string, msg: string, type?: 'success' | 'error' | 'info') => void;
+   initialTab?: string;
 }
 
-const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, activeProject }) => {
+const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, activeProject, onAlert, initialTab = 'summary' }) => {
    const [isExporting, setIsExporting] = useState(false);
    const [exportStep, setExportStep] = useState('');
    const [showFilter, setShowFilter] = useState(false);
@@ -29,6 +31,27 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
    const [activeTrace, setActiveTrace] = useState<any>(null);
    const [showReportPreview, setShowReportPreview] = useState(false);
    const [reportContent, setReportContent] = useState<string>('');
+   const [reportTitle, setReportTitle] = useState<string>('');
+   const [isSaving, setIsSaving] = useState(false);
+   
+   const [mainTab, setMainTab] = useState<'summary' | 'saved'>(initialTab === 'saved' ? 'saved' : 'summary');
+   const [savedInsights, setSavedInsights] = useState<any[]>([]);
+   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+
+   React.useEffect(() => {
+      if (initialTab === 'saved') setMainTab('saved');
+      else setMainTab('summary');
+   }, [initialTab]);
+
+   React.useEffect(() => {
+      if (mainTab === 'saved') {
+         setIsLoadingInsights(true);
+         testApi.getInsights(activeProject.id)
+            .then(data => setSavedInsights(data || []))
+            .catch(e => console.error("Failed to load insights:", e))
+            .finally(() => setIsLoadingInsights(false));
+      }
+   }, [mainTab, activeProject.id]);
 
    const filteredHistory = useMemo(() => {
       const now = new Date();
@@ -107,23 +130,23 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
       // Defect Management
       const defectRelatedRuns = filteredHistory.filter(h => h.status === 'failed' || (h.healing_logs && h.healing_logs.length > 0) || h.jira_id);
       const defectAssetsMap = new Map();
-      
+
       defectRelatedRuns.forEach(h => {
          const assetId = h.scriptId || (h as any).ai_summary || h.id;
          if (!defectAssetsMap.has(assetId)) {
             let detailedError = '';
-               if (h.step_results && Array.isArray(h.step_results)) {
-                  const failedStep = h.step_results.find((s: any) => s.status === 'failed' || s.error_message);
-                  if (failedStep && failedStep.error_message) detailedError = failedStep.error_message;
-               }
-               // Attempt to extract detailed error from ai_session steps (ai)
-               if (!detailedError && (h as any).ai_session?.steps_data && Array.isArray((h as any).ai_session.steps_data)) {
-                  const failedAIStep = (h as any).ai_session.steps_data.find((s: any) => s.status === 'failed' || s.error_message);
-                  if (failedAIStep && failedAIStep.error_message) detailedError = failedAIStep.error_message;
-               }
-               
-               const rawReason = h.failureReason || '';
-               const finalReason = detailedError ? `${rawReason}${rawReason ? ': ' : ''}${detailedError}` : (rawReason || 'Unknown Error');
+            if (h.step_results && Array.isArray(h.step_results)) {
+               const failedStep = h.step_results.find((s: any) => s.status === 'failed' || s.error_message);
+               if (failedStep && failedStep.error_message) detailedError = failedStep.error_message;
+            }
+            // Attempt to extract detailed error from ai_session steps (ai)
+            if (!detailedError && (h as any).ai_session?.steps_data && Array.isArray((h as any).ai_session.steps_data)) {
+               const failedAIStep = (h as any).ai_session.steps_data.find((s: any) => s.status === 'failed' || s.error_message);
+               if (failedAIStep && failedAIStep.error_message) detailedError = failedAIStep.error_message;
+            }
+
+            const rawReason = h.failureReason || '';
+            const finalReason = detailedError ? `${rawReason}${rawReason ? ': ' : ''}${detailedError}` : (rawReason || 'Unknown Error');
 
             defectAssetsMap.set(assetId, {
                assetId,
@@ -145,7 +168,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
             if (h.healing_logs && h.healing_logs.length > 0) existing.hasHealing = true;
             if (new Date(h.runDate) > new Date(existing.lastFailureDate)) {
                existing.lastFailureDate = h.runDate;
-               
+
                let detailedError = '';
                if (h.step_results && Array.isArray(h.step_results)) {
                   const failedStep = h.step_results.find((s: any) => s.status === 'failed' || s.error_message);
@@ -155,16 +178,16 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                   const failedAIStep = (h as any).ai_session.steps_data.find((s: any) => s.status === 'failed' || s.error_message);
                   if (failedAIStep && failedAIStep.error_message) detailedError = failedAIStep.error_message;
                }
-               
+
                if (detailedError || h.failureReason) {
-                   const rawReason = h.failureReason || '';
-                   existing.latestReason = detailedError ? `${rawReason}${rawReason ? ': ' : ''}${detailedError}` : rawReason;
+                  const rawReason = h.failureReason || '';
+                  existing.latestReason = detailedError ? `${rawReason}${rawReason ? ': ' : ''}${detailedError}` : rawReason;
                }
                existing.latestRecord = h;
             }
          }
       });
-      
+
       const defectAssetsList = Array.from(defectAssetsMap.values());
       let severityDist = { critical: 0, high: 0, medium: 0, low: 0 };
       let resolutionStatus = { jira: 0, healed: 0, open: 0 };
@@ -172,11 +195,11 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
       defectAssetsList.forEach(asset => {
          const totalAssetRuns = filteredHistory.filter(h => h.scriptId === asset.assetId || (h as any).ai_summary === asset.assetId).length;
          const scriptFailRate = totalAssetRuns > 0 ? Math.round((asset.failureCount / totalAssetRuns) * 100) : 100;
-         
+
          const priorityWeight = asset.priority === 'Critical' ? 100 : asset.priority === 'High' ? 80 : asset.priority === 'Medium' ? 50 : 20;
          const failVolume = Math.min(asset.failureCount * 10, 100);
          const importance = Math.round((priorityWeight * 0.4) + (scriptFailRate * 0.3) + (failVolume * 0.3));
-         
+
          // Only count severity for assets that actually failed
          if (asset.failureCount > 0) {
             if (importance >= 80) severityDist.critical++;
@@ -187,7 +210,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
 
          if (asset.hasHealing) resolutionStatus.healed++;
          if (asset.hasJira) resolutionStatus.jira++;
-         
+
          if (asset.failureCount > 0 && !asset.hasHealing && !asset.hasJira) {
             resolutionStatus.open++;
          }
@@ -224,7 +247,27 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
       return pts.length > 0 ? pts : [0, 0, 0, 0, 0, 0, 0];
    }, [filteredHistory]);
 
-   // ... (rest of export logic)
+   const handleSaveInsight = async () => {
+      if (!reportContent || isSaving) return;
+      setIsSaving(true);
+      try {
+         await testApi.saveInsight(activeProject.id, {
+            title: reportTitle || `Executive Intelligence Report - ${new Date().toLocaleDateString()}`,
+            content_markdown: reportContent,
+            insight_type: 'EXECUTIVE_SUMMARY'
+         });
+         if (onAlert) {
+            onAlert("Saved", "Report has been pinned as the Latest Insight on the Hub.", "success");
+         } else {
+            alert("Report saved successfully!");
+         }
+      } catch (error) {
+         console.error('Save failed:', error);
+         if (onAlert) onAlert("Error", "Failed to save report to Hub.", "error");
+      } finally {
+         setIsSaving(false);
+      }
+   };
 
    const handleExport = async () => {
       setIsExporting(true);
@@ -265,6 +308,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
          const response = await api.post('/exploration/analyze_report', payload);
 
          if (response.data && response.data.report_markdown) {
+            setReportTitle(`Executive Intelligence Report - ${new Date().toLocaleDateString()}`);
             setReportContent(response.data.report_markdown);
             setShowReportPreview(true);
          } else {
@@ -294,40 +338,52 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                </p>
             </div>
             <div className="flex gap-3 relative">
-               <div className="relative">
+               {mainTab === 'summary' && (
+                  <div className="relative">
+                     <button
+                        onClick={() => setShowFilter(!showFilter)}
+                        className={`flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-gray-900 border transition-all rounded-xl text-[10px] font-black uppercase ${showFilter ? 'border-indigo-500 text-indigo-600 dark:text-white shadow-[0_0_15px_rgba(99,102,241,0.3)]' : 'border-gray-200 dark:border-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
+                     >
+                        <Filter className="w-4 h-4" /> {selectedRange}
+                     </button>
+                     {showFilter && (
+                        <div className="absolute top-full mt-2 right-0 w-48 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl z-50 p-2 overflow-hidden animate-in fade-in slide-in-from-top-2 transition-colors">
+                           {['Last 24 Hours', 'Last 7 Days', 'Last 30 Days', 'Custom Range'].map(range => (
+                              <button
+                                 key={range}
+                                 onClick={() => { setSelectedRange(range); setShowFilter(false); }}
+                                 className={`w-full text-left px-4 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${selectedRange === range ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                              >
+                                 {range}
+                              </button>
+                           ))}
+                        </div>
+                     )}
+                  </div>
+               )}
+               {mainTab === 'summary' && (
                   <button
-                     onClick={() => setShowFilter(!showFilter)}
-                     className={`flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-gray-900 border transition-all rounded-xl text-[10px] font-black uppercase ${showFilter ? 'border-indigo-500 text-indigo-600 dark:text-white shadow-[0_0_15px_rgba(99,102,241,0.3)]' : 'border-gray-200 dark:border-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
+                     onClick={handleExport}
+                     disabled={isExporting}
+                     className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 transition-all rounded-xl text-[10px] font-black uppercase text-white shadow-xl shadow-indigo-600/20 disabled:opacity-50 min-w-[180px] justify-center"
                   >
-                     <Filter className="w-4 h-4" /> {selectedRange}
+                     {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                     {isExporting ? exportStep : 'Export Intelligence'}
                   </button>
-                  {showFilter && (
-                     <div className="absolute top-full mt-2 right-0 w-48 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl z-50 p-2 overflow-hidden animate-in fade-in slide-in-from-top-2 transition-colors">
-                        {['Last 24 Hours', 'Last 7 Days', 'Last 30 Days', 'Custom Range'].map(range => (
-                           <button
-                              key={range}
-                              onClick={() => { setSelectedRange(range); setShowFilter(false); }}
-                              className={`w-full text-left px-4 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${selectedRange === range ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300'}`}
-                           >
-                              {range}
-                           </button>
-                        ))}
-                     </div>
-                  )}
-               </div>
-               <button
-                  onClick={handleExport}
-                  disabled={isExporting}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 transition-all rounded-xl text-[10px] font-black uppercase text-white shadow-xl shadow-indigo-600/20 disabled:opacity-50 min-w-[180px] justify-center"
-               >
-                  {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                  {isExporting ? exportStep : 'Export Intelligence'}
-               </button>
+               )}
             </div>
          </div>
 
-         {/* Main Dashboard Layout (Rest of UI) */}
-         <div className="mb-10">
+         {/* Main Tabs */}
+         <div className="flex gap-6 mb-10 border-b border-gray-200 dark:border-gray-800">
+            <button onClick={() => setMainTab('summary')} className={`px-2 py-4 text-xs font-black uppercase tracking-wider transition-all border-b-2 -mb-px ${mainTab === 'summary' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-400 hover:text-gray-800 dark:hover:text-gray-300'}`}>Report Summary</button>
+            <button onClick={() => setMainTab('saved')} className={`px-2 py-4 text-xs font-black uppercase tracking-wider transition-all border-b-2 -mb-px ${mainTab === 'saved' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-400 hover:text-gray-800 dark:hover:text-gray-300'}`}>Saved Insights</button>
+         </div>
+
+         {mainTab === 'summary' ? (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col w-full">
+               {/* Main Dashboard Layout (Rest of UI) */}
+               <div className="mb-10">
             <div className="flex items-center justify-between mb-6">
                <div className="flex items-center gap-3">
                   <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
@@ -412,7 +468,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
 
                <div className="bg-indigo-50 dark:bg-indigo-600/10 border border-indigo-200 dark:border-indigo-500/20 rounded-[2.5rem] p-8 flex flex-col justify-center relative overflow-hidden h-full shadow-lg transition-colors">
                   <div className="absolute top-0 right-0 p-6 opacity-10 rotate-12"><Shield className="w-32 h-32 text-indigo-400" /></div>
-                   <div className="relative z-10">
+                  <div className="relative z-10">
                      <div className="text-[10px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest mb-2 transition-colors">
                         {activeTab === 'ai_gen' ? 'AI Generation Impact' : 'Step Flow Reusability'}
                      </div>
@@ -432,7 +488,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                      </div>
                      <p className="text-xs text-indigo-600/80 dark:text-indigo-300/80 leading-relaxed font-medium transition-colors">
                         {activeTab === 'ai_gen' ? 'Assets autonomously discovered or generated by AI via exploration and scenario conversion.' :
-                                 'Modular step assets and manual flows ensuring consistent reliability.'}
+                           'Modular step assets and manual flows ensuring consistent reliability.'}
                      </p>
                   </div>
                </div>
@@ -510,7 +566,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                      <p className="text-[10px] text-gray-400 font-medium ml-[52px]">Importance score categorizations integrating Priority, Fail Rate, and Fail Volume.</p>
                   </div>
                </div>
-               
+
                <div className="flex-1 flex flex-col justify-center gap-6 mt-4">
                   {[
                      { label: 'Critical (80-100)', value: stats.severityDist.critical, count: stats.severityDist.critical, color: 'bg-red-500', textInfo: 'text-red-500' },
@@ -543,7 +599,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                   </div>
                   <p className="text-[10px] text-gray-400 font-medium ml-[52px]">Tracking issue resolution workflows.</p>
                </div>
-               
+
                <div className="flex-1 flex flex-col justify-center gap-4 relative">
                   {/* Resolution Types - Independent Bars */}
                   {[
@@ -589,7 +645,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                   (stats.failedAssetsList || []).forEach(asset => {
                      if (asset.failureCount === 0) return;
                      const reason = (asset.latestReason || '').toLowerCase();
-                     
+
                      if (reason.includes('timeout') || reason.includes('exceeded') || reason.includes('waiting')) {
                         clusters[1].assets.push(asset);
                      } else if (reason.includes('selector') || reason.includes('element') || reason.includes('visible') || reason.includes('not found') || reason.includes('clickable') || reason.includes('intercepted')) {
@@ -632,7 +688,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                                     {cluster.assets.reduce((sum, a) => sum + a.failureCount, 0)} Total Failures
                                  </div>
                               </div>
-               
+
                               {/* Asset List Section */}
                               <div className="flex-1 p-5 overflow-y-auto custom-scrollbar space-y-4 bg-gray-50/30 dark:bg-black/20">
                                  {cluster.assets.length === 0 ? (
@@ -645,7 +701,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                                              <div className="font-bold text-gray-800 dark:text-gray-200 text-sm leading-snug break-all">
                                                 {asset.assetName}
                                              </div>
-                                             <button 
+                                             <button
                                                 onClick={async () => {
                                                    try {
                                                       const detail = await testApi.getHistoryDetail(asset.latestRecord.id);
@@ -653,25 +709,25 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                                                    } catch (e) {
                                                       console.error("Failed to load history detail:", e);
                                                    }
-                                                }} 
+                                                }}
                                                 className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/40 transition-colors flex-shrink-0 shadow-sm absolute -top-1 -right-1"
                                                 title="Investigate"
                                              >
                                                 <Search className="w-4 h-4" />
                                              </button>
                                           </div>
-                                          
+
                                           <div className="flex flex-wrap items-center gap-2">
                                              {asset.hasHealing && <span className="bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border border-green-200 dark:border-transparent">Healed</span>}
                                              <div className="text-[10px] text-red-500 font-bold flex items-center gap-1 bg-red-50 dark:bg-red-500/10 px-2 py-0.5 rounded-full border border-red-100 dark:border-transparent">
                                                 <Shield className="w-3 h-3" /> {asset.failureCount} Failures
                                              </div>
                                           </div>
-                                          
+
                                           <div className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug line-clamp-3 mt-1 pt-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-transparent rounded-b-xl px-1 -mb-1 pb-1 font-medium">
                                              {asset.latestReason || 'No detailed error message.'}
                                           </div>
-                                          
+
                                           <div className="text-[9px] text-gray-400 font-mono mt-2 w-full text-right bg-transparent">
                                              {new Date(asset.lastFailureDate).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                           </div>
@@ -686,6 +742,44 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                })()}
             </div>
          </div>
+      </div>
+   ) : (
+            <div className="animate-in fade-in duration-300">
+               {isLoadingInsights ? (
+                  <div className="flex justify-center p-32"><Loader2 className="w-10 h-10 animate-spin text-indigo-500 opacity-50" /></div>
+               ) : savedInsights.length === 0 ? (
+                  <div className="text-center p-32 text-gray-400 font-medium bg-gray-50 dark:bg-[#16191f] rounded-3xl border border-dashed border-gray-200 dark:border-gray-800">
+                     <FileText className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                     <p>No saved intelligence reports were found.</p>
+                     <p className="text-xs mt-2 opacity-60">Reports saved from the Summary view will appear here.</p>
+                  </div>
+               ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                     {savedInsights.map(insight => (
+                        <div key={insight.id} onClick={() => { setReportContent(insight.content_markdown); setReportTitle(insight.title || 'Executive Intelligence Report'); setShowReportPreview(true); }} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 p-8 rounded-[2rem] flex flex-col justify-between cursor-pointer hover:border-indigo-500/50 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all group overflow-hidden relative">
+                           <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl group-hover:bg-indigo-500/10 transition-colors pointer-events-none" />
+                           <div>
+                              <div className="flex items-center gap-3 mb-6">
+                                 <div className="p-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl group-hover:scale-110 transition-transform"><FileText className="w-5 h-5" /></div>
+                                 <div className="min-w-0 flex-1">
+                                    <h3 className="text-sm font-black text-gray-900 dark:text-white truncate">{insight.title || 'Untitled Report'}</h3>
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mt-0.5">{new Date(insight.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                 </div>
+                              </div>
+                              <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium line-clamp-4 leading-relaxed bg-gray-50 dark:bg-black/20 p-4 rounded-xl border border-gray-100 dark:border-white/5">
+                                 {insight.content_markdown.replace(/[#*`_>]/g, '').substring(0, 180)}...
+                              </p>
+                           </div>
+                           <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                              <span className="text-[9px] font-black uppercase tracking-widest text-indigo-500 dark:text-indigo-400">View Full Briefing</span>
+                              <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-indigo-500 transition-colors" />
+                           </div>
+                        </div>
+                     ))}
+                  </div>
+               )}
+            </div>
+         )}
 
          {/* REPORT PREVIEW MODAL */}
          {
@@ -712,12 +806,22 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                      <div className="flex-1 overflow-auto p-12 custom-scrollbar print:overflow-visible print:h-auto print:p-0">
                         <div className="flex items-center justify-between mb-8 print:hidden">
                            <h1 className="text-3xl font-black text-gray-900">Executive Intelligence Report</h1>
-                           <button
-                              onClick={() => window.print()}
-                              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg hover:shadow-indigo-500/20"
-                           >
-                              <Printer className="w-4 h-4" /> Download PDF / Print
-                           </button>
+                           <div className="flex gap-3">
+                              <button
+                                 onClick={handleSaveInsight}
+                                 disabled={isSaving}
+                                 className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl font-bold hover:bg-indigo-50 transition-all shadow-sm disabled:opacity-50"
+                              >
+                                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                                 Save as Insight
+                              </button>
+                              <button
+                                 onClick={() => window.print()}
+                                 className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg hover:shadow-indigo-500/20"
+                              >
+                                 <Printer className="w-4 h-4" /> Download
+                              </button>
+                           </div>
                         </div>
 
                         <div className="prose prose-lg max-w-none text-gray-700 bg-white p-10 rounded-xl border border-gray-200 shadow-sm print:shadow-none print:border-none print:p-0 print:prose-sm">
@@ -851,7 +955,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                      <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-6 rounded-2xl font-mono text-sm mb-8 border border-red-100 dark:border-red-900/30">
                         {activeTrace.failureReason || activeTrace.error_msg || 'No specific error message captured.'}
                      </div>
-                     
+
                      {activeTrace.type === 'ai' && activeTrace.ai_session?.steps_data && (
                         <div>
                            <h3 className="text-xl font-bold mb-4">Execution Steps</h3>
@@ -913,7 +1017,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                                                 </span>
                                              </div>
                                              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">{step.name}</h3>
-                                             
+
                                              <div className="grid grid-cols-2 gap-3 mb-3">
                                                 <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
                                                    <div className="text-[9px] font-black text-gray-400 uppercase mb-1">Action</div>
@@ -926,7 +1030,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                                                    </div>
                                                 )}
                                              </div>
-                                             
+
                                              {step.error_message && (
                                                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600">
                                                    <div className="text-[10px] font-black uppercase mb-1">Error Detail</div>

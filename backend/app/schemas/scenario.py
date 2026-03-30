@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from .persona import Persona
 
 class TestCase(BaseModel):
-    id: str
+    id: Optional[str] = None
     title: str
     description: Optional[str] = ""
     status: Optional[str] = "pending"

@@ -54,3 +54,24 @@ class TestHistorySummary(BaseModel):
     rate: float
     pipelineRuns: int
     scheduledRuns: int
+    total_assets: int
+    active_defects: int
+    weekly_growth: int
+    active_defects_by_origin: Dict[str, int]
+
+class ProjectInsightBase(BaseModel):
+    title: str
+    content_markdown: str
+    insight_type: Optional[str] = "EXECUTIVE_SUMMARY"
+    insight_metadata: Optional[Dict[str, Any]] = None
+
+class ProjectInsightCreate(ProjectInsightBase):
+    pass
+
+class ProjectInsight(ProjectInsightBase):
+    id: str
+    project_id: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

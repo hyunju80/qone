@@ -25,6 +25,7 @@ class Persona(Base):
 class TestScript(Base):
     id = Column(String, primary_key=True, index=True)
     project_id = Column(String, ForeignKey("project.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     name = Column(String)
     description = Column(String)
     status = Column(String) # CERTIFIED, PENDING

@@ -15,7 +15,8 @@ from app.schemas.scenario import (
     ActionMap as ActionMapSchema, 
     ActionMapCreate, 
     ActionMapUpdate,
-    ScenarioUpdate as UpdateScenarioRequest
+    ScenarioUpdate as UpdateScenarioRequest,
+    Scenario as ScenarioSchema
 )
 from app.db.session import SessionLocal
 import uuid
@@ -24,6 +25,25 @@ router = APIRouter()
 crawler = CrawlerService()
 # import nest_asyncio
 # nest_asyncio.apply()
+
+@router.get("/", response_model=List[ScenarioSchema])
+def read_scenarios(
+    db: Any = Depends(deps.get_db),
+    project_id: Optional[str] = None,
+    is_approved: Optional[bool] = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> Any:
+    """
+    Retrieve scenarios.
+    """
+    query = db.query(ScenarioModel)
+    if project_id:
+        query = query.filter(ScenarioModel.project_id == project_id)
+    if is_approved is not None:
+        query = query.filter(ScenarioModel.is_approved == is_approved)
+    
+    return query.offset(skip).limit(limit).all()
 
 class AnalyzeUrlRequest(BaseModel):
     url: str

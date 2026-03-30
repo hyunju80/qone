@@ -131,32 +131,39 @@ export const testApi = {
         return response.data;
     },
     getHistoryDetail: async (id: string): Promise<TestHistory> => {
-      const response = await api.get(`/history/${id}`);
-      return mapHistory(response.data);
-   },
+        const response = await api.get(`/history/${id}`);
+        return mapHistory(response.data);
+    },
 
-   retryTest: async (historyId: string): Promise<any> => {
-      return await api.post(`/run/retry/${historyId}`);
-   },
+    retryTest: async (historyId: string): Promise<any> => {
+        return await api.post(`/run/retry/${historyId}`);
+    },
 
-   selfHealTest: async (historyId: string): Promise<any> => {
-      return await api.post(`/run/self-heal/${historyId}`);
-   },
+    selfHealTest: async (historyId: string): Promise<any> => {
+        return await api.post(`/run/self-heal/${historyId}`);
+    },
 
-   getHealingLogs: async (historyId: string): Promise<any[]> => {
-      const response = await api.get(`/history/${historyId}/healing-logs`);
-      return response.data;
-   },
+    getHealingLogs: async (historyId: string): Promise<any[]> => {
+        const response = await api.get(`/history/${historyId}/healing-logs`);
+        return response.data;
+    },
 
-   getHealedAssets: async (): Promise<any[]> => {
-      const response = await api.get('/history/all/healed-assets/list');
-      return response.data;
-   },
+    getHealedAssets: async (): Promise<any[]> => {
+        const response = await api.get('/history/all/healed-assets/list');
+        return response.data;
+    },
 
-   getHealingStatus: async (logId: string): Promise<any> => {
-      const response = await api.get(`/history/healing/${logId}`);
-      return response.data;
-   },
+    getPendingHealing: async (projectId: string): Promise<TestHistory[]> => {
+        const response = await api.get<any[]>('/history/pending-healing/list', { 
+            params: { project_id: projectId, _t: Date.now() } 
+        });
+        return response.data.map(mapHistory);
+    },
+
+    getHealingStatus: async (logId: string): Promise<any> => {
+        const response = await api.get(`/history/healing/${logId}`);
+        return response.data;
+    },
 
     // Schedules
     getSchedules: async (projectId: string) => {
@@ -167,5 +174,19 @@ export const testApi = {
     assignJira: async (historyId: string): Promise<TestHistory> => {
         const response = await api.post(`/history/${historyId}/jira`);
         return mapHistory(response.data);
+    },
+
+    // Insights
+    saveInsight: async (projectId: string, data: { title: string; content_markdown: string; insight_type?: string; insight_metadata?: any }) => {
+        const response = await api.post(`/history/projects/${projectId}/insights`, data);
+        return response.data;
+    },
+    getInsights: async (projectId: string) => {
+        const response = await api.get(`/history/projects/${projectId}/insights`);
+        return response.data;
+    },
+    getLatestInsight: async (projectId: string) => {
+        const response = await api.get(`/history/projects/${projectId}/insights/latest`);
+        return response.data;
     }
 };

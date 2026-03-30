@@ -18,10 +18,18 @@ interface HistoryViewProps {
    onRefresh?: () => void;
    onNavigateToLibrary?: (scriptId: string) => void;
    scripts?: TestScript[];
+   initialTab?: 'dashboard' | 'history' | 'defects';
 }
 
-const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRefresh, onNavigateToLibrary, scripts = [] }) => {
-   const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'defects'>('dashboard');
+const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRefresh, onNavigateToLibrary, scripts = [], initialTab = 'dashboard' }) => {
+   const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'defects'>(initialTab);
+
+   // Sync tab if prop changes (for direct navigation from other views)
+   React.useEffect(() => {
+     if (initialTab) {
+       setActiveTab(initialTab);
+     }
+   }, [initialTab]);
 
    // Refresh history on mount
    React.useEffect(() => {

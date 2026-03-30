@@ -136,42 +136,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, onSwitchPro
           ))}
         </nav>
 
-        {/* Stats Fleet Card */}
-        <div className="mt-8 p-5 bg-gray-50 dark:bg-[#0c0e12] border border-indigo-100 dark:border-indigo-500/20 rounded-2xl relative overflow-hidden group transition-colors">
-          <div className="absolute top-0 right-0 p-3 opacity-5 group-hover:opacity-10 transition-opacity">
-            <ShieldCheck className="w-12 h-12 text-indigo-600 dark:text-indigo-400" />
-          </div>
-          <div className="relative z-10">
-            <div className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-              <Zap className="w-3 h-3 fill-indigo-600 dark:fill-indigo-400" /> Golden Asset Fleet
-            </div>
-            <div className="flex items-end justify-between">
-              <div className="flex flex-col">
-                <span className="text-3xl font-black text-yellow-500 dark:text-yellow-400 leading-none drop-shadow-sm dark:drop-shadow-[0_0_8px_rgba(250,204,21,0.4)]">{goldenStats.total}</span>
-                <span className="text-[10px] text-gray-500 font-bold uppercase mt-1">Total Assets</span>
-              </div>
-              <div className="flex flex-col items-end">
-                <div className="px-2 py-0.5 bg-green-50 dark:bg-green-600/10 border border-green-200 dark:border-green-500/20 rounded text-[10px] font-black text-green-600 dark:text-green-500 flex items-center gap-1">
-                  <TrendingUp className="w-2.5 h-2.5" /> + {goldenStats.weekly}
-                </div>
-                <span className="text-[8px] text-gray-600 font-bold uppercase mt-1">This Week</span>
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-1.5">
-              <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-widest">
-                <span className="text-gray-500">Stability Score</span>
-                <span className="text-emerald-500 dark:text-emerald-400">{goldenStats.health}%</span>
-              </div>
-              <div className="w-full h-1 bg-gray-200 dark:bg-gray-900 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500 dark:bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)] transition-all duration-1000"
-                  style={{ width: `${goldenStats.health}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       <div className="mt-auto p-6 space-y-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-[#16191f] transition-colors">
