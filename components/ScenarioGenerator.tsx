@@ -266,14 +266,14 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
   const updateTestCase = (scenId: string, tcId: string, field: keyof TestCase, value: any) => {
     onUpdatePersistedScenarios(persistedScenarios.map(s => {
       if (s.id !== scenId) return s;
-      return { ...s, testCases: s.testCases.map(tc => tc.id === tcId ? { ...tc, [field]: value } : tc) };
+      return { ...s, testCases: (s.testCases || s.test_cases || []).map(tc => tc.id === tcId ? { ...tc, [field]: value } : tc) };
     }));
   };
 
   const moveTestCase = (scenId: string, index: number, direction: 'up' | 'down') => {
     onUpdatePersistedScenarios(persistedScenarios.map(s => {
       if (s.id !== scenId) return s;
-      const newTCs = [...s.testCases];
+      const newTCs = [...(s.testCases || s.test_cases || [])];
       const target = direction === 'up' ? index - 1 : index + 1;
       if (target < 0 || target >= newTCs.length) return s;
       [newTCs[index], newTCs[target]] = [newTCs[target], newTCs[index]];
@@ -282,12 +282,12 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
   };
 
   const deleteTestCase = (scenId: string, tcId: string) => {
-    onUpdatePersistedScenarios(persistedScenarios.map(s => s.id === scenId ? { ...s, testCases: s.testCases.filter(tc => tc.id !== tcId) } : s));
+    onUpdatePersistedScenarios(persistedScenarios.map(s => s.id === scenId ? { ...s, testCases: (s.testCases || s.test_cases || []).filter(tc => tc.id !== tcId) } : s));
   };
 
   const addTestCase = (scenId: string) => {
     const newTC: TestCase = { id: `tc_new_${Date.now()}`, title: 'New Test Node', description: '', preCondition: '', inputData: '', steps: [''], expectedResult: '', status: 'draft' };
-    onUpdatePersistedScenarios(persistedScenarios.map(s => s.id === scenId ? { ...s, testCases: [...s.testCases, newTC] } : s));
+    onUpdatePersistedScenarios(persistedScenarios.map(s => s.id === scenId ? { ...s, testCases: [...(s.testCases || s.test_cases || []), newTC] } : s));
   };
 
   // --- Rendering Helpers ---
@@ -533,7 +533,7 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
                           <div className="min-w-0 flex-1 space-y-1">
                             <div className="flex items-center gap-2 mb-0.5">
                               {s.category && <span className="px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 text-[8px] font-black rounded uppercase tracking-wider">{s.category}</span>}
-                              <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{s.testCases.length} Nodes</span>
+                              <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{(s.testCases || s.test_cases || []).length} Nodes</span>
                             </div>
                             {isExpanded ? (
                               <div className="space-y-1 pr-4" onClick={e => e.stopPropagation()}>
@@ -568,7 +568,7 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
                       {isExpanded && (
                         <div className="p-6 space-y-8 bg-white dark:bg-[#16191f] animate-in slide-in-from-top-2 duration-300">
                           <div className="space-y-6">
-                            {s.testCases.map((tc, tcIdx) => (
+                            {(s.testCases || s.test_cases || []).map((tc, tcIdx) => (
                               <div key={tc.id || tcIdx} className="bg-gray-50/30 dark:bg-white/5 border border-gray-100 dark:border-gray-800/50 rounded-2xl p-6 relative group/node hover:border-indigo-300 transition-all">
                                 <div className="absolute top-8 left-0 w-1 h-3/4 bg-indigo-500/20 group-hover:bg-indigo-500 rounded-r-full transition-colors" />
                                 <div className="flex items-center justify-between pb-4">
@@ -578,7 +578,7 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
                                   </div>
                                   <div className="flex items-center gap-1 opacity-0 group-hover/node:opacity-100 transition-opacity">
                                     <button onClick={() => moveTestCase(s.id, tcIdx, 'up')} disabled={tcIdx === 0} className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700"><ArrowUp className="w-3.5 h-3.5" /></button>
-                                    <button onClick={() => moveTestCase(s.id, tcIdx, 'down')} disabled={tcIdx === s.testCases.length - 1} className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700"><ArrowDown className="w-3.5 h-3.5" /></button>
+                                    <button onClick={() => moveTestCase(s.id, tcIdx, 'down')} disabled={tcIdx === (s.testCases || s.test_cases || []).length - 1} className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700"><ArrowDown className="w-3.5 h-3.5" /></button>
                                     <button onClick={() => deleteTestCase(s.id, tc.id)} className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded bg-white dark:bg-gray-800 shadow-sm ml-1 border border-gray-100 dark:border-gray-700 transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
                                   </div>
                                 </div>
@@ -600,7 +600,7 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
                                       <AlignLeft className="w-3 h-3" /> Execution Steps
                                     </label>
                                     <div className="space-y-2.5 pl-1">
-                                      {tc.steps.map((step, sIdx) => (
+                                      {(tc.steps || []).map((step, sIdx) => (
                                         <div key={sIdx} className="flex items-center gap-3 group/step">
                                           <span className="text-[9px] font-black text-indigo-400 w-5 tabular-nums text-right">{sIdx + 1}.</span>
                                           <input className="flex-1 bg-transparent border-b border-gray-100 dark:border-gray-800 focus:border-indigo-400 outline-none text-[10px] font-semibold text-gray-700 dark:text-gray-300 py-1 transition-colors" value={step} onChange={e => { const ns = [...tc.steps]; ns[sIdx] = e.target.value; updateTestCase(s.id, tc.id, 'steps', ns); }} />

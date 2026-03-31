@@ -21,6 +21,7 @@ interface AIGeneratorViewProps {
     onUpdateDraftScenarios: (scenarios: Scenario[]) => void;
     lastEditingScenarioId: string | null;
     onUpdateLastEditingScenarioId: (id: string | null) => void;
+    initialTab?: 'scenario' | 'verification';
 }
 
 // Local interfaces for persistence (moved from App.tsx logic)
@@ -44,10 +45,15 @@ const AIGeneratorView: React.FC<AIGeneratorViewProps> = ({
     draftScenarios,
     onUpdateDraftScenarios,
     lastEditingScenarioId,
-    onUpdateLastEditingScenarioId
+    onUpdateLastEditingScenarioId,
+    initialTab = 'scenario'
 }) => {
     // Determine the active pipeline stage
-    const [activeTab, setActiveTab] = useState<'scenario' | 'verification'>('scenario');
+    const [activeTab, setActiveTab] = useState<'scenario' | 'verification'>(initialTab);
+
+    React.useEffect(() => {
+        setActiveTab(initialTab);
+    }, [initialTab]);
 
     if (!activeProject) return null;
 

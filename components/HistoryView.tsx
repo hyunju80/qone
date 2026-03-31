@@ -11,6 +11,7 @@ import api from '../api/client';
 import { testApi } from '../api/test';
 import TestDashboard from './TestDashboard';
 import LiveExecutionModal from './LiveExecutionModal';
+import JiraSyncModal from './JiraSyncModal';
 
 interface HistoryViewProps {
    history: TestHistory[];
@@ -53,8 +54,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
    // Pagination State
    const [currentPage, setCurrentPage] = useState(1);
    const [itemsPerPage, setItemsPerPage] = useState(10);
-
    const [summaryStats, setSummaryStats] = useState<any>(null);
+   const [activeDefectsFromApi, setActiveDefectsFromApi] = useState<any[]>([]);
+   const [isLoadingDefects, setIsLoadingDefects] = useState(false);
 
    const loadSummary = async () => {
       if (activeProject) {
@@ -75,6 +77,25 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
    React.useEffect(() => {
       loadSummary();
    }, [history]);
+
+   const loadAllActiveDefects = async () => {
+      if (!activeProject?.id) return;
+      setIsLoadingDefects(true);
+      try {
+         const data = await testApi.getActiveDefects(activeProject.id);
+         setActiveDefectsFromApi(data);
+      } catch (e) {
+         console.error("Failed to load all active defects", e);
+      } finally {
+         setIsLoadingDefects(false);
+      }
+   };
+
+   React.useEffect(() => {
+      if (activeTab === 'defects') {
+         loadAllActiveDefects();
+      }
+   }, [activeTab, activeProject, history]); // Refetch if history changes (e.g. after retry)
 
    const stats = useMemo(() => {
       if (summaryStats) return summaryStats;
@@ -134,51 +155,48 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
    }, [filteredHistory, currentPage, itemsPerPage]);
 
    const defects = useMemo(() => {
-      // 1. Group by scriptId to find latest run and failure frequency
-      const latestRuns = new Map<string, TestHistory>();
+      // Use the pre-fetched active defects from API if available, 
+      // otherwise fallback to calculating from current history bundle (legacy/fallback)
+      const baseData = activeDefectsFromApi.length > 0 ? activeDefectsFromApi : [];
+      
+      // If we don't have API data yet but we have history, we can still show what we have
+      // but the user requested "Full" view, so API is primary.
+      
+      // Grouping logic for scores (still needed if not provided by backend)
       const failureCounts = new Map<string, number>();
-
-      const sortedHistory = [...history].sort((a, b) => new Date(b.runDate).getTime() - new Date(a.runDate).getTime());
-
-      sortedHistory.forEach(h => {
-         if (!latestRuns.has(h.scriptId)) {
-            latestRuns.set(h.scriptId, h);
-         }
+      // We still use the 'history' prop to calculate frequencies/rates if possible
+      history.forEach(h => {
          if (h.status === 'failed') {
             failureCounts.set(h.scriptId, (failureCounts.get(h.scriptId) || 0) + 1);
          }
       });
 
-      // 2. Filter assets where the latest run was a failure
-      const failedAssets = Array.from(latestRuns.values())
-         .filter(h => h.status === 'failed')
-         .map(h => {
-            const script = scripts.find(s => s.id === h.scriptId);
-            const failCount = failureCounts.get(h.scriptId) || 0;
-            const totalRuns = history.filter(hist => hist.scriptId === h.scriptId).length;
-            const failRate = totalRuns > 0 ? (failCount / totalRuns) * 100 : 0;
+      const failedAssets = baseData.map(h => {
+         const script = scripts.find(s => s.id === h.scriptId);
+         const failCount = failureCounts.get(h.scriptId) || 1; // At least 1 if it's in baseData
+         const totalRuns = history.filter(hist => hist.scriptId === h.scriptId).length || 1;
+         const failRate = totalRuns > 0 ? (failCount / totalRuns) * 100 : 0;
 
-            // Priority weight: P0=100, P1=70, P2=40, P3=10
-            const priorityMap: Record<string, number> = { 'P0': 100, 'P1': 70, 'P2': 40, 'P3': 10 };
-            const pScore = priorityMap[script?.priority || 'P2'] || 40;
+         // Priority weight: P0=100, P1=70, P2=40, P3=10
+         const priorityMap: Record<string, number> = { 'P0': 100, 'P1': 70, 'P2': 40, 'P3': 10 };
+         const pScore = priorityMap[script?.priority || 'P2'] || 40;
 
-            // Importance Score Calculation (Hybrid)
-            // Heuristic: 40% User Priority, 30% Failure Rate, 30% Failure Volume
-            const importanceScore = Math.round((pScore * 0.4) + (failRate * 0.3) + (Math.min(failCount * 10, 100) * 0.3));
+         // Importance Score Calculation (Hybrid)
+         const importanceScore = Math.round((pScore * 0.4) + (failRate * 0.3) + (Math.min(failCount * 10, 100) * 0.3));
 
-            return {
-               ...h,
-               priority: script?.priority || 'P2',
-               category: h.scriptCategory || script?.category || 'General',
-               failCount,
-               failRate,
-               importanceScore,
-               assetOrigin: h.scriptOrigin || script?.origin || 'MANUAL'
-            };
-         });
+         return {
+            ...h,
+            priority: script?.priority || 'P2',
+            category: h.scriptCategory || script?.category || 'General',
+            failCount,
+            failRate,
+            importanceScore,
+            assetOrigin: h.scriptOrigin || script?.origin || 'MANUAL'
+         };
+      });
 
       return failedAssets.sort((a, b) => b.importanceScore - a.importanceScore);
-   }, [history, scripts]);
+   }, [activeDefectsFromApi, history, scripts]);
 
    // Reset to page 1 when filters change
    React.useEffect(() => {
@@ -219,110 +237,16 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
    const [executionStatus, setExecutionStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
    const [selectedHealedAsset, setSelectedHealedAsset] = useState<any>(null);
    const [jiraTarget, setJiraTarget] = useState<TestHistory | null>(null);
-   const [jiraForm, setJiraForm] = useState({
-      project: 'QONE',
-      issueType: 'Bug',
-      priority: 'Medium',
-      summary: '',
-      description: '',
-      assignee: ''
-   });
-   const [isAssigningJira, setIsAssigningJira] = useState(false);
-   const [jiraScreenshot, setJiraScreenshot] = useState<string | null>(null);
 
+   const openJiraModal = (item: TestHistory) => {
+      setJiraTarget(item);
+   };
 
    const selectedScriptPriority = useMemo(() => {
       if (!selectedReport) return 'P2';
       const script = scripts.find(s => s.id === (selectedReport as any).scriptId);
       return script?.priority || 'P2';
    }, [selectedReport, scripts]);
-
-
-   const handleAssignJira = async () => {
-      if (!jiraTarget) return;
-      setIsAssigningJira(true);
-      try {
-         const updated = await testApi.assignJira(jiraTarget.id);
-         setJiraTarget(null);
-         // Refresh parent state
-         if (onRefresh) onRefresh();
-      } catch (error) {
-         console.error("Failed to assign Jira:", error);
-         alert("Failed to assign Jira issue.");
-      } finally {
-         setIsAssigningJira(false);
-      }
-   };
-
-   const openJiraModal = (item: TestHistory) => {
-      const assetName = item.scriptName;
-      const platform = item.scriptOrigin || 'WEB';
-      const summary = `[Bug] ${assetName} Failure on ${platform}`;
-
-      // 1. Logs
-      let logsText = "";
-      if (item.logs && item.logs.length > 0) {
-         const logLines = item.logs.slice(-10).map(l => `[${l.type.toUpperCase()}] ${l.msg}`).join('\n');
-         logsText = `{panel:title=Execution Trace (Last 10 Lines)|titleBGColor=#F7F9F9|borderStyle=solid}\n{code:theme=RDark|linenumbers=false}\n${logLines}\n{code}\n{panel}`;
-      }
-
-      // 2. Failure Analysis
-      let analysisText = "";
-      if (item.failureAnalysis) {
-         analysisText = "{panel:title=AI Failure Analysis|titleBGColor=#EBF5FB|borderStyle=solid}\n";
-         if (item.failureAnalysis.reason) {
-            analysisText += `*Root Cause:*\n${item.failureAnalysis.reason}\n\n`;
-         }
-         if (item.failureAnalysis.suggestion) {
-            analysisText += `*Suggestion:*\n${item.failureAnalysis.suggestion}\n\n`;
-         }
-         if (item.failureAnalysis.thought) {
-            analysisText += `*Analysis Detail:*\n${item.failureAnalysis.thought}\n`;
-         }
-         analysisText += "{panel}";
-      }
-
-      const description = `h2. 🚨 Test Failure Report: ${assetName}
-
-|| Field || Details ||
-| *Asset Name* | ${assetName} |
-| *Platform* | ${platform} |
-| *Run Date* | ${new Date(item.runDate).toLocaleString()} |
-| *Trigger* | ${item.trigger.toUpperCase()} |
-
-h3. 🔍 Failure Details
-{panel:title=Error Context|titleBGColor=#FDEDEC|borderStyle=solid}
-*Failure Reason:* ${item.failureReason || 'N/A'}
-*AI Summary:* ${item.aiSummary || 'No summary available.'}
-{panel}
-
-${analysisText}
-
-${logsText}
-
-----
-_Generated by Q-ONE AI Automation_`;
-
-      // 3. Find latest screenshot from failed steps
-      let screenshot = null;
-      if (item.step_results) {
-         const failedStep = [...item.step_results].reverse().find(s => s.status === 'failed' && s.screenshot_data);
-         if (failedStep) {
-            screenshot = failedStep.screenshot_data;
-         }
-      }
-
-      setJiraForm({
-         project: 'QONE',
-         issueType: 'Bug',
-         priority: 'Medium',
-         summary: summary,
-         description: description,
-         assignee: 'Unassigned'
-      });
-      setJiraScreenshot(screenshot);
-      setJiraTarget(item);
-   };;;
 
    const loadHealedAssets = async () => {
       try {
@@ -902,7 +826,12 @@ _Generated by Q-ONE AI Automation_`;
 
                      {defectSubTab === 'active' ? (
                         <div className="grid grid-cols-1 gap-6">
-                           {defects.length === 0 ? (
+                           {isLoadingDefects ? (
+                              <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-20 flex flex-col items-center justify-center text-center transition-colors">
+                                 <Loader2 className="w-10 h-10 text-red-500 animate-spin mb-4" />
+                                 <p className="text-sm text-gray-500 dark:text-gray-400 font-bold uppercase tracking-widest">Analyzing Entire Project Health...</p>
+                              </div>
+                           ) : defects.length === 0 ? (
                               <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-20 flex flex-col items-center justify-center text-center transition-colors">
                                  <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mb-6 ring-4 ring-green-500/20">
                                     <CheckCircle2 className="w-8 h-8 text-green-500" />
@@ -1735,103 +1664,13 @@ _Generated by Q-ONE AI Automation_`;
 
          {/* Jira Assignment Modal */}
          {jiraTarget && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 animate-in fade-in duration-200">
-               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setJiraTarget(null)} />
-               <div className="relative w-full max-w-3xl max-h-[95vh] bg-white dark:bg-[#0f1115] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-                  <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                     <div className="flex items-center gap-3">
-                        <div className="p-3 bg-blue-100 dark:bg-blue-600/10 rounded-2xl text-blue-600 dark:text-blue-400">
-                           <Layers className="w-6 h-6" />
-                        </div>
-                        <div>
-                           <h3 className="text-lg font-black text-gray-900 dark:text-white tracking-tight uppercase">Jira Issue Registration</h3>
-                           <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Create a comprehensive ticket for tracking</p>
-                        </div>
-                     </div>
-                     <button onClick={() => setJiraTarget(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">
-                        <X className="w-5 h-5 text-gray-400" />
-                     </button>
-                  </div>
-
-                  <div className="flex-1 overflow-hidden flex">
-                     {/* LEFT COLUMN: FORM */}
-                     <div className="flex-1 p-8 space-y-6 overflow-y-auto custom-scrollbar">
-                        <div className="grid grid-cols-2 gap-4">
-                           <div className="space-y-1.5">
-                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Project</label>
-                              <select className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-xs font-bold transition-all focus:ring-2 focus:ring-blue-500/20" value={jiraForm.project} onChange={e => setJiraForm({ ...jiraForm, project: e.target.value })}>
-                                 <option value="QONE">Q-ONE Project (QONE)</option>
-                                 <option value="CORE">Core Infrastructure (CORE)</option>
-                              </select>
-                           </div>
-                           <div className="space-y-1.5">
-                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Issue Type</label>
-                              <select className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-xs font-bold transition-all focus:ring-2 focus:ring-blue-500/20" value={jiraForm.issueType} onChange={e => setJiraForm({ ...jiraForm, issueType: e.target.value })}>
-                                 <option value="Bug">Bug</option>
-                                 <option value="Story">Story</option>
-                                 <option value="Task">Task</option>
-                              </select>
-                           </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                           <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Summary</label>
-                           <input
-                              type="text"
-                              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-xs font-bold transition-all focus:ring-2 focus:ring-blue-500/20"
-                              value={jiraForm.summary}
-                              onChange={e => setJiraForm({ ...jiraForm, summary: e.target.value })}
-                           />
-                        </div>
-
-                        <div className="space-y-1.5">
-                           <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Description</label>
-                           <textarea
-                              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-xs font-medium min-h-[250px] transition-all focus:ring-2 focus:ring-blue-500/20 whitespace-pre-wrap leading-relaxed"
-                              value={jiraForm.description}
-                              onChange={e => setJiraForm({ ...jiraForm, description: e.target.value })}
-                           />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                           <div className="space-y-1.5">
-                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Assignee</label>
-                              <input
-                                 type="text"
-                                 className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-xs font-bold"
-                                 value={jiraForm.assignee}
-                                 readOnly
-                              />
-                           </div>
-                           <div className="space-y-1.5">
-                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Priority</label>
-                              <select className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-xs font-bold" value={jiraForm.priority} onChange={e => setJiraForm({ ...jiraForm, priority: e.target.value })}>
-                                 <option value="High">High</option>
-                                 <option value="Medium">Medium</option>
-                                 <option value="Low">Low</option>
-                              </select>
-                           </div>
-                        </div>
-                        <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-[#0f1115] flex justify-end gap-3 px-8">
-                           <button
-                              onClick={() => setJiraTarget(null)}
-                              className="px-6 py-3 text-xs font-black uppercase tracking-widest text-gray-500 hover:text-gray-700 transition-colors"
-                           >
-                              Cancel
-                           </button>
-                           <button
-                              onClick={handleAssignJira}
-                              disabled={isAssigningJira}
-                              className="px-10 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-blue-600/20 transition-all flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
-                           >
-                              {isAssigningJira ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                              Assign to Jira
-                           </button>
-                        </div>
-                     </div>
-                  </div>
-               </div>
-            </div>
+            <JiraSyncModal 
+               targetItem={jiraTarget}
+               onClose={() => setJiraTarget(null)}
+               onSuccess={() => {
+                  if (onRefresh) onRefresh();
+               }}
+            />
          )}
       </div>
    );

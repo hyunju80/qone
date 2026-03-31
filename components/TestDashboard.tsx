@@ -637,7 +637,7 @@ const TestDashboard: React.FC<TestDashboardProps> = ({ history, activeProject, o
                 </div>
             )}
         </div>
-    );
+        );
 };
 
 export default TestDashboard;

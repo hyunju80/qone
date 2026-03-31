@@ -67,7 +67,8 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
         try {
             // Fetch all scenarios and filter for those ready for verification (approved but no asset yet)
             const data = await scenariosApi.getAll(activeProject.id, true);
-            setScenarios(data);
+            // Only show scenarios that don't have a golden script yet
+            setScenarios(data.filter((s: Scenario) => !s.goldenScriptId));
         } catch (err) {
             console.error("Failed to fetch scenarios", err);
         } finally {
@@ -106,7 +107,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
 설명: ${selectedScenario.description}
 
 [수행 단계]
-        ${selectedScenario.testCases.map((tc, idx) => `${idx + 1}. ${tc.title}: ${tc.steps.join(', ')}`).join('\n')}
+        ${(selectedScenario.testCases || []).map((tc, idx) => `${idx + 1}. ${tc.title}: ${(tc.steps || []).join(', ')}`).join('\n')}
         
         가장 중요한 목표는 시나리오에 기술된 흐름대로 실제 UI에서 성공적으로 동작하는지 검증하고,
     동작이 완료되면 'finish' 액션으로 종료하는 것입니다.
@@ -307,7 +308,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                             <div className="min-w-0 flex-1 space-y-1">
                                                 <div className="flex items-center gap-2 mb-0.5">
                                                     {s.category && <span className="px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 text-[8px] font-black rounded uppercase tracking-wider">{s.category}</span>}
-                                                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{s.testCases.length} Nodes</span>
+                                                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{(s.testCases || s.test_cases || []).length} Nodes</span>
                                                 </div>
                                                 <h3 className={`font-black uppercase tracking-tight transition-all ${isExpanded ? 'text-sm text-gray-900 dark:text-white' : 'text-[13px] text-gray-700 dark:text-gray-300 truncate'} `}>{s.title}</h3>
                                                 {isExpanded && <p className="text-[10px] text-gray-500 font-bold tracking-tight leading-relaxed">{s.description}</p>}
@@ -318,7 +319,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
 
                                     {isExpanded && (
                                         <div className="p-8 space-y-6 bg-white dark:bg-[#111318] animate-in slide-in-from-top-2 duration-300">
-                                            {s.testCases.map((tc, tcIdx) => (
+                                            {(s.testCases || s.test_cases || []).map((tc, tcIdx) => (
                                                 <div key={tc.id || tcIdx} className="bg-gray-50/30 dark:bg-white/5 border border-gray-100 dark:border-gray-800/50 rounded-2xl p-6 relative group/node hover:border-indigo-300 transition-all">
                                                     <div className="absolute top-8 left-0 w-1 h-3/4 bg-indigo-500/20 group-hover:bg-indigo-500 rounded-r-full transition-colors" />
                                                     <div className="flex items-center gap-4 mb-4">
@@ -337,7 +338,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
                                                         <div className="col-span-2 space-y-3">
                                                             <label className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1"><AlignLeft className="w-3 h-3" /> Steps</label>
                                                             <div className="space-y-2.5 pl-1">
-                                                                {tc.steps.map((step, sIdx) => (
+                                                                {(tc.steps || []).map((step, sIdx) => (
                                                                     <div key={sIdx} className="flex gap-3 items-start group/step">
                                                                         <span className="text-[10px] font-black text-indigo-400 tabular-nums shrink-0 pt-0.5">{sIdx + 1}.</span>
                                                                         <span className="text-[10px] font-semibold text-gray-700 dark:text-gray-300 leading-tight">{step}</span>

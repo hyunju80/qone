@@ -120,6 +120,12 @@ export const testApi = {
         });
         return response.data.map(mapHistory);
     },
+    getActiveDefects: async (projectId: string) => {
+        const response = await api.get<any[]>('/history/active-defects', {
+            params: { project_id: projectId }
+        });
+        return response.data.map(mapHistory);
+    },
     getHistorySummary: async (projectId: string) => {
         const response = await api.get<any>('/history/summary', {
             params: { project_id: projectId }

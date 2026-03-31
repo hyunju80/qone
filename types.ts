@@ -246,7 +246,8 @@ export interface Scenario {
   title: string;
   description: string;
   category?: string;
-  testCases: TestCase[];
+    testCases: TestCase[];
+    test_cases?: TestCase[];
   personaId?: string;
   persona?: Persona;
   createdAt: string;

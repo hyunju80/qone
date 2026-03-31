@@ -33,10 +33,28 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
    const [reportContent, setReportContent] = useState<string>('');
    const [reportTitle, setReportTitle] = useState<string>('');
    const [isSaving, setIsSaving] = useState(false);
-   
+
    const [mainTab, setMainTab] = useState<'summary' | 'saved'>(initialTab === 'saved' ? 'saved' : 'summary');
    const [savedInsights, setSavedInsights] = useState<any[]>([]);
    const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+   const [savedInsightSearch, setSavedInsightSearch] = useState('');
+
+   const filteredSavedInsights = useMemo(() => {
+      if (!savedInsightSearch) return savedInsights;
+      const term = savedInsightSearch.toLowerCase();
+      return savedInsights.filter(insight => {
+         const date = new Date(insight.created_at);
+         const year = date.getFullYear();
+         const month = String(date.getMonth() + 1).padStart(2, '0');
+         const day = String(date.getDate()).padStart(2, '0');
+         const formattedDate = `${year}-${month}-${day}`; // YYYY-MM-DD format
+
+         const localDateStr = date.toLocaleDateString().toLowerCase();
+         const titleStr = (insight.title || '').toLowerCase();
+
+         return formattedDate.includes(term) || localDateStr.includes(term) || titleStr.includes(term);
+      });
+   }, [savedInsights, savedInsightSearch]);
 
    React.useEffect(() => {
       if (initialTab === 'saved') setMainTab('saved');
@@ -348,7 +366,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                      </button>
                      {showFilter && (
                         <div className="absolute top-full mt-2 right-0 w-48 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl z-50 p-2 overflow-hidden animate-in fade-in slide-in-from-top-2 transition-colors">
-                           {['Last 24 Hours', 'Last 7 Days', 'Last 30 Days', 'Custom Range'].map(range => (
+                           {['Last 24 Hours', 'Last 7 Days', 'Last 30 Days'].map(range => (
                               <button
                                  key={range}
                                  onClick={() => { setSelectedRange(range); setShowFilter(false); }}
@@ -384,378 +402,393 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col w-full">
                {/* Main Dashboard Layout (Rest of UI) */}
                <div className="mb-10">
-            <div className="flex items-center justify-between mb-6">
-               <div className="flex items-center gap-3">
-                  <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
-                  <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Test Asset Summary</h3>
-               </div>
-               <div className="flex gap-2">
-                  {['ai_gen', 'step_flow'].map((tab) => (
-                     <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab as any)}
-                        className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all ${activeTab === tab ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                           }`}
-                     >
-                        {tab === 'ai_gen' ? 'AI GEN' : 'Step Flow'}
-                     </button>
-                  ))}
-               </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-               <div className="lg:col-span-3 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2rem] overflow-hidden shadow-sm dark:shadow-2xl flex flex-col transition-colors">
-                  <div className="flex-1">
-                     <table className="w-full text-left">
-                        <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-[#1f232b] border-b border-gray-200 dark:border-gray-800 text-[10px] font-black uppercase text-gray-500 transition-colors">
-                           <tr>
-                              <th className="px-6 py-4">Asset Name</th>
-                              <th className="px-6 py-4">Context / Description</th>
-                              <th className="px-6 py-4 text-center">Utilization</th>
-                              <th className="px-6 py-4 text-center whitespace-nowrap w-[130px]">Stability</th>
-                              <th className="px-6 py-4 text-right whitespace-nowrap w-[120px]">Last Verified</th>
-                           </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800 transition-colors">
-                           {stats.goldenSummary[activeTab].length === 0 ? (
-                              <tr>
-                                 <td colSpan={5} className="px-6 py-10 text-center text-gray-500 text-xs italic">
-                                    No certified assets found for {activeTab === 'ai_gen' ? 'AI GEN' : 'Step Flow'} origin.
-                                 </td>
-                              </tr>
-                           ) : (
-                              stats.goldenSummary[activeTab].map(script => (
-                                 <tr key={script.id} className="hover:bg-gray-50 dark:hover:bg-indigo-500/5 transition-colors group">
-                                    <td className="px-6 py-5">
-                                       <div className="flex items-center gap-3">
-                                          <div className={`p-2 rounded-lg transition-all ${activeTab === 'ai_gen' ? 'bg-purple-100 dark:bg-purple-600/10 text-purple-600 dark:text-purple-400' : 'bg-orange-100 dark:bg-orange-600/10 text-orange-600 dark:text-orange-400'}`}>
-                                             <FileCode className="w-4 h-4" />
-                                          </div>
-                                          <span className="text-xs font-bold text-gray-900 dark:text-gray-200 transition-colors">{script.name}</span>
-                                       </div>
-                                    </td>
-                                    <td className="px-6 py-5">
-                                       <span className="text-[11px] text-gray-500 line-clamp-1 italic">{script.description || 'No description provided'}</span>
-                                    </td>
-                                    <td className="px-6 py-5 text-center">
-                                       <div className="flex flex-col items-center gap-1">
-                                          <span className="text-[11px] font-bold text-gray-900 dark:text-white transition-colors">{script.utilization.toFixed(1)}%</span>
-                                          <div className="w-16 h-1 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
-                                             <div className="h-full bg-indigo-500" style={{ width: `${script.utilization}%` }} />
-                                          </div>
-                                          <span className="text-[9px] text-gray-500 dark:text-gray-600">{script.runCount} Runs</span>
-                                       </div>
-                                    </td>
-                                    <td className="px-6 py-5 text-center">
-                                       <span className={`px-2 py-1 text-[10px] font-black rounded ${script.stability >= 90 ? 'bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-500' :
-                                          script.stability >= 70 ? 'bg-yellow-100 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-500' : 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-500'
-                                          }`}>
-                                          {script.stability}% Stable
-                                       </span>
-                                    </td>
-                                    <td className="px-6 py-5 text-right">
-                                       <span className="text-[10px] font-mono text-gray-500">
-                                          {script.lastRun !== 'N/A' ? new Date(script.lastRun).toLocaleDateString() : '-'}
-                                       </span>
-                                    </td>
-                                 </tr>
-                              ))
-                           )}
-                        </tbody>
-                     </table>
-                  </div>
-               </div>
-
-               <div className="bg-indigo-50 dark:bg-indigo-600/10 border border-indigo-200 dark:border-indigo-500/20 rounded-[2.5rem] p-8 flex flex-col justify-center relative overflow-hidden h-full shadow-lg transition-colors">
-                  <div className="absolute top-0 right-0 p-6 opacity-10 rotate-12"><Shield className="w-32 h-32 text-indigo-400" /></div>
-                  <div className="relative z-10">
-                     <div className="text-[10px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest mb-2 transition-colors">
-                        {activeTab === 'ai_gen' ? 'AI Generation Impact' : 'Step Flow Reusability'}
-                     </div>
-                     <div className="flex items-baseline gap-2 mb-2">
-                        <div className="text-5xl font-black text-gray-900 dark:text-white transition-colors">
-                           {stats.categoryStats[activeTab].totalCount}
-                        </div>
-                        <div className="text-sm font-bold text-indigo-600 dark:text-indigo-300 transition-colors">
-                           Assets
-                        </div>
-                     </div>
-                     <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-500/10 dark:bg-indigo-500/20 rounded-lg border border-indigo-500/20 dark:border-indigo-500/30 mb-4 transition-colors">
-                        <Activity className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
-                        <span className="text-xs font-bold text-indigo-700 dark:text-indigo-200">
-                           Avg Stability: {stats.categoryStats[activeTab].avgStability}%
-                        </span>
-                     </div>
-                     <p className="text-xs text-indigo-600/80 dark:text-indigo-300/80 leading-relaxed font-medium transition-colors">
-                        {activeTab === 'ai_gen' ? 'Assets autonomously discovered or generated by AI via exploration and scenario conversion.' :
-                           'Modular step assets and manual flows ensuring consistent reliability.'}
-                     </p>
-                  </div>
-               </div>
-            </div>
-
-            {/* Execution Summary Section */}
-            <div className="flex items-center gap-3 mb-6 mt-16 px-2">
-               <Activity className="w-5 h-5 text-indigo-500" />
-               <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Execution Summary</h3>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
-               <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-sm dark:shadow-none flex flex-col justify-between">
-                  <div>
-                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Activity className="w-20 h-20" /></div>
-                     <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4">Total Executions</div>
-                     <div className="text-4xl font-black text-gray-900 dark:text-white transition-colors">{stats.totalRuns}</div>
-                     <div className="mt-2 text-[10px] font-medium text-gray-500">Total number of tests executed across the selected period.</div>
-                  </div>
-                  <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-indigo-500">
-                     <TrendingUp className="w-3.5 h-3.5" /> Track active test volume
-                  </div>
-               </div>
-               <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-sm dark:shadow-none flex flex-col justify-between">
-                  <div>
-                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><ShieldCheck className="w-20 h-20" /></div>
-                     <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4">Success Rate (Avg)</div>
-                     <div className={`text-4xl font-black ${stats.passRate > 85 ? 'text-green-500' : 'text-amber-500'}`}>{stats.passRate}%</div>
-                     <div className="mt-2 text-[10px] font-medium text-gray-500">Overall percentage of tests that passed successfully.</div>
-                  </div>
-                  <div className="mt-4 w-full bg-gray-200 dark:bg-gray-950 h-1.5 rounded-full overflow-hidden shrink-0">
-                     <div className={`h-full ${stats.passRate > 85 ? 'bg-green-500' : 'bg-amber-500'} shadow-lg`} style={{ width: `${stats.passRate}%` }} />
-                  </div>
-               </div>
-               <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-sm dark:shadow-none flex flex-col justify-between">
-                  <div>
-                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Layers className="w-20 h-20" /></div>
-                     <div className="text-[10px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest mb-4 transition-colors">Pipeline Executions</div>
-                     <div className="text-4xl font-black text-gray-900 dark:text-white transition-colors">{stats.pipelineRuns}</div>
-                     <div className="mt-2 text-[10px] font-medium text-gray-500">Test executions triggered via CI/CD pipelines or API.</div>
-                  </div>
-                  <div className="mt-4 flex items-center gap-1.5 text-[10px] font-bold text-gray-500 uppercase tracking-tighter">
-                     Continuous Integration
-                  </div>
-               </div>
-               <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 relative overflow-hidden group hover:border-cyan-500/30 transition-all shadow-sm dark:shadow-none flex flex-col justify-between">
-                  <div>
-                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Calendar className="w-20 h-20" /></div>
-                     <div className="text-[10px] font-black text-cyan-500 uppercase tracking-widest mb-4">Scheduled Executions</div>
-                     <div className="text-4xl font-black text-gray-900 dark:text-white transition-colors">{stats.scheduledRuns}</div>
-                     <div className="mt-2 text-[10px] font-medium text-gray-500">Tests triggered automatically via the scheduler.</div>
-                  </div>
-                  <div className="mt-4 flex items-center gap-1.5 text-[10px] font-bold text-cyan-600/60 dark:text-cyan-500/60 uppercase tracking-tighter">
-                     Continuous Integration
-                  </div>
-               </div>
-            </div>
-         </div>
-
-         {/* Defect Summary Section */}
-         <div className="flex items-center gap-3 mb-6 mt-16 px-2">
-            <Shield className="w-5 h-5 text-red-500" />
-            <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Defect Summary</h3>
-         </div>
-         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
-            <div className="lg:col-span-2 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] p-8 shadow-sm dark:shadow-2xl relative overflow-hidden transition-colors flex flex-col">
-               <div className="absolute top-0 left-0 w-full h-1 bg-red-500 opacity-20" />
-               <div className="flex items-start justify-between mb-8">
-                  <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between mb-6">
                      <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-red-600/10 rounded-xl text-red-500">
-                           <AlertTriangle className="w-5 h-5" />
-                        </div>
-                        <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Defect Severity Distribution</h3>
+                        <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
+                        <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Test Asset Summary</h3>
                      </div>
-                     <p className="text-[10px] text-gray-400 font-medium ml-[52px]">Importance score categorizations integrating Priority, Fail Rate, and Fail Volume.</p>
+                     <div className="flex gap-2">
+                        {['ai_gen', 'step_flow'].map((tab) => (
+                           <button
+                              key={tab}
+                              onClick={() => setActiveTab(tab as any)}
+                              className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all ${activeTab === tab ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                                 }`}
+                           >
+                              {tab === 'ai_gen' ? 'AI GEN' : 'Step Flow'}
+                           </button>
+                        ))}
+                     </div>
                   </div>
-               </div>
 
-               <div className="flex-1 flex flex-col justify-center gap-6 mt-4">
-                  {[
-                     { label: 'Critical (80-100)', value: stats.severityDist.critical, count: stats.severityDist.critical, color: 'bg-red-500', textInfo: 'text-red-500' },
-                     { label: 'High (60-79)', value: stats.severityDist.high, count: stats.severityDist.high, color: 'bg-orange-500', textInfo: 'text-orange-500' },
-                     { label: 'Medium (40-59)', value: stats.severityDist.medium, count: stats.severityDist.medium, color: 'bg-yellow-500', textInfo: 'text-yellow-500' },
-                     { label: 'Low (0-39)', value: stats.severityDist.low, count: stats.severityDist.low, color: 'bg-indigo-500', textInfo: 'text-indigo-500' }
-                  ].map((item, idx) => (
-                     <div key={idx} className="flex items-center gap-4">
-                        <div className="w-40 flex-shrink-0">
-                           <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-widest">{item.label}</span>
-                        </div>
-                        <div className="flex-1 h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex">
-                           <div className={`h-full ${item.color} rounded-full transition-all duration-1000`} style={{ width: `${stats.totalFailedAssets > 0 ? (item.value / stats.totalFailedAssets) * 100 : 0}%` }} />
-                        </div>
-                        <div className={`w-12 text-right text-sm font-black ${item.textInfo}`}>
-                           {item.count}
-                        </div>
-                     </div>
-                  ))}
-               </div>
-            </div>
-            <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] p-8 shadow-sm dark:shadow-2xl flex flex-col relative overflow-hidden transition-colors">
-               <div className="absolute top-0 left-0 w-full h-1 bg-green-500 opacity-20" />
-               <div className="flex flex-col gap-1 mb-8">
-                  <div className="flex items-center gap-3">
-                     <div className="p-2.5 bg-green-600/10 rounded-xl text-green-500">
-                        <ShieldCheck className="w-5 h-5" />
-                     </div>
-                     <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Defect Resolution</h3>
-                  </div>
-                  <p className="text-[10px] text-gray-400 font-medium ml-[52px]">Tracking issue resolution workflows.</p>
-               </div>
-
-               <div className="flex-1 flex flex-col justify-center gap-4 relative">
-                  {/* Resolution Types - Independent Bars */}
-                  {[
-                     { label: 'Jira Registered', count: stats.resolutionStatus.jira, color: 'bg-blue-500', bg: 'bg-blue-500/10', dColor: 'text-blue-500', desc: 'Reported to dev queue' },
-                     { label: 'AI Healed', count: stats.resolutionStatus.healed, color: 'bg-green-500', bg: 'bg-green-500/10', dColor: 'text-green-500', desc: 'Self-corrected by AI' },
-                     { label: 'Open (Unresolved)', count: stats.resolutionStatus.open, color: 'bg-gray-400 dark:bg-gray-600', bg: 'bg-gray-200 dark:bg-gray-800', dColor: 'text-gray-500 dark:text-gray-400', desc: 'Pending diagnosis' }
-                  ].map((res, i) => (
-                     <div key={i} className="flex flex-col gap-1 p-3 rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/80 transition-colors">
-                        <div className="flex items-center justify-between">
-                           <div className="flex items-center gap-3">
-                              <div className={`w-3 h-3 rounded-full ${res.color}`} />
-                              <div>
-                                 <div className="text-xs font-bold text-gray-800 dark:text-gray-200">{res.label}</div>
-                                 <div className="text-[9px] text-gray-500 block">{res.desc}</div>
-                              </div>
-                           </div>
-                           <div className={`text-lg font-black ${res.dColor}`}>{res.count}</div>
-                        </div>
-                        <div className={`w-full h-1.5 rounded-full mt-2 ${res.bg} overflow-hidden`}>
-                           <div className={`h-full ${res.color}`} style={{ width: `${stats.totalFailedAssets > 0 ? (res.count / stats.totalFailedAssets) * 100 : 0}%` }} />
-                        </div>
-                     </div>
-                  ))}
-               </div>
-            </div>
-         </div>
-
-         {/* Root Cause Analysis Summary Section */}
-         <div className="mb-20">
-            <div className="flex items-center gap-3 mb-6 mt-16 px-2">
-               <AlertTriangle className="w-5 h-5 text-orange-500" />
-               <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Root Cause Analysis Summary</h3>
-            </div>
-            <div>
-               {(() => {
-                  const clusters = [
-                     { id: 'ui', title: 'UI / Selector Change', icon: <MousePointer2 className="w-5 h-5" />, color: 'text-orange-500', bg: 'bg-orange-600/10', border: 'border-orange-500/20', assets: [] as any[] },
-                     { id: 'timeout', title: 'Timeout / Performance', icon: <Clock className="w-5 h-5" />, color: 'text-amber-500', bg: 'bg-amber-600/10', border: 'border-amber-500/20', assets: [] as any[] },
-                     { id: 'network', title: 'Network / API', icon: <Activity className="w-5 h-5" />, color: 'text-blue-500', bg: 'bg-blue-600/10', border: 'border-blue-500/20', assets: [] as any[] },
-                     { id: 'logic', title: 'Logic Error / Assertion', icon: <Cpu className="w-5 h-5" />, color: 'text-red-500', bg: 'bg-red-600/10', border: 'border-red-500/20', assets: [] as any[] }
-                  ];
-
-                  (stats.failedAssetsList || []).forEach(asset => {
-                     if (asset.failureCount === 0) return;
-                     const reason = (asset.latestReason || '').toLowerCase();
-
-                     if (reason.includes('timeout') || reason.includes('exceeded') || reason.includes('waiting')) {
-                        clusters[1].assets.push(asset);
-                     } else if (reason.includes('selector') || reason.includes('element') || reason.includes('visible') || reason.includes('not found') || reason.includes('clickable') || reason.includes('intercepted')) {
-                        clusters[0].assets.push(asset);
-                     } else if (reason.includes('network') || reason.includes('api') || reason.includes('500') || reason.includes('refused') || reason.includes('disconnected') || reason.includes('socket') || reason.includes('fetch')) {
-                        clusters[2].assets.push(asset);
-                     } else {
-                        clusters[3].assets.push(asset);
-                     }
-                  });
-
-                  const totalFailures = clusters.reduce((acc, c) => acc + c.assets.length, 0);
-
-                  if (totalFailures === 0) {
-                     return (
-                        <div className="p-12 text-center text-gray-600 italic">
-                           No assets with failures detected in the selected period.
-                        </div>
-                     );
-                  }
-
-                  return (
-                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        {clusters.map(cluster => (
-                           <div key={cluster.id} className="flex flex-col border border-gray-200 dark:border-gray-800/80 rounded-3xl bg-white dark:bg-[#1f232b] shadow-sm transition-all h-[550px] overflow-hidden">
-                              {/* Header Section */}
-                              <div className={`flex flex-col p-6 bg-gray-50/50 dark:bg-gray-800/30 border-b border-gray-100 dark:border-gray-800 w-full`}>
-                                 <div className="flex items-center gap-4 mb-4">
-                                    <div className={`p-4 rounded-2xl ${cluster.bg} ${cluster.color}`}>
-                                       {cluster.icon}
-                                    </div>
-                                    <div className="flex flex-col gap-1">
-                                       <div className="text-sm font-black text-gray-900 dark:text-white tracking-wide uppercase leading-tight">{cluster.title}</div>
-                                       <div className="text-[10px] text-gray-500 font-bold bg-white dark:bg-gray-900 px-2 py-0.5 rounded-full inline-flex w-fit border border-gray-200 dark:border-gray-700">
-                                          {cluster.assets.length} Asset{cluster.assets.length !== 1 && 's'}
-                                       </div>
-                                    </div>
-                                 </div>
-                                 <div className="px-3 py-2 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 rounded-xl text-xs font-black border border-red-100 dark:border-transparent text-center">
-                                    {cluster.assets.reduce((sum, a) => sum + a.failureCount, 0)} Total Failures
-                                 </div>
-                              </div>
-
-                              {/* Asset List Section */}
-                              <div className="flex-1 p-5 overflow-y-auto custom-scrollbar space-y-4 bg-gray-50/30 dark:bg-black/20">
-                                 {cluster.assets.length === 0 ? (
-                                    <div className="h-full flex items-center justify-center text-xs font-bold text-gray-400 italic">No failures in this category.</div>
+                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                     <div className="lg:col-span-3 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2rem] overflow-hidden shadow-sm dark:shadow-2xl flex flex-col transition-colors">
+                        <div className="flex-1">
+                           <table className="w-full text-left">
+                              <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-[#1f232b] border-b border-gray-200 dark:border-gray-800 text-[10px] font-black uppercase text-gray-500 transition-colors">
+                                 <tr>
+                                    <th className="px-6 py-4">Asset Name</th>
+                                    <th className="px-6 py-4">Context / Description</th>
+                                    <th className="px-6 py-4 text-center">Utilization</th>
+                                    <th className="px-6 py-4 text-center whitespace-nowrap w-[130px]">Stability</th>
+                                    <th className="px-6 py-4 text-right whitespace-nowrap w-[120px]">Last Verified</th>
+                                 </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100 dark:divide-gray-800 transition-colors">
+                                 {stats.goldenSummary[activeTab].length === 0 ? (
+                                    <tr>
+                                       <td colSpan={5} className="px-6 py-10 text-center text-gray-500 text-xs italic">
+                                          No certified assets found for {activeTab === 'ai_gen' ? 'AI GEN' : 'Step Flow'} origin.
+                                       </td>
+                                    </tr>
                                  ) : (
-                                    cluster.assets.map(asset => (
-                                       <div key={asset.assetId} className="flex flex-col gap-3 p-4 rounded-2xl border border-gray-200 dark:border-gray-800/60 bg-white dark:bg-[#16191f] hover:border-indigo-500/50 transition-colors shadow-sm relative group overflow-hidden">
-                                          {asset.isAI && <div className="absolute top-0 right-0 bg-indigo-500 text-white text-[8px] font-black px-2 py-1 rounded-bl-xl uppercase tracking-widest z-10 shadow-sm">AI</div>}
-                                          <div className="flex items-start justify-between gap-3 pr-6 relative z-0">
-                                             <div className="font-bold text-gray-800 dark:text-gray-200 text-sm leading-snug break-all">
-                                                {asset.assetName}
+                                    stats.goldenSummary[activeTab].map(script => (
+                                       <tr key={script.id} className="hover:bg-gray-50 dark:hover:bg-indigo-500/5 transition-colors group">
+                                          <td className="px-6 py-5">
+                                             <div className="flex items-center gap-3">
+                                                <div className={`p-2 rounded-lg transition-all ${activeTab === 'ai_gen' ? 'bg-purple-100 dark:bg-purple-600/10 text-purple-600 dark:text-purple-400' : 'bg-orange-100 dark:bg-orange-600/10 text-orange-600 dark:text-orange-400'}`}>
+                                                   <FileCode className="w-4 h-4" />
+                                                </div>
+                                                <span className="text-xs font-bold text-gray-900 dark:text-gray-200 transition-colors">{script.name}</span>
                                              </div>
-                                             <button
-                                                onClick={async () => {
-                                                   try {
-                                                      const detail = await testApi.getHistoryDetail(asset.latestRecord.id);
-                                                      setActiveTrace({ ...detail, type: asset.isAI ? 'ai' : 'standard' });
-                                                   } catch (e) {
-                                                      console.error("Failed to load history detail:", e);
-                                                   }
-                                                }}
-                                                className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/40 transition-colors flex-shrink-0 shadow-sm absolute -top-1 -right-1"
-                                                title="Investigate"
-                                             >
-                                                <Search className="w-4 h-4" />
-                                             </button>
-                                          </div>
-
-                                          <div className="flex flex-wrap items-center gap-2">
-                                             {asset.hasHealing && <span className="bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border border-green-200 dark:border-transparent">Healed</span>}
-                                             <div className="text-[10px] text-red-500 font-bold flex items-center gap-1 bg-red-50 dark:bg-red-500/10 px-2 py-0.5 rounded-full border border-red-100 dark:border-transparent">
-                                                <Shield className="w-3 h-3" /> {asset.failureCount} Failures
+                                          </td>
+                                          <td className="px-6 py-5">
+                                             <span className="text-[11px] text-gray-500 line-clamp-1 italic">{script.description || 'No description provided'}</span>
+                                          </td>
+                                          <td className="px-6 py-5 text-center">
+                                             <div className="flex flex-col items-center gap-1">
+                                                <span className="text-[11px] font-bold text-gray-900 dark:text-white transition-colors">{script.utilization.toFixed(1)}%</span>
+                                                <div className="w-16 h-1 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
+                                                   <div className="h-full bg-indigo-500" style={{ width: `${script.utilization}%` }} />
+                                                </div>
+                                                <span className="text-[9px] text-gray-500 dark:text-gray-600">{script.runCount} Runs</span>
                                              </div>
-                                          </div>
-
-                                          <div className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug line-clamp-3 mt-1 pt-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-transparent rounded-b-xl px-1 -mb-1 pb-1 font-medium">
-                                             {asset.latestReason || 'No detailed error message.'}
-                                          </div>
-
-                                          <div className="text-[9px] text-gray-400 font-mono mt-2 w-full text-right bg-transparent">
-                                             {new Date(asset.lastFailureDate).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                          </div>
-                                       </div>
+                                          </td>
+                                          <td className="px-6 py-5 text-center">
+                                             <span className={`px-2 py-1 text-[10px] font-black rounded ${script.stability >= 90 ? 'bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-500' :
+                                                script.stability >= 70 ? 'bg-yellow-100 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-500' : 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-500'
+                                                }`}>
+                                                {script.stability}% Stable
+                                             </span>
+                                          </td>
+                                          <td className="px-6 py-5 text-right">
+                                             <span className="text-[10px] font-mono text-gray-500">
+                                                {script.lastRun !== 'N/A' ? new Date(script.lastRun).toLocaleDateString() : '-'}
+                                             </span>
+                                          </td>
+                                       </tr>
                                     ))
                                  )}
+                              </tbody>
+                           </table>
+                        </div>
+                     </div>
+
+                     <div className="bg-indigo-50 dark:bg-indigo-600/10 border border-indigo-200 dark:border-indigo-500/20 rounded-[2.5rem] p-8 flex flex-col justify-center relative overflow-hidden h-full shadow-lg transition-colors">
+                        <div className="absolute top-0 right-0 p-6 opacity-10 rotate-12"><Shield className="w-32 h-32 text-indigo-400" /></div>
+                        <div className="relative z-10">
+                           <div className="text-[10px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest mb-2 transition-colors">
+                              {activeTab === 'ai_gen' ? 'AI Generation Impact' : 'Step Flow Reusability'}
+                           </div>
+                           <div className="flex items-baseline gap-2 mb-2">
+                              <div className="text-5xl font-black text-gray-900 dark:text-white transition-colors">
+                                 {stats.categoryStats[activeTab].totalCount}
+                              </div>
+                              <div className="text-sm font-bold text-indigo-600 dark:text-indigo-300 transition-colors">
+                                 Assets
+                              </div>
+                           </div>
+                           <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-500/10 dark:bg-indigo-500/20 rounded-lg border border-indigo-500/20 dark:border-indigo-500/30 mb-4 transition-colors">
+                              <Activity className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
+                              <span className="text-xs font-bold text-indigo-700 dark:text-indigo-200">
+                                 Avg Stability: {stats.categoryStats[activeTab].avgStability}%
+                              </span>
+                           </div>
+                           <p className="text-xs text-indigo-600/80 dark:text-indigo-300/80 leading-relaxed font-medium transition-colors">
+                              {activeTab === 'ai_gen' ? 'Assets autonomously discovered or generated by AI via exploration and scenario conversion.' :
+                                 'Modular step assets and manual flows ensuring consistent reliability.'}
+                           </p>
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* Execution Summary Section */}
+                  <div className="flex items-center gap-3 mb-6 mt-16 px-2">
+                     <Activity className="w-5 h-5 text-indigo-500" />
+                     <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Execution Summary</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+                     <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-sm dark:shadow-none flex flex-col justify-between">
+                        <div>
+                           <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Activity className="w-20 h-20" /></div>
+                           <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4">Total Executions</div>
+                           <div className="text-4xl font-black text-gray-900 dark:text-white transition-colors">{stats.totalRuns}</div>
+                           <div className="mt-2 text-[10px] font-medium text-gray-500">Total number of tests executed across the selected period.</div>
+                        </div>
+                        <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-indigo-500">
+                           <TrendingUp className="w-3.5 h-3.5" /> Track active test volume
+                        </div>
+                     </div>
+                     <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-sm dark:shadow-none flex flex-col justify-between">
+                        <div>
+                           <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><ShieldCheck className="w-20 h-20" /></div>
+                           <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4">Success Rate (Avg)</div>
+                           <div className={`text-4xl font-black ${stats.passRate > 85 ? 'text-green-500' : 'text-amber-500'}`}>{stats.passRate}%</div>
+                           <div className="mt-2 text-[10px] font-medium text-gray-500">Overall percentage of tests that passed successfully.</div>
+                        </div>
+                        <div className="mt-4 w-full bg-gray-200 dark:bg-gray-950 h-1.5 rounded-full overflow-hidden shrink-0">
+                           <div className={`h-full ${stats.passRate > 85 ? 'bg-green-500' : 'bg-amber-500'} shadow-lg`} style={{ width: `${stats.passRate}%` }} />
+                        </div>
+                     </div>
+                     <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-sm dark:shadow-none flex flex-col justify-between">
+                        <div>
+                           <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Layers className="w-20 h-20" /></div>
+                           <div className="text-[10px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest mb-4 transition-colors">Pipeline Executions</div>
+                           <div className="text-4xl font-black text-gray-900 dark:text-white transition-colors">{stats.pipelineRuns}</div>
+                           <div className="mt-2 text-[10px] font-medium text-gray-500">Test executions triggered via CI/CD pipelines or API.</div>
+                        </div>
+                        <div className="mt-4 flex items-center gap-1.5 text-[10px] font-bold text-gray-500 uppercase tracking-tighter">
+                           Continuous Integration
+                        </div>
+                     </div>
+                     <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 relative overflow-hidden group hover:border-cyan-500/30 transition-all shadow-sm dark:shadow-none flex flex-col justify-between">
+                        <div>
+                           <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Calendar className="w-20 h-20" /></div>
+                           <div className="text-[10px] font-black text-cyan-500 uppercase tracking-widest mb-4">Scheduled Executions</div>
+                           <div className="text-4xl font-black text-gray-900 dark:text-white transition-colors">{stats.scheduledRuns}</div>
+                           <div className="mt-2 text-[10px] font-medium text-gray-500">Tests triggered automatically via the scheduler.</div>
+                        </div>
+                        <div className="mt-4 flex items-center gap-1.5 text-[10px] font-bold text-cyan-600/60 dark:text-cyan-500/60 uppercase tracking-tighter">
+                           Continuous Integration
+                        </div>
+                     </div>
+                  </div>
+               </div>
+
+               {/* Defect Summary Section */}
+               <div className="flex items-center gap-3 mb-6 mt-16 px-2">
+                  <Shield className="w-5 h-5 text-red-500" />
+                  <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Defect Summary</h3>
+               </div>
+               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
+                  <div className="lg:col-span-2 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] p-8 shadow-sm dark:shadow-2xl relative overflow-hidden transition-colors flex flex-col">
+                     <div className="absolute top-0 left-0 w-full h-1 bg-red-500 opacity-20" />
+                     <div className="flex items-start justify-between mb-8">
+                        <div className="flex flex-col gap-1">
+                           <div className="flex items-center gap-3">
+                              <div className="p-2.5 bg-red-600/10 rounded-xl text-red-500">
+                                 <AlertTriangle className="w-5 h-5" />
+                              </div>
+                              <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Defect Severity Distribution</h3>
+                           </div>
+                           <p className="text-[10px] text-gray-400 font-medium ml-[52px]">Importance score categorizations integrating Priority, Fail Rate, and Fail Volume.</p>
+                        </div>
+                     </div>
+
+                     <div className="flex-1 flex flex-col justify-center gap-6 mt-4">
+                        {[
+                           { label: 'Critical (80-100)', value: stats.severityDist.critical, count: stats.severityDist.critical, color: 'bg-red-500', textInfo: 'text-red-500' },
+                           { label: 'High (60-79)', value: stats.severityDist.high, count: stats.severityDist.high, color: 'bg-orange-500', textInfo: 'text-orange-500' },
+                           { label: 'Medium (40-59)', value: stats.severityDist.medium, count: stats.severityDist.medium, color: 'bg-yellow-500', textInfo: 'text-yellow-500' },
+                           { label: 'Low (0-39)', value: stats.severityDist.low, count: stats.severityDist.low, color: 'bg-indigo-500', textInfo: 'text-indigo-500' }
+                        ].map((item, idx) => (
+                           <div key={idx} className="flex items-center gap-4">
+                              <div className="w-40 flex-shrink-0">
+                                 <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-widest">{item.label}</span>
+                              </div>
+                              <div className="flex-1 h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex">
+                                 <div className={`h-full ${item.color} rounded-full transition-all duration-1000`} style={{ width: `${stats.totalFailedAssets > 0 ? (item.value / stats.totalFailedAssets) * 100 : 0}%` }} />
+                              </div>
+                              <div className={`w-12 text-right text-sm font-black ${item.textInfo}`}>
+                                 {item.count}
                               </div>
                            </div>
                         ))}
                      </div>
-                  );
-               })()}
+                  </div>
+                  <div className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-[2.5rem] p-8 shadow-sm dark:shadow-2xl flex flex-col relative overflow-hidden transition-colors">
+                     <div className="absolute top-0 left-0 w-full h-1 bg-green-500 opacity-20" />
+                     <div className="flex flex-col gap-1 mb-8">
+                        <div className="flex items-center gap-3">
+                           <div className="p-2.5 bg-green-600/10 rounded-xl text-green-500">
+                              <ShieldCheck className="w-5 h-5" />
+                           </div>
+                           <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Defect Resolution</h3>
+                        </div>
+                        <p className="text-[10px] text-gray-400 font-medium ml-[52px]">Tracking issue resolution workflows.</p>
+                     </div>
+
+                     <div className="flex-1 flex flex-col justify-center gap-4 relative">
+                        {/* Resolution Types - Independent Bars */}
+                        {[
+                           { label: 'Jira Registered', count: stats.resolutionStatus.jira, color: 'bg-blue-500', bg: 'bg-blue-500/10', dColor: 'text-blue-500', desc: 'Reported to dev queue' },
+                           { label: 'AI Healed', count: stats.resolutionStatus.healed, color: 'bg-green-500', bg: 'bg-green-500/10', dColor: 'text-green-500', desc: 'Self-corrected by AI' },
+                           { label: 'Open (Unresolved)', count: stats.resolutionStatus.open, color: 'bg-gray-400 dark:bg-gray-600', bg: 'bg-gray-200 dark:bg-gray-800', dColor: 'text-gray-500 dark:text-gray-400', desc: 'Pending diagnosis' }
+                        ].map((res, i) => (
+                           <div key={i} className="flex flex-col gap-1 p-3 rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/80 transition-colors">
+                              <div className="flex items-center justify-between">
+                                 <div className="flex items-center gap-3">
+                                    <div className={`w-3 h-3 rounded-full ${res.color}`} />
+                                    <div>
+                                       <div className="text-xs font-bold text-gray-800 dark:text-gray-200">{res.label}</div>
+                                       <div className="text-[9px] text-gray-500 block">{res.desc}</div>
+                                    </div>
+                                 </div>
+                                 <div className={`text-lg font-black ${res.dColor}`}>{res.count}</div>
+                              </div>
+                              <div className={`w-full h-1.5 rounded-full mt-2 ${res.bg} overflow-hidden`}>
+                                 <div className={`h-full ${res.color}`} style={{ width: `${stats.totalFailedAssets > 0 ? (res.count / stats.totalFailedAssets) * 100 : 0}%` }} />
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  </div>
+               </div>
+
+               {/* Root Cause Analysis Summary Section */}
+               <div className="mb-20">
+                  <div className="flex items-center gap-3 mb-6 mt-16 px-2">
+                     <AlertTriangle className="w-5 h-5 text-orange-500" />
+                     <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest transition-colors">Root Cause Analysis Summary</h3>
+                  </div>
+                  <div>
+                     {(() => {
+                        const clusters = [
+                           { id: 'ui', title: 'UI / Selector Change', icon: <MousePointer2 className="w-5 h-5" />, color: 'text-orange-500', bg: 'bg-orange-600/10', border: 'border-orange-500/20', assets: [] as any[] },
+                           { id: 'timeout', title: 'Timeout / Performance', icon: <Clock className="w-5 h-5" />, color: 'text-amber-500', bg: 'bg-amber-600/10', border: 'border-amber-500/20', assets: [] as any[] },
+                           { id: 'network', title: 'Network / API', icon: <Activity className="w-5 h-5" />, color: 'text-blue-500', bg: 'bg-blue-600/10', border: 'border-blue-500/20', assets: [] as any[] },
+                           { id: 'logic', title: 'Logic Error / Assertion', icon: <Cpu className="w-5 h-5" />, color: 'text-red-500', bg: 'bg-red-600/10', border: 'border-red-500/20', assets: [] as any[] }
+                        ];
+
+                        (stats.failedAssetsList || []).forEach(asset => {
+                           if (asset.failureCount === 0) return;
+                           const reason = (asset.latestReason || '').toLowerCase();
+
+                           if (reason.includes('timeout') || reason.includes('exceeded') || reason.includes('waiting')) {
+                              clusters[1].assets.push(asset);
+                           } else if (reason.includes('selector') || reason.includes('element') || reason.includes('visible') || reason.includes('not found') || reason.includes('clickable') || reason.includes('intercepted')) {
+                              clusters[0].assets.push(asset);
+                           } else if (reason.includes('network') || reason.includes('api') || reason.includes('500') || reason.includes('refused') || reason.includes('disconnected') || reason.includes('socket') || reason.includes('fetch')) {
+                              clusters[2].assets.push(asset);
+                           } else {
+                              clusters[3].assets.push(asset);
+                           }
+                        });
+
+                        const totalFailures = clusters.reduce((acc, c) => acc + c.assets.length, 0);
+
+                        if (totalFailures === 0) {
+                           return (
+                              <div className="p-12 text-center text-gray-600 italic">
+                                 No assets with failures detected in the selected period.
+                              </div>
+                           );
+                        }
+
+                        return (
+                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                              {clusters.map(cluster => (
+                                 <div key={cluster.id} className="flex flex-col border border-gray-200 dark:border-gray-800/80 rounded-3xl bg-white dark:bg-[#1f232b] shadow-sm transition-all h-[550px] overflow-hidden">
+                                    {/* Header Section */}
+                                    <div className={`flex flex-col p-6 bg-gray-50/50 dark:bg-gray-800/30 border-b border-gray-100 dark:border-gray-800 w-full`}>
+                                       <div className="flex items-center gap-4 mb-4">
+                                          <div className={`p-4 rounded-2xl ${cluster.bg} ${cluster.color}`}>
+                                             {cluster.icon}
+                                          </div>
+                                          <div className="flex flex-col gap-1">
+                                             <div className="text-sm font-black text-gray-900 dark:text-white tracking-wide uppercase leading-tight">{cluster.title}</div>
+                                             <div className="text-[10px] text-gray-500 font-bold bg-white dark:bg-gray-900 px-2 py-0.5 rounded-full inline-flex w-fit border border-gray-200 dark:border-gray-700">
+                                                {cluster.assets.length} Asset{cluster.assets.length !== 1 && 's'}
+                                             </div>
+                                          </div>
+                                       </div>
+                                       <div className="px-3 py-2 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 rounded-xl text-xs font-black border border-red-100 dark:border-transparent text-center">
+                                          {cluster.assets.reduce((sum, a) => sum + a.failureCount, 0)} Total Failures
+                                       </div>
+                                    </div>
+
+                                    {/* Asset List Section */}
+                                    <div className="flex-1 p-5 overflow-y-auto custom-scrollbar space-y-4 bg-gray-50/30 dark:bg-black/20">
+                                       {cluster.assets.length === 0 ? (
+                                          <div className="h-full flex items-center justify-center text-xs font-bold text-gray-400 italic">No failures in this category.</div>
+                                       ) : (
+                                          cluster.assets.map(asset => (
+                                             <div key={asset.assetId} className="flex flex-col gap-3 p-4 rounded-2xl border border-gray-200 dark:border-gray-800/60 bg-white dark:bg-[#16191f] hover:border-indigo-500/50 transition-colors shadow-sm relative group overflow-hidden">
+                                                {asset.isAI && <div className="absolute top-0 right-0 bg-indigo-500 text-white text-[8px] font-black px-2 py-1 rounded-bl-xl uppercase tracking-widest z-10 shadow-sm">AI</div>}
+                                                <div className="flex items-start justify-between gap-3 pr-6 relative z-0">
+                                                   <div className="font-bold text-gray-800 dark:text-gray-200 text-sm leading-snug break-all">
+                                                      {asset.assetName}
+                                                   </div>
+                                                   <button
+                                                      onClick={async () => {
+                                                         try {
+                                                            const detail = await testApi.getHistoryDetail(asset.latestRecord.id);
+                                                            setActiveTrace({ ...detail, type: asset.isAI ? 'ai' : 'standard' });
+                                                         } catch (e) {
+                                                            console.error("Failed to load history detail:", e);
+                                                         }
+                                                      }}
+                                                      className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/40 transition-colors flex-shrink-0 shadow-sm absolute -top-1 -right-1"
+                                                      title="Investigate"
+                                                   >
+                                                      <Search className="w-4 h-4" />
+                                                   </button>
+                                                </div>
+
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                   {asset.hasHealing && <span className="bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border border-green-200 dark:border-transparent">Healed</span>}
+                                                   <div className="text-[10px] text-red-500 font-bold flex items-center gap-1 bg-red-50 dark:bg-red-500/10 px-2 py-0.5 rounded-full border border-red-100 dark:border-transparent">
+                                                      <Shield className="w-3 h-3" /> {asset.failureCount} Failures
+                                                   </div>
+                                                </div>
+
+                                                <div className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug line-clamp-3 mt-1 pt-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-transparent rounded-b-xl px-1 -mb-1 pb-1 font-medium">
+                                                   {asset.latestReason || 'No detailed error message.'}
+                                                </div>
+
+                                                <div className="text-[9px] text-gray-400 font-mono mt-2 w-full text-right bg-transparent">
+                                                   {new Date(asset.lastFailureDate).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                </div>
+                                             </div>
+                                          ))
+                                       )}
+                                    </div>
+                                 </div>
+                              ))}
+                           </div>
+                        );
+                     })()}
+                  </div>
+               </div>
             </div>
-         </div>
-      </div>
-   ) : (
+         ) : (
             <div className="animate-in fade-in duration-300">
+               <div className="mb-8 flex items-center justify-between">
+                  <div className="relative w-full max-w-md">
+                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                     <input
+                        type="text"
+                        placeholder="Search by report name or date..."
+                        value={savedInsightSearch}
+                        onChange={(e) => setSavedInsightSearch(e.target.value)}
+                        className="w-full pl-11 pr-4 py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl text-[11px] font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all dark:text-white"
+                     />
+                  </div>
+                  <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                     {filteredSavedInsights.length} Saved Insights Found
+                  </div>
+               </div>
                {isLoadingInsights ? (
                   <div className="flex justify-center p-32"><Loader2 className="w-10 h-10 animate-spin text-indigo-500 opacity-50" /></div>
-               ) : savedInsights.length === 0 ? (
+               ) : filteredSavedInsights.length === 0 ? (
                   <div className="text-center p-32 text-gray-400 font-medium bg-gray-50 dark:bg-[#16191f] rounded-3xl border border-dashed border-gray-200 dark:border-gray-800">
                      <FileText className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                     <p>No saved intelligence reports were found.</p>
+                     <p>{savedInsightSearch ? 'No reports matching your search.' : 'No saved intelligence reports were found.'}</p>
                      <p className="text-xs mt-2 opacity-60">Reports saved from the Summary view will appear here.</p>
                   </div>
                ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                     {savedInsights.map(insight => (
+                     {filteredSavedInsights.map(insight => (
                         <div key={insight.id} onClick={() => { setReportContent(insight.content_markdown); setReportTitle(insight.title || 'Executive Intelligence Report'); setShowReportPreview(true); }} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 p-8 rounded-[2rem] flex flex-col justify-between cursor-pointer hover:border-indigo-500/50 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all group overflow-hidden relative">
                            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl group-hover:bg-indigo-500/10 transition-colors pointer-events-none" />
                            <div>
@@ -807,14 +840,16 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                         <div className="flex items-center justify-between mb-8 print:hidden">
                            <h1 className="text-3xl font-black text-gray-900">Executive Intelligence Report</h1>
                            <div className="flex gap-3">
-                              <button
-                                 onClick={handleSaveInsight}
-                                 disabled={isSaving}
-                                 className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl font-bold hover:bg-indigo-50 transition-all shadow-sm disabled:opacity-50"
-                              >
-                                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                                 Save as Insight
-                              </button>
+                              {mainTab === 'summary' && (
+                                 <button
+                                    onClick={handleSaveInsight}
+                                    disabled={isSaving}
+                                    className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl font-bold hover:bg-indigo-50 transition-all shadow-sm disabled:opacity-50"
+                                 >
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                                    Save as Insight
+                                 </button>
+                              )}
                               <button
                                  onClick={() => window.print()}
                                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg hover:shadow-indigo-500/20"
@@ -828,7 +863,7 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                            {/* Print Header */}
                            <div className="hidden print:block mb-8 border-b-2 border-indigo-600 pb-4">
                               <h1 className="text-3xl font-black text-gray-900">Executive QA Intelligence Report</h1>
-                              <p className="text-gray-500 mt-2 text-sm">Generated by Q-ONE AI Engine • {activeProject.name}</p>
+                              <p className="text-gray-500 mt-2 text-sm">Generated by Q-ONE AI Engine ??{activeProject.name}</p>
                            </div>
                            <ReactMarkdown
                               components={{

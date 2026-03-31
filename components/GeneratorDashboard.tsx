@@ -198,7 +198,7 @@ const GeneratorDashboard: React.FC<GeneratorDashboardProps> = ({
 
               <div className="mt-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-colors ${selectedScenarioIds.includes(s.id) ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' : 'bg-gray-200 dark:bg-gray-800 text-gray-600'}`}>{s.testCases.length} TestCases</span>
+                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition-colors ${selectedScenarioIds.includes(s.id) ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' : 'bg-gray-200 dark:bg-gray-800 text-gray-600'}`}>{(s.testCases || s.test_cases || []).length} TestCases</span>
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); setViewingDetailScenarioId(s.id); }}
@@ -351,7 +351,7 @@ const GeneratorDashboard: React.FC<GeneratorDashboardProps> = ({
                 </div>
 
                 <div className="space-y-6">
-                  {detailScenario.testCases.map((tc, idx) => (
+                  {(detailScenario.testCases || detailScenario.test_cases || []).map((tc, idx) => (
                     <div key={tc.id} className="bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden shadow-xl animate-in fade-in slide-in-from-bottom-2 transition-colors" style={{ animationDelay: `${idx * 50}ms` }}>
                       <div className="p-5 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/30 flex items-center justify-between transition-colors">
                         <div className="flex items-center gap-3">
@@ -388,7 +388,7 @@ const GeneratorDashboard: React.FC<GeneratorDashboardProps> = ({
                             <Layout className="w-2.5 h-2.5" /> Execution Steps
                           </span>
                           <div className="space-y-1.5">
-                            {tc.steps.map((step, sIdx) => (
+                            {(tc.steps || []).map((step, sIdx) => (
                               <div key={sIdx} className="flex gap-3 p-2.5 bg-gray-50/50 dark:bg-gray-950/50 border border-gray-200 dark:border-gray-800 rounded-xl group hover:border-indigo-500/30 transition-all">
                                 <span className="text-[9px] font-black text-gray-500 dark:text-gray-700 mt-0.5 transition-colors">{sIdx + 1}</span>
                                 <p className="text-[11px] text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-300 leading-snug transition-colors">{step}</p>
@@ -413,7 +413,7 @@ const GeneratorDashboard: React.FC<GeneratorDashboardProps> = ({
             </div>
 
             <div className="p-8 border-t border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/40 flex items-center justify-between gap-4 transition-colors">
-              <div className="text-[9px] font-black text-gray-500 dark:text-gray-600 uppercase tracking-tighter transition-colors">Total Nodes: {detailScenario.testCases.length}</div>
+              <div className="text-[9px] font-black text-gray-500 dark:text-gray-600 uppercase tracking-tighter transition-colors">Total Nodes: {(detailScenario.testCases || detailScenario.test_cases || []).length}</div>
               <div className="flex gap-3">
                 <button
                   onClick={() => setViewingDetailScenarioId(null)}

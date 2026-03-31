@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import crud, models, schemas
 from app.schemas import self_healing
 from app.api import deps
-from app.models.test import TestHistory, TestScript
+from app.models.test import TestHistory, TestScript, SelfHealingLog
 from app.models.project import ProjectInsight
 from app.schemas.test_history import TestHistoryCreate, TestHistorySummary, ProjectInsightCreate, ProjectInsight as ProjectInsightSchema
 import uuid
@@ -78,6 +78,29 @@ def read_history(
         return crud.history.get_by_project(db, project_id=project_id, skip=skip, limit=limit)
     return []
 
+@router.get("/active-defects", response_model=List[schemas.TestHistory])
+def read_active_defects(
+    db: Session = Depends(deps.get_db),
+    project_id: str = "",
+    current_user: models.User = Depends(deps.get_current_active_user),
+) -> Any:
+    """
+    Retrieve all active defects (latest failure for each script) in a project.
+    """
+    from app.models.test import TestHistory
+    from sqlalchemy import desc
+    
+    if not project_id:
+        return []
+        
+    # Get only the latest run for each script, where the latest run was FAILED
+    all_recent = db.query(TestHistory).distinct(TestHistory.script_id).filter(
+        TestHistory.project_id == project_id
+    ).options(joinedload(TestHistory.script)).order_by(TestHistory.script_id, desc(TestHistory.run_date)).all()
+    
+    active_defects = [h for h in all_recent if h.script_id and h.status == 'failed']
+    return active_defects
+
 @router.get("/summary", response_model=schemas.TestHistorySummary)
 def read_history_summary(
     db: Session = Depends(deps.get_db),
@@ -121,24 +144,23 @@ def read_history_summary(
         weekly_growth = 0
 
     # 3. Active Defects (Latest run is failed)
-    # Optimized: Get the latest history for each script in this project
-    # Use joinedload to fetch script origin efficiently
-    all_recent = db.query(TestHistory).filter(
+    # Optimized: Use DISTINCT ON to get only the latest history record for each script
+    # This avoids fetching all history records and processing them in Python.
+    from sqlalchemy import desc
+    all_recent = db.query(TestHistory).distinct(TestHistory.script_id).filter(
         TestHistory.project_id == project_id
-    ).options(joinedload(TestHistory.script)).order_by(TestHistory.run_date.desc()).all()
+    ).options(joinedload(TestHistory.script)).order_by(TestHistory.script_id, desc(TestHistory.run_date)).all()
     
-    seen_scripts = set()
     active_defects = 0
     active_defects_by_origin = {"AI": 0, "STEP": 0, "AI_EXPLORATION": 0, "MANUAL": 0}
     
     for h in all_recent:
-        if h.script_id and h.script_id not in seen_scripts:
-            seen_scripts.add(h.script_id)
-            if h.status == 'failed':
-                active_defects += 1
-                if h.script:
-                    origin = h.script.origin or "MANUAL"
-                    active_defects_by_origin[origin] = active_defects_by_origin.get(origin, 0) + 1
+        if not h.script_id: continue
+        if h.status == 'failed':
+            active_defects += 1
+            if h.script:
+                origin = h.script.origin or "MANUAL"
+                active_defects_by_origin[origin] = active_defects_by_origin.get(origin, 0) + 1
     
     return {
         "total": total,
@@ -277,40 +299,29 @@ def read_pending_healing(
     db: Session = Depends(deps.get_db),
     project_id: str
 ) -> Any:
-    """
-    Get all failed test histories for scripts that have self-healing enabled.
-    Only returns the latest failure for each unique script.
-    """
-    from app.models.test import TestScript, TestHistory, SelfHealingLog
-    
-    # 1. Fetch ALL recent histories for the project, ordered by newest first
-    all_recent_history = db.query(TestHistory).options(
-        joinedload(TestHistory.script)
-    ).filter(
+    # 1. Fetch only the LATEST state for each unique script in this project
+    # Optimized: Use DISTINCT ON to de-dupe at the database level.
+    from sqlalchemy import desc
+    all_recent_history = db.query(TestHistory).distinct(TestHistory.script_id).filter(
         TestHistory.project_id == project_id
-    ).order_by(TestHistory.run_date.desc()).all()
-
-    # 2. De-dupe by script_id to get the LATEST state for each script
-    seen_scripts = set()
+    ).options(joinedload(TestHistory.script)).order_by(TestHistory.script_id, desc(TestHistory.run_date)).all()
+    
     pending = []
     
     for history in all_recent_history:
         if not history.script_id:
             continue
             
-        if history.script_id not in seen_scripts:
-            seen_scripts.add(history.script_id)
+        # Check if the LATEST state is 'failed' and AI-Healing is enabled
+        if history.status == "failed" and history.script and history.script.enable_ai_test:
+            # 3. Exclude if healing is already successful for THIS specific failure
+            already_healed = db.query(SelfHealingLog).filter(
+                SelfHealingLog.history_id == history.id,
+                SelfHealingLog.status == "success"
+            ).first()
             
-            # Check if the LATEST state is 'failed' and AI-Healing is enabled
-            if history.status == "failed" and history.script and history.script.enable_ai_test:
-                # 3. Exclude if healing is already successful for THIS specific failure
-                already_healed = db.query(SelfHealingLog).filter(
-                    SelfHealingLog.history_id == history.id,
-                    SelfHealingLog.status == "success"
-                ).first()
-                
-                if not already_healed:
-                    pending.append(history)
+            if not already_healed:
+                pending.append(history)
                 
     return pending
 

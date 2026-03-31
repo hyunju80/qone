@@ -174,6 +174,8 @@ const AppContent: React.FC = () => {
   // Sidebar State (Moved to top level to fix Hook rules)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Default to false for Hub
   const [activeHistoryTab, setActiveHistoryTab] = useState<'dashboard' | 'history' | 'defects'>('dashboard');
+  const [activeAIGeneratorTab, setActiveAIGeneratorTab] = useState<'scenario' | 'verification'>('scenario');
+  const [activeReportTab, setActiveReportTab] = useState<'summary' | 'saved'>('summary');
 
   const filteredScripts = useMemo(() => scripts.filter(s => s.projectId === activeProject?.id), [scripts, activeProject]);
   const filteredHistory = useMemo(() => history.filter(h => h.projectId === activeProject?.id), [history, activeProject]);
@@ -539,7 +541,11 @@ const AppContent: React.FC = () => {
           onAlert={showAlert} 
           onViewChange={(view: ViewMode, tab?: string) => {
             setCurrentView(view);
-            if (tab) setActiveHistoryTab(tab as any);
+            if (tab) {
+              if (view === ViewMode.HISTORY) setActiveHistoryTab(tab as any);
+              if (view === ViewMode.AI_GENERATOR) setActiveAIGeneratorTab(tab as any);
+              if (view === ViewMode.REPORTS) setActiveReportTab(tab as any);
+            }
           }} 
         />;
       case ViewMode.AI_EXPLORATION:
@@ -595,6 +601,7 @@ const AppContent: React.FC = () => {
             onUpdateDraftScenarios={setDraftScenarios}
             lastEditingScenarioId={lastEditingScenarioId}
             onUpdateLastEditingScenarioId={setLastEditingScenarioId}
+            initialTab={activeAIGeneratorTab}
           />
         );
       case ViewMode.GENERATOR:
@@ -711,7 +718,7 @@ const AppContent: React.FC = () => {
           onAlert={showAlert}
         />;
       case ViewMode.REPORTS:
-        return <ReportDashboard history={filteredHistory} scripts={filteredScripts} activeProject={activeProject} onAlert={showAlert} />;
+        return <ReportDashboard history={filteredHistory} scripts={filteredScripts} activeProject={activeProject} onAlert={showAlert} initialTab={activeReportTab} />;
       case ViewMode.DATASET_STUDIO:
         return <DataSetStudio activeProject={activeProject} onAlert={showAlert} />;
       case ViewMode.DESIGN_CENTER:
