@@ -195,7 +195,7 @@ async def analyze_url(
             contents=prompt_contents,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema={
+                response_json_schema={
                     "type": "OBJECT",
                     "properties": {
                         "scenarios": {
@@ -450,7 +450,7 @@ async def analyze_upload(
             contents=prompt_parts,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema={
+                response_json_schema={
                     "type": "OBJECT",
                     "properties": {
                         "scenarios": {
@@ -604,7 +604,7 @@ async def generate_scenarios(
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema={
+                response_json_schema={
                     "type": "OBJECT",
                     "properties": {
                         "scenarios": {
@@ -737,7 +737,7 @@ async def analyze_knowledge(
             contents=system_prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema={
+                response_json_schema={
                     "type": "OBJECT",
                     "properties": {
                         "scenarios": {
@@ -1042,7 +1042,7 @@ async def generate_from_map(
             contents=prompt_contents,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema={
+                response_json_schema={
                     "type": "OBJECT",
                     "properties": {
                         "scenarios": {

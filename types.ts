@@ -329,6 +329,7 @@ export interface TestHistory {
   scriptCategory?: string;
   healing_logs?: any[];
   jira_id?: string;
+  runId?: string;
 }
 
 export interface Message {

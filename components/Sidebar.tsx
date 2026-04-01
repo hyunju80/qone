@@ -126,9 +126,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, onSwitchPro
                   >
                     <item.icon className={`w-4 h-4 ${activeView === item.id ? 'text-white' : ''}`} />
                     {item.label}
-                    {item.id === ViewMode.PIPELINE && (
-                      <span className="ml-auto w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-                    )}
                   </button>
                 ))}
               </div>

@@ -31,7 +31,7 @@ const HealingAnalysisModal: React.FC<HealingAnalysisModalProps> = ({ targetItem,
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 sm:p-12 animate-in fade-in duration-300">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full max-w-2xl max-h-[85vh] bg-white dark:bg-[#0f1115] border border-gray-200 dark:border-white/10 rounded-[2.5rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300 transition-all">
+      <div className="relative w-full max-w-4xl max-h-[85vh] bg-white dark:bg-[#0f1115] border border-gray-200 dark:border-white/10 rounded-[2.5rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300 transition-all">
 
         {/* Header Section */}
         <div className="p-6 border-b border-gray-100 dark:border-white/10 flex items-center justify-between">

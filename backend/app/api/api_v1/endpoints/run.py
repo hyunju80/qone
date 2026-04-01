@@ -572,6 +572,7 @@ async def start_active_steps_run(
                     persona_name=request.persona_name,
                     step_results=steps_data,
                     logs=execution_logs,
+                    run_id=run_id,
                     run_date=datetime.now(timezone.utc)
                 )
 
@@ -639,6 +640,37 @@ async def start_active_steps_run(
 
     asyncio.create_task(run_task())
     return DryRunResponse(run_id=run_id)
+
+@router.get("/status/{run_id}", response_model=Dict[str, Any])
+async def get_run_status(run_id: str):
+    """
+    Check the current status of a run by monitoring exit_code.txt
+    """
+    run_dir = RUNS_DIR / run_id
+    if not run_dir.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+    
+    exit_code_file = run_dir / "exit_code.txt"
+    log_file = run_dir / "output.log"
+    
+    status = "running"
+    exit_code = None
+    
+    if exit_code_file.exists():
+        try:
+            content = exit_code_file.read_text().strip()
+            if content:
+                exit_code = int(content)
+                status = "success" if exit_code == 0 else "failed"
+        except:
+            pass
+
+    return {
+        "run_id": run_id,
+        "status": status,
+        "exit_code": exit_code,
+        "log_exists": log_file.exists()
+    }
 
 @router.websocket("/ws/{run_id}")
 async def websocket_endpoint(websocket: WebSocket, run_id: str):

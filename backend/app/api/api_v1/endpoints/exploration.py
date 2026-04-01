@@ -262,7 +262,7 @@ async def next_step(req: StepRequest):
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    response_schema=ExplorationStep
+                    response_json_schema=ExplorationStep.model_json_schema()
                 )
             )
         
@@ -271,7 +271,8 @@ async def next_step(req: StepRequest):
         if not response.parsed:
              raise ValueError("LLM failed to return JSON")
              
-        plan = response.parsed
+        # Support both dict and object return from SDK
+        plan = ExplorationStep.model_validate(response.parsed)
     
     # 4. Execute Action (in backend)
     # Inject credentials

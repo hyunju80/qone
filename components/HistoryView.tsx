@@ -1649,14 +1649,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                         </div>
                      </div>
 
-                     <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 flex justify-end">
-                        <button
-                           onClick={() => setSelectedHealedAsset(null)}
-                           className="px-8 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-black text-sm hover:scale-105 active:scale-95 transition-all shadow-xl shadow-indigo-500/10"
-                        >
-                           CLOSE
-                        </button>
-                     </div>
+                      <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 flex justify-end">
+                         <button
+                            onClick={() => setSelectedHealedAsset(null)}
+                            className="px-10 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-sm hover:scale-105 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 uppercase tracking-widest"
+                         >
+                            Close Detail
+                         </button>
+                      </div>
                   </div>
                </div>
             </div>

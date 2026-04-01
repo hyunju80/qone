@@ -444,15 +444,16 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
                     { id: 'ux', label: 'Visual & UX Consistency', icon: <Layout className="w-3 h-3 text-amber-500" /> }
                   ].map(opt => (
                     <label key={opt.id} className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer ${selectedStrategies.includes(opt.id) ? 'bg-indigo-50/50 dark:bg-indigo-900/10 border-indigo-200 dark:border-indigo-500/30 shadow-sm' : 'bg-white dark:bg-[#16191f] border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:hover:border-gray-700'}`}>
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
-                        checked={selectedStrategies.includes(opt.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) setSelectedStrategies([...selectedStrategies, opt.id]);
-                          else setSelectedStrategies(selectedStrategies.filter(id => id !== opt.id));
+                      <div
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (selectedStrategies.includes(opt.id)) setSelectedStrategies(selectedStrategies.filter(id => id !== opt.id));
+                          else setSelectedStrategies([...selectedStrategies, opt.id]);
                         }}
-                      />
+                        className={`mt-0.5 shrink-0 transition-all ${selectedStrategies.includes(opt.id) ? 'text-indigo-600' : 'text-gray-300 dark:text-gray-700 hover:text-gray-400'}`}
+                      >
+                        {selectedStrategies.includes(opt.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                      </div>
                       <div className="flex items-center gap-2 min-w-0">
                         {opt.icon}
                         <span className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-tight truncate">{opt.label}</span>
@@ -654,13 +655,14 @@ const HierarchyNode = ({ item, depth, selectedIds, onToggleSelected }: { item: H
         </button>
 
         <label className="flex items-center gap-2 flex-1 cursor-pointer min-w-0" onClick={(e) => { if ((e.target as HTMLElement).tagName !== 'INPUT') { if (hasChildren) setIsExpanded(!isExpanded); } }}>
-          <div className="relative flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-            <input
-              type="checkbox"
-              className={`rounded border-gray-300 text-indigo-500 focus:ring-indigo-500 ${hasSomeSelected ? 'opacity-50' : ''} w-3.5 h-3.5`}
-              checked={isSelected}
-              onChange={(e) => onToggleSelected(e.target.checked, item.item_ids)}
-            />
+          <div 
+            className={`relative flex items-center shrink-0 transition-all ${isSelected ? 'text-indigo-500' : hasSomeSelected ? 'text-indigo-500/50' : 'text-gray-300 dark:text-gray-700 hover:text-gray-400'}`} 
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelected(!isSelected, item.item_ids);
+            }}
+          >
+            {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
           </div>
           <div className="min-w-0 flex items-center">
             <span className={`text-[10px] text-gray-700 dark:text-gray-300 truncate tracking-tight ${depth === 0 ? 'font-black text-indigo-600 dark:text-indigo-400 uppercase leading-none' : 'font-bold leading-none'}`}>{item.name}</span>

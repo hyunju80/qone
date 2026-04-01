@@ -17,6 +17,7 @@ class TestHistoryBase(BaseModel):
     logs: Optional[List[LogEntry]] = []
     step_results: Optional[List[Dict[str, Any]]] = []
     jira_id: Optional[str] = None
+    run_id: Optional[str] = None
 
 class TestHistoryCreate(TestHistoryBase):
     script_id: str
@@ -38,6 +39,7 @@ class TestHistoryInDBBase(TestHistoryBase):
     commit_hash: Optional[str] = None
     schedule_id: Optional[str] = None
     schedule_name: Optional[str] = None
+    run_id: Optional[str] = None
     script_origin: Optional[str] = None
     script_category: Optional[str] = "Common"
     

@@ -1023,14 +1023,14 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                      {(activeTrace.type === 'standard' || (activeTrace.type === 'ai' && (!activeTrace.ai_session?.steps_data || activeTrace.ai_session.steps_data.length === 0))) && (
                         <div className="space-y-6">
                            {activeTrace.failureAnalysis && (
-                              <div className="p-6 rounded-3xl border bg-indigo-50 dark:bg-indigo-950/10 border-indigo-200 dark:border-indigo-500/20 mb-8">
+                              <div className="p-6 rounded-3xl border bg-indigo-50 dark:bg-indigo-500/5 border-indigo-200 dark:border-indigo-500/20 mb-8 transition-colors">
                                  <div className="flex items-center gap-3 mb-4">
-                                    <h4 className="text-xs font-black text-indigo-500 uppercase tracking-widest">Oracle Intelligent Analysis</h4>
+                                    <h4 className="text-xs font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">Oracle Intelligent Analysis</h4>
                                  </div>
-                                 <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">{activeTrace.failureAnalysis.thought || 'Critical failure detected.'}</p>
-                                 <div className="mt-4 p-4 bg-red-100/50 border border-red-200 rounded-2xl">
-                                    <div className="text-[10px] font-black text-red-500 uppercase mb-1">Root Cause (AI Diagnostic)</div>
-                                    <p className="text-xs text-red-700 font-bold">{activeTrace.failureAnalysis.reason || activeTrace.failureReason}</p>
+                                 <p className="text-sm text-gray-700 dark:text-gray-300 font-medium leading-relaxed">{activeTrace.failureAnalysis.thought || 'Critical failure detected.'}</p>
+                                 <div className="mt-4 p-4 bg-red-100/50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-2xl transition-colors">
+                                    <div className="text-[10px] font-black text-red-500 dark:text-red-400 uppercase mb-1">Root Cause (AI Diagnostic)</div>
+                                    <p className="text-xs text-red-700 dark:text-red-300 font-bold">{activeTrace.failureAnalysis.reason || activeTrace.failureReason}</p>
                                  </div>
                               </div>
                            )}
@@ -1054,20 +1054,20 @@ const ReportDashboard: React.FC<ReportDashboardProps> = ({ history, scripts, act
                                              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">{step.name}</h3>
 
                                              <div className="grid grid-cols-2 gap-3 mb-3">
-                                                <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
+                                                <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg transition-colors">
                                                    <div className="text-[9px] font-black text-gray-400 uppercase mb-1">Action</div>
-                                                   <div className="text-[11px] font-bold text-indigo-600 uppercase">{step.metadata?.action || 'action'}</div>
+                                                   <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">{step.metadata?.action || 'action'}</div>
                                                 </div>
                                                 {step.metadata?.value && (
-                                                   <div className="p-3 bg-indigo-50/50 rounded-lg border border-indigo-100/50">
-                                                      <div className="text-[9px] font-black text-indigo-400 uppercase mb-1">Input / Value</div>
-                                                      <div className="text-[11px] font-bold text-indigo-600">{step.metadata.value}</div>
+                                                   <div className="p-3 bg-indigo-50/50 dark:bg-indigo-500/10 rounded-lg border border-indigo-100/50 dark:border-indigo-500/20 transition-colors">
+                                                      <div className="text-[9px] font-black text-indigo-400 dark:text-indigo-400/70 uppercase mb-1">Input / Value</div>
+                                                      <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-300 break-all">{step.metadata.value}</div>
                                                    </div>
                                                 )}
                                              </div>
 
                                              {step.error_message && (
-                                                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600">
+                                                <div className="p-3 bg-red-50 dark:bg-red-500/5 border border-red-200 dark:border-red-500/20 rounded-lg text-red-600 dark:text-red-400 transition-colors">
                                                    <div className="text-[10px] font-black uppercase mb-1">Error Detail</div>
                                                    <p className="text-[10px] font-mono break-all">{step.error_message}</p>
                                                 </div>

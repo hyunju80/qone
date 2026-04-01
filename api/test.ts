@@ -56,7 +56,8 @@ const mapHistory = (h: any): TestHistory => ({
     scheduleId: h.schedule_id || h.scheduleId,
     scheduleName: h.schedule_name || h.scheduleName,
     scriptOrigin: h.script_origin || h.scriptOrigin,
-    jira_id: h.jira_id || h.jiraId
+    jira_id: h.jira_id || h.jiraId,
+    runId: h.run_id || h.runId
 });
 
 export const testApi = {
@@ -88,6 +89,10 @@ export const testApi = {
     },
     runActiveSteps: async (data: any) => {
         const response = await api.post<{ run_id: string }>('/run/active-steps', data);
+        return response.data;
+    },
+    getRunStatus: async (run_id: string) => {
+        const response = await api.get<{ status: string; exit_code: number; log_exists: boolean }>(`/run/status/${run_id}`);
         return response.data;
     },
     generateData: async (scenarios: any[], dataTypes: string[], count: number = 2) => {
@@ -142,11 +147,13 @@ export const testApi = {
     },
 
     retryTest: async (historyId: string): Promise<any> => {
-        return await api.post(`/run/retry/${historyId}`);
+        const response = await api.post(`/run/retry/${historyId}`);
+        return response.data;
     },
 
     selfHealTest: async (historyId: string): Promise<any> => {
-        return await api.post(`/run/self-heal/${historyId}`);
+        const response = await api.post(`/run/self-heal/${historyId}`);
+        return response.data;
     },
 
     getHealingLogs: async (historyId: string): Promise<any[]> => {
@@ -191,8 +198,17 @@ export const testApi = {
         const response = await api.get(`/history/projects/${projectId}/insights`);
         return response.data;
     },
+    getInsight: async (projectId: string, insightId: string) => {
+        const response = await api.get(`/history/projects/${projectId}/insights`);
+        // Filter for specific ID since we don't have a singular endpoint yet
+        return (response.data || []).find((i: any) => i.id === insightId);
+    },
     getLatestInsight: async (projectId: string) => {
         const response = await api.get(`/history/projects/${projectId}/insights/latest`);
+        return response.data;
+    },
+    analyzeReport: async (data: any) => {
+        const response = await api.post('/exploration/analyze_report', data);
         return response.data;
     }
 };

@@ -99,6 +99,7 @@ class TestHistory(Base):
     failure_analysis = Column(JSON, nullable=True) # AI-generated diagnostics
     step_results = Column(JSON, default=[]) # Universal step-by-step results
     jira_id = Column(String, nullable=True) # External Jira Issue reference
+    run_id = Column(String, index=True, nullable=True) # Execution Batch ID
     script = relationship("TestScript", 
                           primaryjoin="TestHistory.script_id == TestScript.id",
                           foreign_keys=[script_id],

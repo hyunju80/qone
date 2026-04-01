@@ -184,7 +184,7 @@ async def generate_script(
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema={
+                response_json_schema={
                     "type": "OBJECT",
                     "properties": {
                         "code": {"type": "STRING"},
