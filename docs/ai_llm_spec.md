@@ -479,4 +479,98 @@ graph TD
 
 ---
 
+## 11. Mission Orchestrator (미션 오케스트레이터)
+
+Mission Orchestrator는 사용자의 모호한 자연어 명령을 Q-ONE의 도구들이 실행할 수 있는 하위 과업(Sub-tasks)으로 분해하고 최적의 에이전트를 배정하는 **상위 플래닝 엔진**입니다.
+
+*   **진입점**: `/api/v1/ai/chat`
+*   **코드 파일**: `backend/app/api/api_v1/endpoints/ai.py`
+*   **트리거**: 메인 콘솔의 목표 입력창(What is the goal for today?) 제출 시.
+
+### 11.1. Goal Decomposition Prompt (목표 분해 로직)
+*   **모델**: `gemini-2.0-flash` (복합 추론 및 플래닝 특화)
+*   **프롬프트 전략**:
+```text
+You are the "Chief Mission Orchestrator" of Q-ONE.
+Analyze the User's Goal and decompose it into a sequence of actionable Mission Steps.
+
+[Available Agents & Tools]
+1. Testing Agent: Use for UI exploration, scenario generation, and verification. (Tool: Navigator, Verifier)
+2. Defect Agent: Use for failure analysis, RCA, and self-healing. (Tool: Analyzer, Healer)
+3. Reporting Agent: Use for telemetry summarization and executive insights. (Tool: InsightGenerator)
+
+[Instruction]
+1. Break down the goal into 3-7 logical steps.
+2. For each step, assign the most appropriate Agent and Tool.
+3. Ensure linear dependency: Step N should provide context for Step N+1.
+4. Language: Plan and descriptions must be in Korean (한국어).
+```
+
+### 11.2. Mission Plan Schema (JSON)
+```json
+{
+  "mission_id": "uuid",
+  "goal": "사용자 입력 목표",
+  "estimated_complexity": "Low/Medium/High",
+  "steps": [
+    {
+      "id": 1,
+      "agent": "testing/defect/reporting",
+      "tool": "navigator/verifier/healer/analyzer",
+      "instruction": "해당 에이전트가 수행할 구체적 지시문",
+      "expected_outcome": "단계 완료 조건 (Success Criterion)"
+    }
+  ]
+}
+```
+
+---
+
+## 12. Agent Fleet Orchestration (에이전트 군단 조율)
+
+Q-ONE은 단일 에이전트가 아닌, 각 도메인에 특화된 에이전트들이 협업하는 **Multi-Agent System(MAS)** 구조를 지향합니다.
+
+### 12.1. Agent Specialization (에이전트별 특화 영역)
+| 에이전트 | 핵심 페르소나 및 LLM 최적화 방향 | 진입점 & 코드 파일 | 트리거 |
+| :--- | :--- | :--- | :--- |
+| **Testing Agent** | "성실한 탐험가" - DOM 구조 분석 및 엣지 케이스 발굴 | `/exploration/step`<br/>(`exploration.py`) | 미션 플랜 실행 중 탐색 단계 도달 시 |
+| **Defect Agent** | "정밀한 분석가" - 실패 로그 RCA 및 복구 경로 탐색 | `/history/analyze-failure`<br/>(`history.py`, `ai.py`) | 테스트 실패 감지 또는 리포트 분석 요청 시 |
+| **Reporting Agent** | "통찰력 있는 전략가" - 텔레메트리 데이터 요약 및 인사이트 도출 | `/history/projects/{id}/insights`<br/>(`history.py`) | 미션 종료 또는 리포트 생성 버튼 클릭 시 |
+
+### 12.2. Shared Mission Context (컨텍스트 전파)
+에이전트 간의 원활한 협업을 위해 `MissionState` 객체가 전파되며, 후속 에이전트는 이전 에이전트의 'Thought'를 수신하여 중단 없는 업무 수행이 가능합니다.
+
+```json
+{
+  "shared_memory": {
+    "discovered_selectors": { "login_btn": "#btn-login" },
+    "identified_risks": ["결제 버튼 클릭 시 간헐적 지연 발생"],
+    "last_landmark": "로그인 성공 메시지 확인됨"
+  }
+}
+```
+
+---
+
+## 13. AI Unified Workflow (종합 워크플로우)
+
+Mission Orchestrator가 설계한 플랜에 따라 각 특화 에이전트들이 도구를 사용하여 작업을 완수하는 전체 흐름도입니다.
+
+```mermaid
+graph TD
+    UserGoal["User Goal (Natural Language)"] --> Orchestrator{{"LLM: Mission Orchestrator"}}
+    Orchestrator -- "Mission Plan (Steps)" --> AgentSelector{{"Agent Dispatcher"}}
+    
+    AgentSelector -- "Step 1: Discover" --> TestingAgent{{"Agent: Testing Agent"}}
+    TestingAgent -- "Selectors & Flow" --> MissionState["Shared Mission Context"]
+    
+    AgentSelector -- "Step 2: Analyze" --> DefectAgent{{"Agent: Defect Agent"}}
+    DefectAgent -- "Healing Result" --> MissionState
+    
+    MissionState --> ReportingAgent{{"Agent: Reporting Agent"}}
+    ReportingAgent --> FinalReport["Executive Insight Report"]
+```
+
+---
+
 
