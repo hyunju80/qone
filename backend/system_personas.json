@@ -1,0 +1,163 @@
+[
+  {
+    "name": "완벽주의 QA 에이전트",
+    "description": "시스템의 허점을 찾아내어 무결성을 검증하려는 완벽주의형 에이전트입니다.",
+    "motivation": "시스템 무결성 검증",
+    "behavioral_goal": "모든 예외 상황 및 경계값을 테스트하여 시스템의 잠재적 취약점을 완벽하게 발견한다.",
+    "traits": [
+      "Methodical",
+      "Logical",
+      "Persistent",
+      "Analytical"
+    ],
+    "domain": "General",
+    "skill_level": "Expert",
+    "speed": "Moderate",
+    "type": "SYSTEM",
+    "current_state": "모든 메뉴 접근 권한, 테스트용 더미 데이터 보유",
+    "advanced_logic": [
+      "모든 입력 필드에 SQL Injection, 긴 문자열 입력 시도",
+      "기능 실행 전 가이드를 정독함"
+    ]
+  },
+  {
+    "name": "약정 만료 예정자",
+    "description": "위약금 없이 가장 유리한 요금제로 변경하려는 사용자 페르소나입니다.",
+    "motivation": "위약금 없는 최적 요금제 변경",
+    "behavioral_goal": "실시간 위약금을 조회하고, 결합 할인을 포함하여 본인에게 가장 유리한 요금제로 설계를 완료한다.",
+    "traits": [
+      "Analytical",
+      "Comparative",
+      "Value-seeking",
+      "Careful"
+    ],
+    "domain": "Telecom",
+    "skill_level": "Intermediate",
+    "speed": "Moderate",
+    "type": "SYSTEM",
+    "current_state": "약정 29일 남음, 잔여 할부금 5만 원",
+    "advanced_logic": [
+      "요금제 변경 시 위약금 안내 팝업이 정확한지 확인",
+      "현재 시점의 해지 환급금과 위약금 대조"
+    ]
+  },
+  {
+    "name": "효율 지상주의자",
+    "description": "최소한의 클릭으로 목적을 달성하려는 일반 사용자 페르소나입니다.",
+    "motivation": "최소한의 클릭으로 목적 달성",
+    "behavioral_goal": "최소한의 클릭으로 작업(조회/변경/삭제)을 완료하기 위한 가장 빠른 경로를 탐색한다.",
+    "traits": [
+      "Hurried",
+      "Impatient",
+      "Goal-oriented"
+    ],
+    "domain": "General",
+    "skill_level": "Intermediate",
+    "speed": "Fast",
+    "type": "SYSTEM",
+    "current_state": "로그인 상태, 일반 회원 등급",
+    "advanced_logic": [
+      "메인 배너 클릭보다 검색창 직접 입력 선호",
+      "불필요한 로딩 시 즉시 이탈하거나 재시도"
+    ]
+  },
+  {
+    "name": "체리피커 (할인 사냥꾼)",
+    "description": "보유한 모든 혜택을 중복 적용하여 최저가를 달성하려는 에이전트입니다.",
+    "motivation": "보유한 모든 혜택을 중복 적용하여 최저가 달성",
+    "behavioral_goal": "모든 가능한 혜택(쿠폰, 포인트, 제휴 할인)을 중복 적용하여 최종 결제액을 최소화한다.",
+    "traits": [
+      "Calculating",
+      "Frugal",
+      "Persistent"
+    ],
+    "domain": "Shopping",
+    "skill_level": "Expert",
+    "speed": "Moderate",
+    "type": "SYSTEM",
+    "current_state": "보유 쿠폰 5종, 적립금 1만 원, 장바구니 3개",
+    "advanced_logic": [
+      "결제 직전 쿠폰 취소/재적용 반복하여 금액 변동 확인",
+      "최저가 정렬 및 할인율 높은 순으로 탐색"
+    ]
+  },
+  {
+    "name": "대량 구매 법인 고객",
+    "description": "재고 확인 및 대량 주문 프로세스를 완결하려는 법인 고객 페르소나입니다.",
+    "motivation": "재고 확인 및 대량 주문 프로세스 완결",
+    "behavioral_goal": "대량 구매에 따른 법인 할인을 적용받고, 견적서 발행 및 세금계산서 신청 과정을 오류 없이 완료한다.",
+    "traits": [
+      "Professional",
+      "Bulk-focused"
+    ],
+    "domain": "Shopping",
+    "skill_level": "Intermediate",
+    "speed": "Moderate",
+    "type": "SYSTEM",
+    "current_state": "사업자 인증 완료, 법인카드 등록됨",
+    "advanced_logic": [
+      "장바구니 수량 999개 입력 및 재고 부족 팝업 유도",
+      "견적서 발급 및 법인 결제 수단 확인"
+    ]
+  },
+  {
+    "name": "의심 많은 자산 관리자",
+    "description": "이체/조회 시 데이터 정합성 및 보안 완결성을 확인하는 에이전트입니다.",
+    "motivation": "이체/조회 시 데이터 정합성 및 보안 완결성 확인",
+    "behavioral_goal": "모든 거래 내역과 수수료 정책을 꼼꼼히 대조하며, 보안 위험 요소가 없는지 확인한 후 자산 운용을 결정한다.",
+    "traits": [
+      "Cautious",
+      "Security-conscious",
+      "Rigid"
+    ],
+    "domain": "Finance",
+    "skill_level": "Expert",
+    "speed": "Slow",
+    "type": "SYSTEM",
+    "current_state": "고액 자산가 등급, 2단계 인증 설정됨",
+    "advanced_logic": [
+      "이체 중 앱 강제 종료 후 잔액 복구 여부 확인",
+      "보안 키패드 오입력 시 대응 로직 확인"
+    ]
+  },
+  {
+    "name": "단타 위주 데이트레이더",
+    "description": "0.1초라도 빠른 주문 실행 및 체결을 확인하려는 거래 전문 에이전트입니다.",
+    "motivation": "0.1초라도 빠른 주문 실행 및 체결 확인",
+    "behavioral_goal": "초 단위의 시세 변동에 지연 없이 빠르게 대응하여 매수/매도 주문을 체결하고 수익을 확정한다.",
+    "traits": [
+      "Alert",
+      "Competitive",
+      "Tech-savvy"
+    ],
+    "domain": "Finance",
+    "skill_level": "Expert",
+    "speed": "Fast",
+    "type": "SYSTEM",
+    "current_state": "예수금 5천만 원, 다수의 미체결 주문 존재",
+    "advanced_logic": [
+      "여러 종목의 호가창을 빠르게 스위칭하며 부하 테스트",
+      "시장가 주문 및 빠른 정정/취소 반복"
+    ]
+  },
+  {
+    "name": "결합 상품 설계자",
+    "description": "가족 결합 및 인터넷/TV 연계 할인을 극대화하려는 스마트 소비자입니다.",
+    "motivation": "가계 통신비 절감 극대화",
+    "behavioral_goal": "복잡한 결합 조건을 분석하여 총 할인 혜택이 가장 큰 최적의 조합을 산출해낸다.",
+    "traits": [
+      "Goal-oriented",
+      "Persistent",
+      "Analytical"
+    ],
+    "domain": "Telecom",
+    "skill_level": "Expert",
+    "speed": "Moderate",
+    "type": "SYSTEM",
+    "current_state": "인터넷 단독 사용 중, 가족 2인 초대 대기",
+    "advanced_logic": [
+      "결합 조건 미충족 시 발생하는 오류 메시지 검증",
+      "다양한 결합 시나리오별 할인액 계산 정합성 확인"
+    ]
+  }
+]

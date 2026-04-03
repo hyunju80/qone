@@ -25,7 +25,7 @@ const PersonaManager: React.FC<PersonaManagerProps> = ({ personas, activeProject
     traits: [],
     skillLevel: 'Intermediate',
     speed: 'Moderate',
-    goal: '',
+    behavioral_goal: '',
     isActive: true,
     advancedLogic: [],
     projectId: activeProjectId,
@@ -82,7 +82,7 @@ const PersonaManager: React.FC<PersonaManagerProps> = ({ personas, activeProject
   };
 
   const handleSavePersona = () => {
-    if (!newPersona.name || !newPersona.goal) return;
+    if (!newPersona.name || !newPersona.behavioral_goal) return;
 
     const persona: Persona = {
       id: editingPersonaId || `p_${Date.now()}`,
@@ -92,7 +92,7 @@ const PersonaManager: React.FC<PersonaManagerProps> = ({ personas, activeProject
       traits: newPersona.traits || [],
       skillLevel: newPersona.skillLevel as any || 'Intermediate',
       speed: newPersona.speed as any || 'Moderate',
-      goal: newPersona.goal!,
+      behavioral_goal: newPersona.behavioral_goal!,
       motivation: newPersona.motivation,
       currentState: newPersona.currentState,
       type: (newPersona.type as any) || 'USER',
@@ -112,7 +112,7 @@ const PersonaManager: React.FC<PersonaManagerProps> = ({ personas, activeProject
     setNewPersona({
       name: '', description: '', traits: [],
       skillLevel: 'Intermediate', speed: 'Moderate',
-      goal: '', isActive: true, advancedLogic: [],
+      behavioral_goal: '', isActive: true, advancedLogic: [],
       projectId: activeProjectId, type: 'USER', domain: activeProjectDomain || 'General',
       motivation: '', currentState: ''
     });
@@ -124,7 +124,7 @@ const PersonaManager: React.FC<PersonaManagerProps> = ({ personas, activeProject
       const matchesSearch =
         (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (p.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (p.goal || '').toLowerCase().includes(searchTerm.toLowerCase());
+        (p.behavioral_goal || '').toLowerCase().includes(searchTerm.toLowerCase());
 
       if (!matchesSearch) return false;
 
@@ -186,7 +186,7 @@ const PersonaManager: React.FC<PersonaManagerProps> = ({ personas, activeProject
             setNewPersona({
               name: '', description: '', traits: [],
               skillLevel: 'Intermediate', speed: 'Moderate',
-              goal: '', isActive: true, advancedLogic: [],
+              behavioral_goal: '', isActive: true, advancedLogic: [],
               projectId: activeProjectId
             });
             setShowCreateModal(true);
@@ -284,7 +284,7 @@ const PersonaManager: React.FC<PersonaManagerProps> = ({ personas, activeProject
 
                   <div className="space-y-1">
                     <div className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Behavioral Goal</div>
-                    <p className={`text-[11px] font-medium italic ${p.isActive ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-600'}`}>"{p.goal}"</p>
+                    <p className={`text-[11px] font-medium italic ${p.isActive ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-600'}`}>"{p.behavioral_goal}"</p>
                   </div>
 
                   <div className="flex flex-wrap gap-1.5">
@@ -339,7 +339,7 @@ const PersonaManager: React.FC<PersonaManagerProps> = ({ personas, activeProject
               setNewPersona({
                 name: '', description: '', traits: [],
                 skillLevel: 'Intermediate', speed: 'Moderate',
-                goal: '', isActive: true, advancedLogic: [],
+                behavioral_goal: '', isActive: true, advancedLogic: [],
                 projectId: activeProjectId
               });
               setShowCreateModal(true);
@@ -446,11 +446,11 @@ const PersonaManager: React.FC<PersonaManagerProps> = ({ personas, activeProject
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Persona Goal (What?)</label>
+                    <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Behavioral Goal (What?)</label>
                     <input
                       type="text"
-                      value={newPersona.goal}
-                      onChange={(e) => setNewPersona({ ...newPersona, goal: e.target.value })}
+                      value={newPersona.behavioral_goal}
+                      onChange={(e) => setNewPersona({ ...newPersona, behavioral_goal: e.target.value })}
                       placeholder="e.g., Finish checkout in under 1 minute"
                       className="w-full bg-gray-50 dark:bg-[#0c0e12] border border-gray-200 dark:border-gray-800 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white focus:border-indigo-500 outline-none transition-all placeholder:text-gray-400"
                     />
@@ -582,6 +582,27 @@ const PersonaManager: React.FC<PersonaManagerProps> = ({ personas, activeProject
                       );
                     })}
                   </div>
+
+                  {/* Active Custom Traits (Not in predefined list) */}
+                  {newPersona.traits?.some(t => !PREDEFINED_TRAITS.includes(t)) && (
+                    <div className="space-y-2">
+                       <label className="text-[8px] font-black text-indigo-500 uppercase tracking-widest pl-1">Active Custom Traits</label>
+                       <div className="flex flex-wrap gap-1.5">
+                         {newPersona.traits.filter(t => !PREDEFINED_TRAITS.includes(t)).map((trait, idx) => (
+                           <div key={idx} className="flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 px-2 py-1 rounded-lg">
+                             <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{trait}</span>
+                             <button
+                               onClick={() => setNewPersona(prev => ({ ...prev, traits: (prev.traits || []).filter(t => t !== trait) }))}
+                               className="text-indigo-400 hover:text-indigo-600 transition-colors"
+                             >
+                                <X className="w-3 h-3" />
+                             </button>
+                           </div>
+                         ))}
+                       </div>
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -612,7 +633,7 @@ const PersonaManager: React.FC<PersonaManagerProps> = ({ personas, activeProject
                 </button>
                 <button
                   onClick={handleSavePersona}
-                  disabled={!newPersona.name || !newPersona.goal}
+                  disabled={!newPersona.name || !newPersona.behavioral_goal}
                   className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white text-[10px] font-black px-10 py-3 rounded-xl uppercase tracking-widest shadow-xl shadow-indigo-600/20 transition-all flex items-center gap-2"
                 >
                   <UserCheck className="w-4 h-4" />

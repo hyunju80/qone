@@ -185,5 +185,17 @@ export const scenariosApi = {
     getDocumentItems: async (docId: string) => {
         const response = await api.get(`/knowledge/documents/${docId}/items`);
         return response.data;
+    },
+    analyzeHybrid: async (payload: {
+        item_ids: string[],
+        map_ids: string[],
+        files: { name: string, type: string, data: string }[],
+        prompt: string,
+        project_id: string,
+        persona_id: string,
+        strategies: string[]
+    }, signal?: AbortSignal): Promise<AnalyzeUrlResponse> => {
+        const response = await api.post<AnalyzeUrlResponse>('/scenarios/analyze-hybrid', payload, { signal });
+        return response.data;
     }
 };

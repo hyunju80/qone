@@ -126,8 +126,9 @@ export const PERSONAS: Persona[] = [
     traits: ['Patient', 'Careful'],
     skillLevel: 'Intermediate',
     speed: 'Moderate',
-    goal: 'Navigate to checkout successfully',
+    behavioral_goal: 'Navigate to checkout successfully',
     isActive: true,
+    type: 'USER',
     advancedLogic: []
   },
   {
@@ -138,8 +139,9 @@ export const PERSONAS: Persona[] = [
     traits: ['Fast', 'Impatience'],
     skillLevel: 'Expert',
     speed: 'Fast',
-    goal: 'Complete purchase in minimum clicks',
+    behavioral_goal: 'Complete purchase in minimum clicks',
     isActive: true,
+    type: 'USER',
     advancedLogic: ['Skip all banners']
   }
 ];
@@ -178,6 +180,22 @@ export const MOCK_SCRIPTS: TestScript[] = [
     isActive: true,
     persona: PERSONAS[1],
     tags: ['API', 'Financial'],
+    dataset: []
+  },
+  {
+    id: '3',
+    projectId: 'proj2',
+    name: '글로벌 여행',
+    description: 'TMS 패키지 관련 글로벌 여행 예약 및 결제 통합 테스트',
+    status: ScriptStatus.CERTIFIED,
+    lastRun: '2024-03-20 15:00',
+    runCount: 56,
+    successRate: 100,
+    code: 'test("global_travel", async ({page}) => { ... })',
+    origin: ScriptOrigin.MANUAL,
+    isActive: true,
+    persona: PERSONAS[0],
+    tags: ['TMS', 'Travel', 'Integration'],
     dataset: []
   }
 ];

@@ -221,7 +221,7 @@ export interface Persona {
   traits: string[];
   skillLevel: 'Novice' | 'Intermediate' | 'Expert';
   speed: 'Slow' | 'Moderate' | 'Fast';
-  goal: string;
+  behavioral_goal: string;
   motivation?: string;
   currentState?: string;
   type: 'SYSTEM' | 'USER';

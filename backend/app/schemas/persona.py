@@ -8,7 +8,7 @@ class PersonaBase(BaseModel):
     traits: Optional[List[str]] = []
     skill_level: Optional[str] = "Intermediate"
     speed: Optional[str] = "Moderate"
-    goal: Optional[str] = None
+    behavioral_goal: Optional[str] = None
     motivation: Optional[str] = None
     current_state: Optional[str] = None
     type: Optional[str] = "USER" # SYSTEM, USER
@@ -20,7 +20,7 @@ class PersonaBase(BaseModel):
 # Creation
 class PersonaCreate(PersonaBase):
     name: str
-    goal: str
+    behavioral_goal: str
 
 # Update
 class PersonaUpdate(PersonaBase):

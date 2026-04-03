@@ -176,6 +176,8 @@ const AppContent: React.FC = () => {
   const [activeHistoryTab, setActiveHistoryTab] = useState<'dashboard' | 'history' | 'defects'>('dashboard');
   const [activeAIGeneratorTab, setActiveAIGeneratorTab] = useState<'scenario' | 'verification'>('scenario');
   const [activeReportTab, setActiveReportTab] = useState<'summary' | 'saved'>('summary');
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const filteredScripts = useMemo(() => scripts.filter(s => s.projectId === activeProject?.id), [scripts, activeProject]);
   const filteredHistory = useMemo(() => history.filter(h => h.projectId === activeProject?.id), [history, activeProject]);
@@ -531,22 +533,28 @@ const AppContent: React.FC = () => {
     if (!activeProject) return null;
     switch (currentView) {
       case ViewMode.CONSOLE:
-        return <MainConsole 
-          activeProject={activeProject} 
-          assets={filteredScripts} 
-          history={filteredHistory} 
-          schedules={filteredSchedules} 
-          messages={currentConsoleMessages} 
-          onMessagesChange={handleConsoleMessagesChange} 
-          onAlert={showAlert} 
-          onViewChange={(view: ViewMode, tab?: string) => {
+        return <MainConsole
+          activeProject={activeProject}
+          assets={filteredScripts}
+          history={filteredHistory}
+          schedules={filteredSchedules}
+          messages={currentConsoleMessages}
+          onMessagesChange={handleConsoleMessagesChange}
+          onAlert={showAlert}
+          onViewChange={(view: ViewMode, tab?: string, scenarioId?: string, category?: string) => {
             setCurrentView(view);
+            if (scenarioId) {
+              setSelectedScenarioId(scenarioId);
+            }
+            if (category) {
+              setSelectedCategory(category);
+            }
             if (tab) {
               if (view === ViewMode.HISTORY) setActiveHistoryTab(tab as any);
               if (view === ViewMode.AI_GENERATOR) setActiveAIGeneratorTab(tab as any);
               if (view === ViewMode.REPORTS) setActiveReportTab(tab as any);
             }
-          }} 
+          }}
         />;
       case ViewMode.AI_EXPLORATION:
         return <AiExploration
@@ -602,6 +610,10 @@ const AppContent: React.FC = () => {
             lastEditingScenarioId={lastEditingScenarioId}
             onUpdateLastEditingScenarioId={setLastEditingScenarioId}
             initialTab={activeAIGeneratorTab}
+            selectedScenarioId={selectedScenarioId}
+            onClearScenarioId={() => setSelectedScenarioId(null)}
+            initialCategory={selectedCategory}
+            onClearCategory={() => setSelectedCategory(null)}
           />
         );
       case ViewMode.GENERATOR:
@@ -685,6 +697,20 @@ const AppContent: React.FC = () => {
           activeProject={activeProject}
           scripts={scripts}
           history={history}
+          onViewChange={(view: ViewMode, tab?: string, scenarioId?: string, category?: string) => {
+            setCurrentView(view);
+            if (scenarioId) {
+              setSelectedScenarioId(scenarioId);
+            }
+            if (category) {
+              setSelectedCategory(category);
+            }
+            if (tab) {
+              if (view === ViewMode.HISTORY) setActiveHistoryTab(tab as any);
+              if (view === ViewMode.AI_GENERATOR) setActiveAIGeneratorTab(tab as any);
+              if (view === ViewMode.REPORTS) setActiveReportTab(tab as any);
+            }
+          }}
         />;
       case ViewMode.SCHEDULES:
         return <SchedulerView schedules={filteredSchedules} scripts={filteredScripts} activeProject={activeProject} onAddSchedule={handleCreateSchedule} onUpdateSchedule={handleUpdateSchedule} onDeleteSchedule={handleDeleteSchedule} onAlert={showAlert} />;

@@ -10,6 +10,7 @@ class Persona(Base):
     name = Column(String)
     description = Column(String)
     traits = Column(JSON, default=[])
+    behavioral_goal = Column(String, nullable=True)
     skill_level = Column(String)
     speed = Column(String)
     motivation = Column(String, nullable=True)

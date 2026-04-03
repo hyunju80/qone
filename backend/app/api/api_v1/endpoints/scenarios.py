@@ -1110,3 +1110,196 @@ async def generate_from_map(
     except Exception as e:
         print(f"Map Generate Error: {e}")
         raise HTTPException(500, f"Error: {str(e)}")
+class AnalyzeHybridRequest(BaseModel):
+    item_ids: List[str] = []       # Knowledge Repository
+    map_ids: List[str] = []        # Action Flow Maps (Checkboxed)
+    files: List[UploadedFile] = [] # Direct Uploads
+    prompt: str = ""               # Custom Instructions
+    project_id: str
+    persona_id: str
+    strategies: List[str] = []     # ['main', 'negative', 'data', 'ux']
+
+@router.post("/analyze-hybrid", response_model=AnalyzeUrlResponse)
+async def analyze_hybrid(
+    *,
+    request: AnalyzeHybridRequest,
+    db: Any = Depends(deps.get_db),
+) -> Any:
+    """
+    Generate scenarios by combining multiple sources (Knowledge, Maps, Uploads) 
+    into a single hybrid context for Gemini.
+    """
+    if not settings.GOOGLE_API_KEY:
+        raise HTTPException(500, "Server Configuration Error: GOOGLE_API_KEY is missing.")
+
+    try:
+        # 1. Initialize Gemini
+        from google import genai
+        from google.genai import types
+        import base64
+        client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+        
+        prompt_parts = []
+        
+        # 2. Base System Instruction
+        system_instruction = """You are an Expert QA Automation Engineer.
+            Analyze the following hybrid context provided from multiple sources (Docs, UI Maps, Screenshots).
+            Your goal is to design a comprehensive Test Scenario Suite that reflects ALL provided information.
+            
+            [CRITICAL INSTRUCTION]
+            - Steps MUST be High-level User Intents or Business Logic goals.
+            - DO NOT describe implementation-specific UI actions (Click/Type).
+            - Language: Korean.
+            """
+        prompt_parts.append(system_instruction)
+
+        # 3. Knowledge Context (RAG)
+        if request.item_ids:
+            from app.models.knowledge import KnowledgeItem
+            items = db.query(KnowledgeItem).filter(KnowledgeItem.id.in_(request.item_ids)).all()
+            if items:
+                knowledge_text = "\n[SOURCE 1: TECHNICAL DOCUMENTATION (RAG)]\n"
+                for it in items:
+                    description = ""
+                    if isinstance(it.content, dict):
+                        description = it.content.get("Description", it.content.get("raw_text_snippet", ""))
+                    knowledge_text += f"- Item: {it.title}\n  Description: {description}\n"
+                prompt_parts.append(knowledge_text)
+
+        # 4. Action Map Context (Structural/Selectors)
+        if request.map_ids:
+            maps = db.query(ActionMapModel).filter(ActionMapModel.id.in_(request.map_ids)).all()
+            if maps:
+                map_text = "\n[SOURCE 2: ACTION FLOW MAPS (UI STRUCTURE)]\n"
+                map_text += "Use these selectors EXACTLY as provided for your test cases. Do not hallucinate CSS locators.\n"
+                for m in maps:
+                    map_text += f"- Map for {m.title}:\n{json.dumps(m.map_json, ensure_ascii=False)}\n"
+                prompt_parts.append(map_text)
+
+        # 5. Uploads Context (Vision)
+        if request.files:
+            prompt_parts.append("\n[SOURCE 3: VISUAL MOCKUPS / SCREENSHOTS]\n")
+            for file in request.files:
+                try:
+                    file_bytes = base64.b64decode(file.data)
+                    if file.type.startswith("image/"):
+                        prompt_parts.append(types.Part.from_bytes(data=file_bytes, mime_type=file.type))
+                    else:
+                        try:
+                            text_content = file_bytes.decode('utf-8')
+                            prompt_parts.append(f"Document File ({file.name}):\n{text_content}")
+                        except:
+                            prompt_parts.append(f"Binary File ({file.name})")
+                except:
+                    pass
+
+        # 6. Persona Context
+        if request.persona_id:
+            from app.models.test import Persona
+            persona = db.query(Persona).filter(Persona.id == request.persona_id).first()
+            if persona:
+                persona_text = f"\n[TESTING PERSONA]\n- Name: {persona.name}\n- Goal: {persona.description}\n- Skill Level: {persona.skill_level}\n"
+                prompt_parts.append(persona_text)
+
+        # 7. Additional Logic & User Prompt
+        additional_info = "\n[GENERATION STRATEGY & ADDITIONAL CONTEXT]\n"
+        if request.strategies:
+            additional_info += f"- Focus Strategies: {', '.join(request.strategies)}\n"
+        if request.prompt:
+            additional_info += f"- User Instructions: {request.prompt}\n"
+        
+        # Taxonomy check
+        if request.project_id:
+            from app.models.project import Project
+            proj = db.query(Project).filter(Project.id == request.project_id).first()
+            if proj and proj.categories:
+                # Handle both list of strings and list of dicts
+                cat_names = []
+                for c in proj.categories:
+                    if isinstance(c, str):
+                        cat_names.append(c)
+                    elif isinstance(c, dict):
+                        cat_names.append(c.get('name', ''))
+                
+                if cat_names:
+                    cats_str = ", ".join(cat_names)
+                    additional_info += f"- Use ONLY these categories: {cats_str}\n"
+
+        prompt_parts.append(additional_info)
+
+        # 8. Generate Content
+        response = await client.aio.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt_parts,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_json_schema={
+                    "type": "OBJECT",
+                    "properties": {
+                        "scenarios": {
+                            "type": "ARRAY",
+                            "items": {
+                                "type": "OBJECT",
+                                "properties": {
+                                    "title": {"type": "STRING"},
+                                    "description": {"type": "STRING"},
+                                    "category": {"type": "STRING"},
+                                    "testCases": {
+                                        "type": "ARRAY",
+                                        "items": {
+                                            "type": "OBJECT",
+                                            "properties": {
+                                                "title": {"type": "STRING"},
+                                                "preCondition": {"type": "STRING"},
+                                                "inputData": {"type": "STRING"},
+                                                "steps": {"type": "ARRAY", "items": {"type": "STRING"}},
+                                                "expectedResult": {"type": "STRING"},
+                                                "selectors": {
+                                                    "type": "ARRAY",
+                                                    "items": {
+                                                        "type": "OBJECT",
+                                                        "properties": {
+                                                            "name": {"type": "STRING"},
+                                                            "value": {"type": "STRING"}
+                                                        },
+                                                        "required": ["name", "value"]
+                                                    },
+                                                    "nullable": True
+                                                }
+                                            },
+                                            "required": ["title", "preCondition", "inputData", "steps", "expectedResult"]
+                                        }
+                                    }
+                                },
+                                "required": ["title", "description", "testCases"]
+                            }
+                        }
+                    },
+                    "required": ["scenarios"]
+                }
+            )
+        )
+        
+        raw_text = response.text
+        if raw_text.startswith("```json"):
+            raw_text = raw_text.replace("```json", "", 1).replace("```", "", 1)
+        elif raw_text.startswith("```"):
+            raw_text = raw_text.replace("```", "", 1).replace("```", "", 1)
+            
+        result = json.loads(raw_text)
+        
+        # Transform selectors list to dict for compatibility
+        for scenario in result.get('scenarios', []):
+            for tc in scenario.get('testCases', []):
+                if 'selectors' in tc and isinstance(tc['selectors'], list):
+                    tc['selectors'] = {item['name']: item['value'] for item in tc['selectors'] if 'name' in item and 'value' in item}
+
+        return AnalyzeUrlResponse(
+            scenarios=result.get('scenarios', []),
+            dom_context="[Hybrid Sources Combined]"
+        )
+
+    except Exception as e:
+        import traceback
+        print(f"Hybrid Generation Error: {e}\n{traceback.format_exc()}")
+        raise HTTPException(500, f"Generation Error: {str(e)}")

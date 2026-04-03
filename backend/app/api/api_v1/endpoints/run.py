@@ -305,7 +305,7 @@ async def start_active_steps_run(
                             if not success:
                                 log(f"Failed to start session: {err}", "ERROR")
                                 overall_status = "failed"
-                                _save_history_record(overall_status, "Setup Failure: " + str(err), step_results, execution_logs=execution_logs)
+                                await _save_history_record(overall_status, "Setup Failure: " + str(err), step_results, execution_logs=execution_logs)
                                 with open(exit_code_file, "w") as ef: ef.write("1")
                                 return
                             log("Appium session established successfully.")
@@ -315,7 +315,7 @@ async def start_active_steps_run(
                             if not success:
                                 log(f"Failed to start Playwright session: {err}", "ERROR")
                                 overall_status = "failed"
-                                _save_history_record(overall_status, "Setup Failure: " + str(err), step_results, execution_logs=execution_logs)
+                                await _save_history_record(overall_status, "Setup Failure: " + str(err), step_results, execution_logs=execution_logs)
                                 with open(exit_code_file, "w") as ef: ef.write("1")
                                 return
                             log("Playwright session established successfully.")

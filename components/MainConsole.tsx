@@ -23,7 +23,7 @@ interface MainConsoleProps {
   messages: Message[];
   onMessagesChange: (msgs: Message[] | ((prev: Message[]) => Message[])) => void;
   onAlert: (title: string, msg: string, type?: 'success' | 'error' | 'info') => void;
-  onViewChange: (view: ViewMode, tab?: string) => void;
+  onViewChange: (view: ViewMode, tab?: string, scenarioId?: string, category?: string) => void;
 }
 
 interface MissionStep {

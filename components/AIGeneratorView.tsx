@@ -22,6 +22,10 @@ interface AIGeneratorViewProps {
     lastEditingScenarioId: string | null;
     onUpdateLastEditingScenarioId: (id: string | null) => void;
     initialTab?: 'scenario' | 'verification';
+    selectedScenarioId?: string | null;
+    onClearScenarioId?: () => void;
+    initialCategory?: string | null;
+    onClearCategory?: () => void;
 }
 
 // Local interfaces for persistence (moved from App.tsx logic)
@@ -46,7 +50,11 @@ const AIGeneratorView: React.FC<AIGeneratorViewProps> = ({
     onUpdateDraftScenarios,
     lastEditingScenarioId,
     onUpdateLastEditingScenarioId,
-    initialTab = 'scenario'
+    initialTab = 'scenario',
+    selectedScenarioId,
+    onClearScenarioId,
+    initialCategory,
+    onClearCategory
 }) => {
     // Determine the active pipeline stage
     const [activeTab, setActiveTab] = useState<'scenario' | 'verification'>(initialTab);
@@ -119,6 +127,10 @@ const AIGeneratorView: React.FC<AIGeneratorViewProps> = ({
                             onRegisterAsset={(script) => {
                                 onSyncScript(script);
                             }}
+                            selectedScenarioId={selectedScenarioId}
+                            onClearScenarioId={onClearScenarioId}
+                            initialCategory={initialCategory}
+                            onClearCategory={onClearCategory}
                         />
 
                     )}

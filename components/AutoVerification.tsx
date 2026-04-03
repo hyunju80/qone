@@ -14,9 +14,21 @@ interface AutoVerificationProps {
     activeProject: Project;
     personas: Persona[];
     onRegisterAsset: (script: TestScript) => void;
+    selectedScenarioId?: string | null;
+    onClearScenarioId?: () => void;
+    initialCategory?: string | null;
+    onClearCategory?: () => void;
 }
 
-const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, personas, onRegisterAsset }) => {
+const AutoVerification: React.FC<AutoVerificationProps> = ({
+    activeProject,
+    personas,
+    onRegisterAsset,
+    selectedScenarioId: propScenarioId,
+    onClearScenarioId,
+    initialCategory,
+    onClearCategory
+}) => {
     // --- List State ---
     const [scenarios, setScenarios] = useState<Scenario[]>([]);
     const [loadingList, setLoadingList] = useState(true);
@@ -45,6 +57,32 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
     useEffect(() => {
         fetchScenarios();
     }, [activeProject.id]);
+
+    // Handle Deep-Linked Scenario selection
+    useEffect(() => {
+        if (propScenarioId && scenarios.length > 0) {
+            const found = scenarios.find(s => s.id === propScenarioId);
+            if (found) {
+                setSelectedScenarioId(propScenarioId);
+                setExpandedScenarioId(propScenarioId);
+                // Important: Clear the ID in App state after consuming it 
+                // so it doesn't keep switching back if the user changes scenarios manually
+                if (onClearScenarioId) {
+                    onClearScenarioId();
+                }
+            }
+        }
+    }, [propScenarioId, scenarios.length]);
+
+    // Handle Deep-Linked Category selection
+    useEffect(() => {
+        if (initialCategory && initialCategory !== 'ALL') {
+            setSelectedCategory(initialCategory);
+            if (onClearCategory) {
+                onClearCategory();
+            }
+        }
+    }, [initialCategory]);
 
     // Update local state when a scenario is selected to auto-populate platform/target
     useEffect(() => {
@@ -98,7 +136,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({ activeProject, pers
             const MAX_LOOPS = 40;
 
             const persona = personas.find(p => p.id === selectedPersonaId);
-            const personaContext = persona ? `Name: ${persona.name}, Goal: ${persona.goal} ` : undefined;
+            const personaContext = persona ? `Name: ${persona.name}, Goal: ${persona.behavioral_goal} ` : undefined;
 
             // Construct a very specific goal based on scenario steps
             const scenarioGoal = `

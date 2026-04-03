@@ -154,30 +154,17 @@ const ScenarioGenerator: React.FC<ScenarioGeneratorProps> = ({
     setIsAnalyzing(true);
     abortControllerRef.current = new AbortController();
     try {
-      let combinedPrompt = userPrompt;
-      if (selectedStrategies.length > 0) {
-        combinedPrompt += `\n\nGeneration Strategy: Focus on ${selectedStrategies.join(', ')}.`;
-      }
+      const payload = {
+        item_ids: selectedKnowledgeItemIds,
+        map_ids: selectedMapIds,
+        files: uploadedFiles.map(f => ({ name: f.name, type: f.type, data: f.data })),
+        prompt: userPrompt,
+        project_id: activeProject.id,
+        persona_id: selectedPersonaId,
+        strategies: selectedStrategies
+      };
 
-      let result;
-      if (selectedKnowledgeItemIds.length > 0) {
-        // Fix: Argument order in scenariosApi.analyzeKnowledge is (itemIds, projectId, prompt, personaId, signal)
-        result = await scenariosApi.analyzeKnowledge(selectedKnowledgeItemIds, activeProject.id, combinedPrompt, selectedPersonaId, abortControllerRef.current.signal);
-      } else if (uploadedFiles.length > 0) {
-        const filesPayload = uploadedFiles.map(f => ({ name: f.name, type: f.type, data: f.data }));
-        result = await scenariosApi.analyzeUpload(filesPayload, combinedPrompt, activeProject.id, selectedPersonaId, abortControllerRef.current.signal);
-      } else if (selectedMapIds.length > 0) {
-        // Support generating from the first selected map
-        const targetMap = savedMaps.find(m => m.id === selectedMapIds[0]);
-        if (targetMap && targetMap.map_json) {
-          result = await scenariosApi.generateFromMap(targetMap.map_json, combinedPrompt, activeProject.id, selectedPersonaId);
-        } else {
-          result = { scenarios: [] };
-        }
-      } else {
-        await new Promise(r => setTimeout(r, 2000));
-        result = { scenarios: [] };
-      }
+      const result = await scenariosApi.analyzeHybrid(payload, abortControllerRef.current.signal);
 
       const newScenarios: Scenario[] = (result.scenarios || []).map((s: any, idx: number) => ({
         id: `scen_${Date.now()}_${idx}`,
