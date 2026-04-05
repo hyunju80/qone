@@ -171,29 +171,35 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
          }
       });
 
-      const failedAssets = baseData.map(h => {
-         const script = scripts.find(s => s.id === h.scriptId);
-         const failCount = failureCounts.get(h.scriptId) || 1; // At least 1 if it's in baseData
-         const totalRuns = history.filter(hist => hist.scriptId === h.scriptId).length || 1;
-         const failRate = totalRuns > 0 ? (failCount / totalRuns) * 100 : 0;
+      const failedAssets = baseData
+         .filter(h => {
+            const script = scripts.find(s => s.id === h.scriptId);
+            // Only include in Active Defects if the asset is currently active
+            return script ? script.isActive : true; 
+         })
+         .map(h => {
+            const script = scripts.find(s => s.id === h.scriptId);
+            const failCount = failureCounts.get(h.scriptId) || 1; // At least 1 if it's in baseData
+            const totalRuns = history.filter(hist => hist.scriptId === h.scriptId).length || 1;
+            const failRate = totalRuns > 0 ? (failCount / totalRuns) * 100 : 0;
 
-         // Priority weight: P0=100, P1=70, P2=40, P3=10
-         const priorityMap: Record<string, number> = { 'P0': 100, 'P1': 70, 'P2': 40, 'P3': 10 };
-         const pScore = priorityMap[script?.priority || 'P2'] || 40;
+            // Priority weight: P0=100, P1=70, P2=40, P3=10
+            const priorityMap: Record<string, number> = { 'P0': 100, 'P1': 70, 'P2': 40, 'P3': 10 };
+            const pScore = priorityMap[script?.priority || 'P2'] || 40;
 
-         // Importance Score Calculation (Hybrid)
-         const importanceScore = Math.round((pScore * 0.4) + (failRate * 0.3) + (Math.min(failCount * 10, 100) * 0.3));
+            // Importance Score Calculation (Hybrid)
+            const importanceScore = Math.round((pScore * 0.4) + (failRate * 0.3) + (Math.min(failCount * 10, 100) * 0.3));
 
-         return {
-            ...h,
-            priority: script?.priority || 'P2',
-            category: h.scriptCategory || script?.category || 'General',
-            failCount,
-            failRate,
-            importanceScore,
-            assetOrigin: h.scriptOrigin || script?.origin || 'MANUAL'
-         };
-      });
+            return {
+               ...h,
+               priority: script?.priority || 'P2',
+               category: h.scriptCategory || script?.category || 'General',
+               failCount,
+               failRate,
+               importanceScore,
+               assetOrigin: h.scriptOrigin || script?.origin || 'MANUAL'
+            };
+         });
 
       return failedAssets.sort((a, b) => b.importanceScore - a.importanceScore);
    }, [activeDefectsFromApi, history, scripts]);
@@ -901,6 +907,15 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
 
                                           <div className="flex-none flex flex-col justify-center gap-3 min-w-[200px]">
                                              <button
+                                                onClick={() => {
+                                                   if (defect.scriptId && onNavigateToLibrary) onNavigateToLibrary(defect.scriptId);
+                                                }}
+                                                className="w-full py-3 bg-gray-50 dark:bg-[#0c0e12] hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-sm mb-1"
+                                             >
+                                                <ArrowUpRight className="w-3.5 h-3.5" /> View Asset
+                                             </button>
+
+                                             <button
                                                 onClick={() => handleRetry(defect.id)}
                                                 className="w-full py-3 bg-white dark:bg-[#0c0e12] hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-800 dark:text-white border border-gray-200 dark:border-gray-800 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-sm"
                                              >
@@ -1455,6 +1470,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
                   </div>
 
                   <div className="p-8 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/20 flex justify-end gap-3 transition-colors">
+                     <button
+                        onClick={() => {
+                           if (selectedReport.scriptId && onNavigateToLibrary) {
+                              onNavigateToLibrary(selectedReport.scriptId);
+                           }
+                        }}
+                        className="px-8 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-2xl text-[10px] font-black transition-all uppercase tracking-widest shadow-sm flex items-center gap-2"
+                     >
+                        <Code2 className="w-4 h-4 text-indigo-500" />
+                        Edit Asset
+                     </button>
                      <button
                         onClick={() => setSelectedReport(null)}
                         className="px-10 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black rounded-2xl transition-all uppercase tracking-widest shadow-xl shadow-indigo-600/20"

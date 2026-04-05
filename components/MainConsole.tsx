@@ -77,6 +77,32 @@ const MainConsole: React.FC<MainConsoleProps> = ({
   const [isAborted, setIsAborted] = useState(false);
   const [missionGoal, setMissionGoal] = useState<string | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  // Synchronously calculate filtered defects from props for immediate render (Removes 21 -> 13 jump)
+  const propDefectsCount = useMemo(() => {
+    if (!history || !assets) return 0;
+    const latestMap = new Map<string, string>();
+    // Assume history is sorted (newest first) or we find the latest status
+    history.forEach(h => {
+      const scriptId = h.scriptId || (h as any).script_id;
+      if (scriptId && !latestMap.has(scriptId)) {
+        latestMap.set(scriptId, h.status);
+      }
+    });
+    return Array.from(latestMap.entries()).filter(([id, status]) => {
+      if (status !== 'failed') return false;
+      const script = assets.find(s => s.id === id);
+      return script ? script.isActive : true;
+    }).length;
+  }, [history, assets]);
+
+  const [filteredActiveDefectsCount, setFilteredActiveDefectsCount] = useState(propDefectsCount);
+  const [isFilteringDefects, setIsFilteringDefects] = useState(true);
+  const [isInitialSyncComplete, setIsInitialSyncComplete] = useState(false);
+
+  // Re-sync state when props-based calculation changes
+  useEffect(() => {
+    setFilteredActiveDefectsCount(propDefectsCount);
+  }, [propDefectsCount]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const missionIdRef = useRef<number>(0);
@@ -100,6 +126,7 @@ const MainConsole: React.FC<MainConsoleProps> = ({
 
     // 3. Fetch Data for Decision Center (Approvals)
     setIsLoadingApprovals(true);
+    
     const fetchApprovals = async () => {
       try {
         const [scenarios, pendingHeals, historyRes] = await Promise.all([
@@ -123,29 +150,34 @@ const MainConsole: React.FC<MainConsoleProps> = ({
         });
 
         // 2. Pending Healing
-        pendingHeals.slice(0, 5).forEach((h: any) => {
-          mapped.push({
-            id: h.id || '',
-            type: 'HEALING',
-            title: `Healing Needed: ${h.scriptName}`,
-            description: `Failure detected. Self-healing is enabled for this asset.`,
-            timestamp: h.runDate ? new Date(h.runDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent',
-            urgency: 'high'
+        pendingHeals
+          .filter((h: any) => {
+            const script = assets.find(a => a.id === h.scriptId);
+            return script ? script.isActive : true;
+          })
+          .forEach((h: any) => {
+            mapped.push({
+              id: h.id || '',
+              type: 'HEALING',
+              title: `Healing Needed: ${h.scriptName}`,
+              description: `Failure detected. Self-healing is enabled for this asset.`,
+              timestamp: h.runDate ? new Date(h.runDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent',
+              urgency: 'high'
+            });
           });
-        });
 
-        // 3. Current Defects (Jira)
-        const latestHistoryMap = new Map<string, any>();
-        historyRes.forEach((h: any) => {
-          if (h.script_id && !latestHistoryMap.has(h.script_id)) {
-            latestHistoryMap.set(h.script_id, h);
-          }
-        });
+        // 3. Current Defects (Jira) - Using the same API as HistoryView for consistency
+        const activeDefectsFromApi = await testApi.getActiveDefects(activeProject.id);
+        
+        const currentDefects = activeDefectsFromApi
+          .filter((h: any) => !h.jira_id)
+          .filter((h: any) => {
+            const scriptId = h.scriptId || h.script_id;
+            const script = assets.find(a => a.id === scriptId);
+            return script ? script.isActive : true;
+          });
 
-        const currentDefects = Array.from(latestHistoryMap.values())
-          .filter((h: any) => h.status === 'failed' && !h.jira_id);
-
-        currentDefects.slice(0, 5).forEach((h: any) => {
+        currentDefects.forEach((h: any) => {
           mapped.push({
             id: h.id || '',
             type: 'JIRA',
@@ -156,12 +188,25 @@ const MainConsole: React.FC<MainConsoleProps> = ({
           });
         });
 
+        // 4. Calculate Unified Active Defects Count (Synchronized with UI Filtering)
+        const allFilteredDefects = activeDefectsFromApi
+          .filter((h: any) => {
+            const scriptId = h.scriptId || h.script_id;
+            const script = assets.find(a => a.id === scriptId);
+            return script ? script.isActive : true;
+          });
+        setFilteredActiveDefectsCount(allFilteredDefects.length);
+        setIsFilteringDefects(false);
+        setIsInitialSyncComplete(true);
+
         // 4. Calculate Scenario Verification Count (Autonomous Testing Repository)
         const pVerification = scenarios.filter((s: any) => (s.is_approved || s.isApproved) && (!s.golden_script_id && !s.goldenScriptId)).length;
         setPendingVerificationCount(pVerification);
 
         setApprovals(mapped);
       } catch (e) {
+        setIsFilteringDefects(false);
+        setIsInitialSyncComplete(true);
         console.error("Error fetching approvals", e);
       } finally {
         setIsLoadingApprovals(false);
@@ -254,20 +299,26 @@ const MainConsole: React.FC<MainConsoleProps> = ({
       const steps: MissionStep[] = [];
       const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-      const wantsAnalysis = lowerInput.includes('보고서') || lowerInput.includes('분석') || lowerInput.includes('리포트');
-      const periodicalLabel = lowerInput.includes('주간') ? 'Weekly' : lowerInput.includes('월간') ? 'Monthly' : lowerInput.includes('일간') ? 'Daily' : '';
+      const wantsAnalysis = lowerInput.includes('보고서') || lowerInput.includes('분석') || lowerInput.includes('리포트') || lowerInput.includes('요약');
+      const periodicalLabel = lowerInput.includes('주간') ? 'Weekly' : lowerInput.includes('월간') ? 'Monthly' : (lowerInput.includes('일간') || lowerInput.includes('일일')) ? 'Daily' : '';
+      const sequentialIntent = lowerInput.includes('후') || lowerInput.includes('다음') || lowerInput.includes('하고') || lowerInput.includes('이후') || lowerInput.includes('then');
 
       // Case B: Defect Handling (Only if explicitly requested)
-      const wantsRetry = lowerInput.includes('재시도') || lowerInput.includes('retry') || lowerInput.includes('다시');
+      const wantsRetry = lowerInput.includes('재시도') || lowerInput.includes('retry') || lowerInput.includes('다시') || lowerInput.includes('재실행');
       const wantsHealing = lowerInput.includes('힐링') || lowerInput.includes('healing') || lowerInput.includes('복구');
+      const wantsJiraSync = (lowerInput.includes('지라') || lowerInput.includes('jira')) && (lowerInput.includes('등록') || lowerInput.includes('sync') || lowerInput.includes('동기화'));
+      
+      const wantsBulkFailedRetry = lowerInput.includes('실패') && wantsRetry;
+      const wantsHealingPostRetry = wantsHealing && wantsRetry && sequentialIntent;
 
       // Case A: Testing Execution
-      // Check BOTH AI response and User's original input for testing intent
-      const userWantsTest = (lowerInput.includes('테스트') || lowerInput.includes('실행') || lowerInput.includes('시행') || lowerInput.includes('run') || lowerInput.includes('test')) && !wantsAnalysis;
-      const aiSuggestedTest = (lowerResp.includes('test') || lowerResp.includes('run') || lowerResp.includes('시행')) && !wantsAnalysis;
+      const isPureRetry = lowerInput.includes('재실행') || lowerInput.includes('다시 실행') || lowerInput.includes('재시도');
+      const userWantsTest = (lowerInput.includes('테스트') || lowerInput.includes('실행') || lowerInput.includes('시행') || lowerInput.includes('run') || lowerInput.includes('test')) && (!wantsAnalysis || sequentialIntent) && !isPureRetry;
+      const aiSuggestedTest = (lowerResp.includes('test') || lowerResp.includes('run') || lowerResp.includes('시행')) && (!wantsAnalysis || sequentialIntent);
 
-      // Strict Policy: If healing is primary goal, only add test step if explicitly mentioned "test then heal"
-      const shouldRunTest = (userWantsTest || aiSuggestedTest) && (!wantsHealing || lowerInput.includes('후') || lowerInput.includes('다음'));
+      // Strict Policy: If healing or jira sync is primary goal, only add test step if explicitly requested by user (not just inferred run)
+      const isFunctionalMission = wantsHealing || wantsJiraSync;
+      const shouldRunTest = userWantsTest || (aiSuggestedTest && !isFunctionalMission && !wantsRetry);
 
       if (shouldRunTest) {
         const targetAsset = searchSimilarAsset(textToSend, assets);
@@ -281,7 +332,7 @@ const MainConsole: React.FC<MainConsoleProps> = ({
         });
       }
 
-      if (wantsRetry) {
+      if (wantsRetry && !wantsHealingPostRetry && !wantsBulkFailedRetry) {
         steps.push({
           id: 'step_retry',
           label: 'Defect: Retry Failed Iterations',
@@ -301,6 +352,18 @@ const MainConsole: React.FC<MainConsoleProps> = ({
           timestamp,
           logs: ['Scanning Decision Center for pending healing tasks...', 'Identifying failed assets with AI-Healing enabled...']
         });
+
+        if (wantsHealingPostRetry) {
+          steps.push({
+            id: 'step_retry_after_healing',
+            label: 'Testing: Re-run Healed Assets Only',
+            agent: 'testing',
+            status: 'pending',
+            timestamp,
+            logs: ['Waiting for healing outcomes in THIS mission...', 'Preparing pinpoint retry batch...']
+          });
+        }
+
         steps.push({
           id: 'step_report_healing',
           label: 'Reporting: Recovery Quality Summary',
@@ -308,6 +371,28 @@ const MainConsole: React.FC<MainConsoleProps> = ({
           status: 'pending',
           timestamp,
           logs: ['Calculating recovery success rate...', 'Generating maintenance insight...']
+        });
+      }
+
+      if (wantsBulkFailedRetry && !wantsHealingPostRetry) {
+        steps.push({
+          id: 'step_bulk_retry_failures',
+          label: 'Testing: Bulk Re-run Active Defects',
+          agent: 'testing',
+          status: 'pending',
+          timestamp,
+          logs: ['Fetching overall project failure telemetry...', 'Dispatching bulk re-run sequence...']
+        });
+      }
+
+      if (wantsJiraSync) {
+        steps.push({
+          id: 'step_jira_sync',
+          label: 'Defect: Bulk Jira Issue Registration',
+          agent: 'defect',
+          status: 'pending',
+          timestamp,
+          logs: ['Scanning Decision Center for pending defects...', 'Preparing Jira synchronization batch...']
         });
       }
 
@@ -323,15 +408,22 @@ const MainConsole: React.FC<MainConsoleProps> = ({
           timestamp,
           logs: [`Target Period: ${periodicalLabel}`, 'Aggregating cross-platform telemetry...', 'Synthesizing executive summary...']
         });
-      } else if ((lowerResp.includes('report') || lowerResp.includes('리포트') || lowerResp.includes('요약')) && !alreadyHasReport) {
-        steps.push({
-          id: 'step_report',
-          label: 'Reporting: Quality Insight Summary',
-          agent: 'reporting',
-          status: 'pending',
-          timestamp,
-          logs: ['Pending test completion for insightful summary...']
-        });
+      } else {
+        const aiSuggestedReport = (lowerResp.includes('report') || lowerResp.includes('리포트') || lowerResp.includes('요약')) && !alreadyHasReport;
+      
+        if (aiSuggestedReport || (wantsAnalysis && !alreadyHasReport)) {
+          // Only trigger AI-suggested report if NOT a functional mission (unless user explicitly asked for summary/report)
+          if (!isFunctionalMission || wantsAnalysis) {
+            steps.push({
+              id: 'step_report',
+              label: 'Reporting: Quality Insight Summary',
+              agent: 'reporting',
+              status: 'pending',
+              timestamp,
+              logs: ['Pending test completion for insightful summary...', 'Analyzing latest execution outcomes...']
+            });
+          }
+        }
       }
 
       // 2. Initialize Workflow
@@ -344,6 +436,7 @@ const MainConsole: React.FC<MainConsoleProps> = ({
         let lastScriptId: string | null = null;
         let healedCount = 0;
         let failedCount = 0;
+        let currentMissionHealedIds: string[] = []; // Target ONLY items healed in THIS execution
 
         const processNext = async () => {
           if (missionIdRef.current !== currentMissionId) return;
@@ -372,134 +465,271 @@ const MainConsole: React.FC<MainConsoleProps> = ({
 
           try {
             if (currentStep.agent === 'testing') {
-              const asset = searchSimilarAsset(textToSend, assets);
-              lastScriptId = asset.id;
-
-              const devices = await deviceFarmApi.getDevices();
-              const targetDevice = devices.find(d => d.status === 'Available') || devices[0];
-              const deviceId = targetDevice?.id || null;
-
-              const commonProps = {
-                project_id: activeProject.id,
-                script_id: asset.id,
-                script_name: asset.name,
-                persona_name: 'Avery Agent',
-                trigger: 'agent_mission',
-                dataset: asset.dataset || [],
-                try_count: asset.try_count || 1,
-                enable_ai_test: asset.enable_ai_test || false
-              };
-
-              let runRes;
-              if (asset.steps && asset.steps.length > 0) {
-                runRes = await testApi.runActiveSteps({
-                  ...commonProps,
-                  steps: asset.steps,
-                  platform: asset.platform || 'WEB',
-                  device_id: deviceId,
-                  capture_screenshots: asset.captureScreenshots || false
-                });
-              } else {
-                runRes = await testApi.dryRun({
-                  ...commonProps,
-                  code: asset.code || ""
-                });
-              }
-
-              lastRunId = runRes.run_id;
-              setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
-                ...s,
-                logs: [
-                  ...(s.logs || []),
-                  `Execution dispatched (ID: ${lastRunId})`,
-                  `Awaiting completion in Avery's monitoring node...`
-                ]
-              } : s));
-
-              // --- POLLING FOR COMPLETION ---
-              let isDone = false;
-              let retryCount = 0;
-              while (!isDone && retryCount < 300) { // Max 10 mins (2s intervals)
-                if (isAborted || missionIdRef.current !== currentMissionId) break;
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                if (missionIdRef.current !== currentMissionId) return;
-                const statusRes = await testApi.getRunStatus(lastRunId);
-                if (statusRes.status !== 'running') {
-                  isDone = true;
-                  const finalLog = statusRes.status === 'success'
-                    ? `[DISPATCH] Test Successful (Exit Code: 0)`
-                    : `[DISPATCH] Test Finished (Status: ${statusRes.status}, Code: ${statusRes.exit_code})`;
-                  setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, logs: [...(s.logs || []), finalLog] } : s));
-                  break;
+              if (currentStep.id === 'step_retry_after_healing' || currentStep.id === 'step_bulk_retry_failures') {
+                let targetIds: string[] = [];
+                
+                if (currentStep.id === 'step_retry_after_healing') {
+                  targetIds = [...currentMissionHealedIds];
+                } else {
+                  // Bulk retry of all active defects
+                  const historyRes = await testApi.getHistory(activeProject.id);
+                  const latestHistoryMap = new Map<string, any>();
+                  historyRes.forEach((h: any) => {
+                    if (h.script_id && !latestHistoryMap.has(h.script_id)) {
+                      latestHistoryMap.set(h.script_id, h);
+                    }
+                  });
+                  targetIds = Array.from(latestHistoryMap.values())
+                    .filter((h: any) => h.status === 'failed')
+                    .map((h: any) => h.id || (h as any)._id);
                 }
-                retryCount++;
+
+                if (targetIds.length === 0) {
+                  setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { 
+                    ...s, 
+                    logs: [...(s.logs || []), `No applicable assets discovered for re-run. Proceeding...`] 
+                  } : s));
+                } else {
+                  setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { 
+                    ...s, 
+                    logs: [...(s.logs || []), `Launching verification batch for ${targetIds.length} assets...`] 
+                  } : s));
+
+                  for (let k = 0; k < targetIds.length; k++) {
+                    if (isAborted) break;
+                    const hId = targetIds[k];
+                    
+                    setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { 
+                      ...s, 
+                      logs: [...(s.logs || []), `[Batch ${k+1}/${targetIds.length}] Re-dispatched (ID: ${hId})`] 
+                    } : s));
+
+                    try {
+                      const runRes = await testApi.retryTest(hId);
+                      const currentRunId = runRes.run_id;
+
+                      // Polling for THIS specific retry item
+                      let itemDone = false;
+                      let itemRetries = 0;
+                      while (!itemDone && itemRetries < 300) {
+                        if (isAborted || missionIdRef.current !== currentMissionId) break;
+                        await new Promise(r => setTimeout(r, 2000));
+                        const statusRes = await testApi.getRunStatus(currentRunId);
+                        if (statusRes.status !== 'running') {
+                          itemDone = true;
+                          const resultMsg = statusRes.status === 'success' ? 'PASSED' : 'FAILED';
+                          setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { 
+                            ...s, 
+                            logs: [...(s.logs || []), `[Batch ${k+1}] Complete: ${resultMsg}`] 
+                          } : s));
+                        }
+                        itemRetries++;
+                      }
+                    } catch (retryErr: any) {
+                      setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { 
+                        ...s, 
+                        logs: [...(s.logs || []), `[Batch ${k+1}] Dispatch error: ${retryErr.message || 'Network unreachable'}`] 
+                      } : s));
+                    }
+                  }
+                }
+              } else {
+                const asset = searchSimilarAsset(textToSend, assets);
+                lastScriptId = asset.id;
+                const devices = await deviceFarmApi.getDevices();
+                const targetDevice = devices.find(d => d.status === 'Available') || devices[0];
+                const deviceId = targetDevice?.id || null;
+
+                const commonProps = {
+                  project_id: activeProject.id,
+                  script_id: asset.id,
+                  script_name: asset.name,
+                  persona_name: 'Avery Agent',
+                  trigger: 'agent_mission',
+                  dataset: asset.dataset || [],
+                  try_count: asset.try_count || 1,
+                  enable_ai_test: asset.enable_ai_test || false
+                };
+
+                let runRes;
+                if (asset.steps && asset.steps.length > 0) {
+                  runRes = await testApi.runActiveSteps({
+                    ...commonProps,
+                    steps: asset.steps,
+                    platform: asset.platform || 'WEB',
+                    device_id: deviceId,
+                    capture_screenshots: asset.captureScreenshots || false
+                  });
+                } else {
+                  runRes = await testApi.dryRun({
+                    ...commonProps,
+                    code: asset.code || ""
+                  });
+                }
+
+                lastRunId = runRes.run_id;
+                setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                  ...s,
+                  logs: [
+                    ...(s.logs || []),
+                    `Execution dispatched (ID: ${lastRunId})`,
+                    `Awaiting completion in Avery's monitoring node...`
+                  ]
+                } : s));
+
+                // --- POLLING FOR COMPLETION ---
+                let isDone = false;
+                let retryCount = 0;
+                while (!isDone && retryCount < 300) { // Max 10 mins (2s intervals)
+                  if (isAborted || missionIdRef.current !== currentMissionId) break;
+                  await new Promise(resolve => setTimeout(resolve, 2000));
+                  if (missionIdRef.current !== currentMissionId) return;
+                  const statusRes = await testApi.getRunStatus(lastRunId);
+                  if (statusRes.status !== 'running') {
+                    isDone = true;
+                    const finalLog = statusRes.status === 'success'
+                      ? `[DISPATCH] Test Successful (Exit Code: 0)`
+                      : `[DISPATCH] Test Finished (Status: ${statusRes.status}, Code: ${statusRes.exit_code})`;
+                    setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, logs: [...(s.logs || []), finalLog] } : s));
+                    break;
+                  }
+                  retryCount++;
+                }
               }
             } else if (currentStep.agent === 'defect') {
               setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, logs: [...(s.logs || []), `Accessing Decision Center repositories...`] } : s));
 
-              const pending = await testApi.getPendingHealing(activeProject.id);
+              if (currentStep.id === 'step_jira_sync') {
+                const historyRes = await testApi.getHistory(activeProject.id);
+                
+                const latestHistoryMap = new Map<string, any>();
+                historyRes.forEach((h: any) => {
+                  if (h.script_id && !latestHistoryMap.has(h.script_id)) {
+                    latestHistoryMap.set(h.script_id, h);
+                  }
+                });
 
-              if (pending.length === 0) {
-                setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
-                  ...s,
-                  logs: [...(s.logs || []), `No pending healing tasks found. Assets are currently stable.`]
-                } : s));
-              } else {
-                setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
-                  ...s,
-                  logs: [...(s.logs || []), `Found ${pending.length} assets requiring autonomous recovery.`]
-                } : s));
+                const pendingJira = Array.from(latestHistoryMap.values())
+                  .filter((h: any) => h.status === 'failed' && !h.jira_id);
 
-                // Sequential processing as requested
-                for (let j = 0; j < pending.length; j++) {
-                  if (isAborted) break;
-                  const item = pending[j];
+                if (pendingJira.length === 0) {
                   setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
                     ...s,
-                    logs: [...(s.logs || []), `[Recovery ${j + 1}/${pending.length}] Initiating AI-Healing for: ${item.scriptName}...`]
+                    logs: [...(s.logs || []), `No pending defects found for Jira registration. All issues are synchronized.`]
+                  } : s));
+                } else {
+                  setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                    ...s,
+                    logs: [...(s.logs || []), `Found ${pendingJira.length} failed assets requiring Jira synchronization.`]
                   } : s));
 
-                  try {
-                    const healRes = await testApi.selfHealTest(item.id || item.scriptId);
-                    const logId = healRes.log_id;
+                  let jiraSuccess = 0;
+                  let jiraFail = 0;
 
-                    // Poll healing status
-                    let healingDone = false;
-                    let healRetries = 0;
-                    while (!healingDone && healRetries < 180) { // Max 6 mins
-                      if (isAborted || missionIdRef.current !== currentMissionId) break;
-                      await new Promise(res => setTimeout(res, 2000));
-                      if (missionIdRef.current !== currentMissionId) return;
-
-                      try {
-                        const statusRes = await testApi.getHealingStatus(logId);
-
-                        if (statusRes.status !== 'started') {
-                          healingDone = true;
-                          if (statusRes.status === 'success') healedCount++;
-                          else failedCount++;
-
-                          const statusMsg = statusRes.status === 'success' ? 'SUCCESS' : 'FAILED';
-                          setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
-                            ...s,
-                            logs: [...(s.logs || []), `[Recovery ${j + 1}] ${item.scriptName}: ${statusMsg}`]
-                          } : s));
-                        }
-                      } catch (statusErr: any) {
-                        // If 404, the log entry is just not created yet in DB. Don't fail, just wait.
-                        console.log(`[Avery] Healing log ${logId} not yet available (404). retrying...`);
-                      }
-                      healRetries++;
-                    }
-                  } catch (healErr: any) {
-                    failedCount++;
+                  for (let k = 0; k < pendingJira.length; k++) {
+                    if (isAborted) break;
+                    const item = pendingJira[k];
                     setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
                       ...s,
-                      logs: [...(s.logs || []), `[Recovery ${j + 1}] Error: ${healErr.message || 'Node unreachable'}`]
+                      logs: [...(s.logs || []), `[Sync ${k + 1}/${pendingJira.length}] Syncing defect: ${item.scriptName}...`]
                     } : s));
+
+                    try {
+                      const result = await testApi.assignJira(item.id || (item as any)._id);
+                      jiraSuccess++;
+                      setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                        ...s,
+                        logs: [...(s.logs || []), `[Sync ${k + 1}] Successfully registered Jira ID: ${result.jira_id}`]
+                      } : s));
+                    } catch (err: any) {
+                      jiraFail++;
+                      setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                        ...s,
+                        logs: [...(s.logs || []), `[Sync ${k + 1}] Registration failed for ${item.scriptName}.`]
+                      } : s));
+                    }
                   }
+
+                  setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                    ...s,
+                    logs: [
+                      ...(s.logs || []), 
+                      `--- JIRA SYNC SUMMARY ---`,
+                      `Total Defects Processed: ${pendingJira.length}`,
+                      `Successfully Registered: ${jiraSuccess}`,
+                      `Synchronization Failures: ${jiraFail}`,
+                      `-------------------------`
+                    ]
+                  } : s));
                 }
-                setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, logs: [...(s.logs || []), `Autonomous recovery sequence finalized.`] } : s));
+              } else {
+                const pending = await testApi.getPendingHealing(activeProject.id);
+
+                if (pending.length === 0) {
+                  setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                    ...s,
+                    logs: [...(s.logs || []), `No pending healing tasks found. Assets are currently stable.`]
+                  } : s));
+                } else {
+                  setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                    ...s,
+                    logs: [...(s.logs || []), `Found ${pending.length} assets requiring autonomous recovery.`]
+                  } : s));
+
+                  // Sequential processing as requested
+                  for (let j = 0; j < pending.length; j++) {
+                    if (isAborted) break;
+                    const item = pending[j];
+                    setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                      ...s,
+                      logs: [...(s.logs || []), `[Recovery ${j + 1}/${pending.length}] Initiating AI-Healing for: ${item.scriptName}...`]
+                    } : s));
+
+                    try {
+                      const healRes = await testApi.selfHealTest(item.id || item.scriptId);
+                      const logId = healRes.log_id;
+
+                      // Poll healing status
+                      let healingDone = false;
+                      let healRetries = 0;
+                      while (!healingDone && healRetries < 180) { // Max 6 mins
+                        if (isAborted || missionIdRef.current !== currentMissionId) break;
+                        await new Promise(res => setTimeout(res, 2000));
+                        if (missionIdRef.current !== currentMissionId) return;
+
+                        try {
+                          const statusRes = await testApi.getHealingStatus(logId);
+
+                          if (statusRes.status !== 'started') {
+                            healingDone = true;
+                            if (statusRes.status === 'success') {
+                              healedCount++;
+                              currentMissionHealedIds.push(item.id || (item as any)._id);
+                            }
+                            else failedCount++;
+
+                            const statusMsg = statusRes.status === 'success' ? 'SUCCESS' : 'FAILED';
+                            setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                              ...s,
+                              logs: [...(s.logs || []), `[Recovery ${j + 1}] ${item.scriptName}: ${statusMsg}`]
+                            } : s));
+                          }
+                        } catch (statusErr: any) {
+                          // If 404, the log entry is just not created yet in DB. Don't fail, just wait.
+                          console.log(`[Avery] Healing log ${logId} not yet available (404). retrying...`);
+                        }
+                        healRetries++;
+                      }
+                    } catch (healErr: any) {
+                      failedCount++;
+                      setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                        ...s,
+                        logs: [...(s.logs || []), `[Recovery ${j + 1}] Error: ${healErr.message || 'Node unreachable'}`]
+                      } : s));
+                    }
+                  }
+                  setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, logs: [...(s.logs || []), `Autonomous recovery sequence finalized.`] } : s));
+                }
               }
             } else if (currentStep.agent === 'reporting') {
               if (currentStep.id === 'step_report_periodical') {
@@ -674,13 +904,13 @@ const MainConsole: React.FC<MainConsoleProps> = ({
           >
             <div className="relative">
               <ShieldCheck className="w-5 h-5 text-rose-500" />
-              {summaryData?.active_defects > 0 && (
+              {filteredActiveDefectsCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping" />
               )}
             </div>
             <div className="flex flex-col">
               <span className={`text-[9px] font-black ${subTextClass} uppercase tracking-widest leading-none mb-1`}>Active Defects</span>
-              <span className={`text-base font-black ${textClass} leading-tight`}>{summaryData?.active_defects || 0}</span>
+              <span className={`text-base font-black ${textClass} leading-tight`}>{filteredActiveDefectsCount}</span>
             </div>
             <ChevronRight className="w-3.5 h-3.5 text-gray-400 group-hover:text-rose-500 ml-1 transition-all" />
           </div>
@@ -893,13 +1123,13 @@ const MainConsole: React.FC<MainConsoleProps> = ({
                             <div className="flex justify-between items-center text-[7px] font-black uppercase tracking-widest">
                               <span className={subTextClass}>Stability Score</span>
                               <span className="text-emerald-500">
-                                {summaryData?.total_assets ? Math.round(((summaryData.total_assets - summaryData.active_defects) / summaryData.total_assets) * 100) : 100}%
+                                {summaryData?.total_assets ? Math.round(((summaryData.total_assets - filteredActiveDefectsCount) / summaryData.total_assets) * 100) : 100}%
                               </span>
                             </div>
                             <div className={`w-full h-1 ${isDark ? 'bg-gray-800' : 'bg-gray-100'} rounded-full overflow-hidden`}>
                               <div
-                                className="h-full bg-emerald-500 transition-all duration-1000 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
-                                style={{ width: `${summaryData?.total_assets ? ((summaryData.total_assets - summaryData.active_defects) / summaryData.total_assets) * 100 : 100}%` }}
+                                className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                                style={{ width: `${!summaryData?.total_assets ? 100 : ((summaryData.total_assets - filteredActiveDefectsCount) / summaryData.total_assets) * 100}%` }}
                               />
                             </div>
                           </div>
@@ -1268,8 +1498,8 @@ const MainConsole: React.FC<MainConsoleProps> = ({
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.2); border-radius: 10px; }
-        @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
-        .animate-ping { animation: ping 3s cubic-bezier(0, 0, 0.2, 1) infinite; }
+        .animate-shimmer { animation: shimmer 2s infinite; }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
       `}</style>
     </div>
   );

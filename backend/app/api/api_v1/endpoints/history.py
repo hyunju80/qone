@@ -93,9 +93,10 @@ def read_active_defects(
     if not project_id:
         return []
         
-    # Get only the latest run for each script, where the latest run was FAILED
-    all_recent = db.query(TestHistory).distinct(TestHistory.script_id).filter(
-        TestHistory.project_id == project_id
+    # Get only the latest run for each script, where the latest run was FAILED, AND script is ACTIVE
+    all_recent = db.query(TestHistory).join(TestHistory.script).distinct(TestHistory.script_id).filter(
+        TestHistory.project_id == project_id,
+        TestScript.is_active == True
     ).options(joinedload(TestHistory.script)).order_by(TestHistory.script_id, desc(TestHistory.run_date)).all()
     
     active_defects = [h for h in all_recent if h.script_id and h.status == 'failed']
@@ -128,8 +129,8 @@ def read_history_summary(
     pipelineRuns = db.query(TestHistory).filter(TestHistory.project_id == project_id, TestHistory.trigger == 'pipeline').count()
     scheduledRuns = db.query(TestHistory).filter(TestHistory.project_id == project_id, TestHistory.trigger == 'scheduled').count()
     
-    # 2. Asset Stats (Golden Asset Fleet)
-    total_assets = db.query(TestScript).filter(TestScript.project_id == project_id).count()
+    # 2. Asset Stats (Golden Asset Fleet) - Only Active Assets
+    total_assets = db.query(TestScript).filter(TestScript.project_id == project_id, TestScript.is_active == True).count()
     
     # Weekly growth: Created in the last 7 days
     weekly_growth = 0
@@ -143,12 +144,13 @@ def read_history_summary(
         print(f"DEBUG: Failed to calculate weekly growth: {e}")
         weekly_growth = 0
 
-    # 3. Active Defects (Latest run is failed)
+    # 3. Active Defects (Latest run is failed) - Only for Active Assets
     # Optimized: Use DISTINCT ON to get only the latest history record for each script
     # This avoids fetching all history records and processing them in Python.
     from sqlalchemy import desc
-    all_recent = db.query(TestHistory).distinct(TestHistory.script_id).filter(
-        TestHistory.project_id == project_id
+    all_recent = db.query(TestHistory).join(TestHistory.script).distinct(TestHistory.script_id).filter(
+        TestHistory.project_id == project_id,
+        TestScript.is_active == True
     ).options(joinedload(TestHistory.script)).order_by(TestHistory.script_id, desc(TestHistory.run_date)).all()
     
     active_defects = 0
