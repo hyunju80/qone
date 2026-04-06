@@ -394,188 +394,57 @@ Return ONLY the name of the category.
 
 ---
 
-## 10. Agent Fleet Orchestration (에이전트 군단 조율)
+## 10. Agent Control Center: Unified Orchestration (통합 오케스트레이션)
 
-Q-ONE은 단일 에이전트가 아닌, 각 도메인에 특화된 에이전트들이 협업하는 **Multi-Agent System(MAS)** 구조를 지향합니다.
+Agent Control Center는 사용자의 모호한 목표를 해석하고, 이를 달성하기 위해 분산된 전문 에이전트들을 조율하는 Q-ONE의 핵심 지능 중추입니다.
 
-### 10.1. Agent Specialization (에이전트별 특화 영역)
-| 에이전트 | 핵심 페르소나 및 LLM 최적화 방향 | 진입점 & 코드 파일 | 트리거 |
-| :--- | :--- | :--- | :--- |
-| **Testing Agent** | "성실한 탐험가" - DOM 구조 분석 및 엣지 케이스 발굴 | `/exploration/step`<br/>(`exploration.py`) | 미션 플랜 실행 중 탐색 단계 도달 시 |
-| **Defect Agent** | "정밀한 분석가" - 실패 로그 RCA 및 복구 경로 탐색 | `/history/analyze-failure`<br/>(`history.py`, `ai.py`) | 테스트 실패 감지 또는 리포트 분석 요청 시 |
-| **Reporting Agent** | "통찰력 있는 전략가" - 텔레메트리 데이터 요약 및 인사이트 도출 | `/history/projects/{id}/insights`<br/>(`history.py`) | 미션 종료 또는 리포트 생성 버튼 클릭 시 |
-
-### 10.2. Shared Mission Context (컨텍스트 전파)
-에이전트 간의 원활한 협업을 위해 `MissionState` 객체가 전파되며, 후속 에이전트는 이전 에이전트의 'Thought'를 수신하여 중단 없는 업무 수행이 가능합니다.
-
-```json
-{
-  "shared_memory": {
-    "discovered_selectors": { "login_btn": "#btn-login" },
-    "identified_risks": ["결제 버튼 클릭 시 간헐적 지연 발생"],
-    "last_landmark": "로그인 성공 메시지 확인됨"
-  }
-}
-```
----
-
-## 11. Mission Orchestrator (미션 오케스트레이터)
-
-Mission Orchestrator는 사용자의 모호한 자연어 명령을 Q-ONE의 도구들이 실행할 수 있는 하위 과업(Sub-tasks)으로 분해하고 최적의 에이전트를 배정하는 **상위 플래닝 엔진**입니다.
+### 10.1. Mission Orchestrator (Planning Engine)
+사용자의 자연어 명령을 실행 가능한 하위 과업(Sub-tasks)으로 분해하고 최적의 에이전트를 배정하는 상위 플래닝 엔진입니다.
 
 *   **진입점**: `/api/v1/ai/chat`
-*   **코드 파일**: `backend/app/api/api_v1/endpoints/ai.py`
-*   **트리거**: 메인 콘솔의 목표 입력창(What is the goal for today?) 제출 시.
-
-### 11.1. Hybrid Intent Interpretation (하이브리드 의도 해석)
-*   **키워드 + LLM 복합 분석**: 단순 키워드 매칭(예: 'retry', 'healing')과 LLM의 문맥 분석을 결합하여 사용자의 최종 목적지를 결정합니다.
-*   **4대 핵심 의도 (Core Intents)**:
-    1.  **Testing**: 신규/기존 기능에 대한 자율 탐색 및 검증 요청.
-    2.  **Defect**: 실패 원인 분석(RCA) 및 복구(Self-healing) 작업.
-    3.  **Reporting**: 누적 데이터 기반의 인사이트 요약 및 경영 리포트 생성.
-    4.  **Jira**: Jira 티켓 생성 및 결함 상태 동기화.
-
-### 11.2. Goal Decomposition Prompt (목표 분해 로직)
-*   **모델**: `gemini-2.0-flash` (추론 및 플래닝 특화)
-*   **프롬프트 전략**:
+*   **Hybrid Intent Interpretation**: 키워드 매칭(retry, healing 등)과 LLM의 문맥 분석을 결합하여 `Testing`, `Defect`, `Reporting`, `Jira`의 4대 핵심 의도를 분류합니다.
+*   **Goal Decomposition Prompt**:
 ```text
-You are the "Chief Mission Orchestrator" of Q-ONE.
-Analyze the User's Goal and decompose it into a sequence of actionable Mission Steps.
+You are the "Chief Mission Orchestrator" of Q-ONE. Analyze the User's Goal into actionable steps.
 
 [Intent Classification]
-- If goal mentions 'retry' or 'fix', include Defect Agent.
-- If goal mentions 'report' or 'summary', include Reporting Agent.
-- If goal mentions 'test' or 'check', include Testing Agent.
+- If goal mentions 'retry/fix/healing' -> Defect Agent.
+- If goal mentions 'report/summary/insight' -> Reporting Agent.
+- If goal mentions 'test/check/verify' -> Testing Agent.
 
-[Instruction]
-1. Break down the goal into 3-7 logical steps.
-2. For each step, assign the most appropriate Agent and Tool.
-3. Ensure linear dependency: Step N should provide context for Step N+1.
-4. Input for Testing Agent: {active_scripts_metadata}
+[Plan Generation]
+1. Break down into 3-7 logical steps.
+2. Ensure each step N provides context for N+1.
 ```
 
-### 11.3. Mission Plan Schema (JSON)
-백엔드 및 프론트엔드 연동을 위한 규격화된 플랜 구조입니다.
+*   **Mission Plan Schema (JSON)**:
 ```json
 {
   "mission_id": "uuid",
   "goal": "사용자 입력 목표",
-  "estimated_complexity": "Low/Medium/High",
   "steps": [
     {
       "id": 1,
       "agent": "testing/defect/reporting",
       "tool": "navigator/verifier/healer/analyzer",
-      "instruction": "특정 데이터셋을 활용한 결제 모듈 자율 테스트 수행",
-      "expected_outcome": "결제 완료 레이어 진입 성공"
+      "instruction": "구체적 지시문",
+      "expected_outcome": "단계 완료 조건"
     }
   ]
 }
 ```
 
----
+### 10.2. Agent Fleet Coordination (Social Intelligence)
+각 도메인에 특화된 에이전트들이 `MissionState`를 공유하며 협업하는 Multi-Agent System(MAS) 구조입니다.
 
-## 12. CI/CD Intelligence LLM Engine (배포 지능화 엔진)
+*   **Agent Specialization**:
+    *   **Testing Agent**: "성실한 탐험가" - DOM 구조 분석 및 엣지 케이스 발굴.
+    *   **Defect Agent**: "정밀한 분석가" - 실패 로그 RCA 및 복구 경로 탐색.
+    *   **Reporting Agent**: "통찰력 있는 전략가" - 텔레메트리 요약 및 인사이트 도출.
+*   **Shared Mission Context**: 에이전트 간의 원활한 협업을 위해 `shared_memory` 필드를 포함한 컨텍스트 객체가 전파됩니다.
 
-CI/CD Intelligence(PipelineWatcher)는 개발 배포 파이프라인의 메타데이터와 테스트 자산을 실시간으로 매핑하고, 배포 증분(Delta)에 따른 품질 공백을 AI가 스스로 설계하는 엔진입니다.
-
-### 12.1. Autonomous Impact Analysis (영향도 분석 프롬프트)
-배포된 패키지와 커밋 설명을 분석하여 가장 연관성이 높은 테스트 자산을 선정합니다.
-*   **프롬프트 전략**:
-```text
-You are a CI/CD Intelligent Test Orchestrator. 
-Analyze the Deployment Metadata and mapping with the Available Test Scripts.
-
-[Context]
-- Deployment: Package={pkg}, Description={desc}, Branch={branch}
-- Available Scripts: {scripts_metadata_list}
-
-[Goal]
-Identify the SINGLE most relevant test script for this deployment.
-Provide a clear logical reason for the selection.
-
-Return ONLY JSON: {"scriptId": "ID", "reason": "reason string"}
-```
-
-### 12.2. Coverage Gap Analysis & Scenario Proposal
-테스트 실행 결과와 실제 배포된 기능 요건 간의 차이를 분석하여 신규 테스트를 제안합니다.
-*   **프롬프트 전략**:
-```text
-Analyze the Test Result vs Deployment Goal.
-Build Delta: "{deployment_description}"
-Executed Test: "{script_name}"
-Result: "{status}"
-
-[Task]
-Identify the "Quality Gap" - which feature mentioned in the deployment description is NOT covered by the executed test?
-Generate a new high-level Test Scenario object to cover this gap.
-
-[Requirement]
-- Follow Q-ONE Standard Scenario JSON Schema.
-- Language: Korean (한국어).
-```
-
-#### 사용 시점 (Trigger)
-*   **Build Trigger**: CI/CD 웹훅 수신 시 영향도 분석 엔진이 즉시 기동하여 테스트 대상을 선정합니다.
-*   **Post-Execution**: 테스트 완료 직후 갭 분석 엔진이 가동되어 보완이 필요한 신규 시나리오를 'Suggestion' 형태로 사용자에게 제안합니다.
-
----
-
-## 13. AI Workflow Diagrams (LLM-Based Process Flows)
-
-Q-ONE의 AI 서비스는 크게 **시나리오 중심(Scenario-Driven)**과 **목표 중심(Goal-Driven)**이라는 두 가지 워크플로우를 가지며, 이들은 최종적으로 동일한 **Autonomous Agent (Section 3)** 엔진을 공유합니다.
-
-### 13.1. Workflow 1: AI Generator (Scenario-Driven)
-```mermaid
-graph TD
-    subgraph Sources
-        S1["Knowledge (RAG)"]
-        S2["Action Map (Structural)"]
-        S3["Direct Upload (Vision)"]
-        S4["Custom Instruction"]
-    end
-    
-    Sources --> B{{"LLM: Hybrid Scenario Designer"}}
-    B -- "High-level Scenarios" --> C{{"Agent: Autonomous Verifier"}}
-    C -- "Execution Trace" --> D["Unified AssetManager"]
-    D --> E["Golden Test Asset (Certified)"]
-```
-
-### 13.2. Workflow 2: AI Agent Lab (Navigator Agent)
-사용자와의 실시간 피드백 루프를 통한 자율 탐색 및 미션 수행 워크플로입니다.
-```mermaid
-graph TD
-    I["Real-time Instruction & Goal"] --> J{{"Agent: AI Navigator (Lab Mode)"}}
-    J -- "Interactive Trace" --> K{{"LLM: Asset Synthesizer"}}
-    K -- "Validated Scenario & Steps" --> L["Unified AssetManager"]
-    L --> M["Test Step Asset (Discovery)"]
-```
-
-### 13.3. Workflow 3: AI Generator Verify (Verifier Agent)
-설계된 시나리오의 정합성을 실제 환경에서 자율 주행으로 확증하는 워크플로입니다.
-```mermaid
-graph TD
-    N["Structured Scenario Steps"] --> O{{"Agent: AI Verifier (Validation Mode)"}}
-    O -- "Success/Failure Trace" --> P{{"LLM: Stability Analyst"}}
-    P -- "Refined Selectors & Assertions" --> Q["Unified AssetManager"]
-    Q --> R["Golden Test Asset (Certified)"]
-```
-
-![AI Unified Workflow](./images/ai_unified_workflow.png)
-
-### 13.3. 핵심 차이점 요약 (Key Comparison)
-| 구분 | AI Generator (Smart Gen) | AI Exploration (Discovery) |
-| :--- | :--- | :--- |
-| **출발점** | 설계서, 화면 구조, **페르소나** | 사용자 목표, **페르소나** |
-| **핵심 LLM** | Scenario Designer (Section 2) | Self-Driving Agent (Section 3) |
-| **에이전트 역할** | 설계된 시나리오가 맞는지 **학습/검증** | 목표를 위해 스스로 **경로 탐색** |
-| **주요 가치** | 기획/설계 기반의 정밀한 테스트 생성 | 발견되지 않은 결함 및 사용자 행동 탐색 |
-
----
-
-## 14. AI Unified Workflow (종합 워크플로우)
-
-Mission Orchestrator가 설계한 플랜에 따라 각 특화 에이전트들이 도구를 사용하여 작업을 완수하는 전체 흐름도입니다.
+### 10.3. AI Unified Workflow (Process Flow)
+실제 실행 엔진(`MainConsole.tsx`)의 동작 흐름과 100% 일치하는 종합 워크플로우 맵입니다.
 
 ```mermaid
 graph TD
@@ -593,3 +462,75 @@ graph TD
 ```
 
 ---
+
+## 11. CI/CD Intelligence LLM Engine (배포 지능화 엔진)
+
+CI/CD Intelligence(PipelineWatcher)는 개발 배포 파이프라인의 메타데이터와 테스트 자산을 실시간으로 매핑하고, 배포 증분(Delta)에 따른 품질 공백을 AI가 스스로 설계하는 엔진입니다.
+
+### 11.1. Autonomous Impact Analysis (영향도 분석 프롬프트)
+*   **프롬프트 전략**:
+```text
+You are a CI/CD Intelligent Test Orchestrator. 
+Analyze the Deployment Metadata and mapping with the Available Test Scripts.
+Identify the SINGLE most relevant test script for this deployment.
+Return ONLY JSON: {"scriptId": "ID", "reason": "reason string"}
+```
+
+### 11.2. Coverage Gap Analysis & Scenario Proposal
+*   **프롬프트 전략**:
+```text
+Analyze the Test Result vs Deployment Goal.
+Build Delta: "{deployment_description}"
+Identify the "Quality Gap" and generate a new high-level Test Scenario object to cover this gap.
+```
+
+---
+
+## 12. AI Workflow Diagrams (LLM-Based Process Flows)
+
+Q-ONE의 AI 서비스는 크게 **시나리오 중심(Scenario-Driven)**과 **목표 중심(Goal-Driven)**이라는 두 가지 워크플로우를 가집니다.
+
+### 12.1. Workflow 1: AI Generator (Scenario-Driven)
+```mermaid
+graph TD
+    subgraph Sources
+        S1["Knowledge (RAG)"]
+        S2["Action Map (Structural)"]
+        S3["Direct Upload (Vision)"]
+        S4["Custom Instruction"]
+    end
+    
+    Sources --> B{{"LLM: Hybrid Scenario Designer"}}
+    B -- "High-level Scenarios" --> C{{"Agent: Autonomous Verifier"}}
+    C -- "Execution Trace" --> D["Unified AssetManager"]
+    D --> E["Golden Test Asset (Certified)"]
+```
+
+### 12.2. Workflow 2: AI Agent Lab (Navigator Agent)
+```mermaid
+graph TD
+    I["Real-time Instruction & Goal"] --> J{{"Agent: AI Navigator (Lab Mode)"}}
+    J -- "Interactive Trace" --> K{{"LLM: Asset Synthesizer"}}
+    K -- "Validated Scenario & Steps" --> L["Unified AssetManager"]
+    L --> M["Test Step Asset (Discovery)"]
+```
+
+### 12.3. Workflow 3: AI Generator Verify (Verifier Agent)
+```mermaid
+graph TD
+    N["Structured Scenario Steps"] --> O{{"Agent: AI Verifier (Validation Mode)"}}
+    O -- "Success/Failure Trace" --> P{{"LLM: Stability Analyst"}}
+    P -- "Refined Selectors & Assertions" --> Q["Unified AssetManager"]
+    Q --> R["Golden Test Asset (Certified)"]
+```
+
+### 12.4. 핵심 차이점 요약 (Key Comparison)
+| 구분 | AI Generator (Smart Gen) | AI Exploration (Discovery) |
+| :--- | :--- | :--- |
+| **출발점** | 설계서, 화면 구조, **페르소나** | 사용자 목표, **페르소나** |
+| **핵심 LLM** | Scenario Designer (Section 2) | Self-Driving Agent (Section 3) |
+| **에이전트 역할** | 설계된 시나리오가 맞는지 **학습/검증** | 목표를 위해 스스로 **경로 탐색** |
+| **주요 가치** | 기획/설계 기반의 정밀한 테스트 생성 | 발견되지 않은 결함 및 사용자 행동 탐색 |
+
+---
+
