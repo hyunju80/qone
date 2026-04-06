@@ -126,7 +126,7 @@ const MainConsole: React.FC<MainConsoleProps> = ({
 
     // 3. Fetch Data for Decision Center (Approvals)
     setIsLoadingApprovals(true);
-    
+
     const fetchApprovals = async () => {
       try {
         const [scenarios, pendingHeals, historyRes] = await Promise.all([
@@ -168,7 +168,7 @@ const MainConsole: React.FC<MainConsoleProps> = ({
 
         // 3. Current Defects (Jira) - Using the same API as HistoryView for consistency
         const activeDefectsFromApi = await testApi.getActiveDefects(activeProject.id);
-        
+
         const currentDefects = activeDefectsFromApi
           .filter((h: any) => !h.jira_id)
           .filter((h: any) => {
@@ -307,7 +307,7 @@ const MainConsole: React.FC<MainConsoleProps> = ({
       const wantsRetry = lowerInput.includes('재시도') || lowerInput.includes('retry') || lowerInput.includes('다시') || lowerInput.includes('재실행');
       const wantsHealing = lowerInput.includes('힐링') || lowerInput.includes('healing') || lowerInput.includes('복구');
       const wantsJiraSync = (lowerInput.includes('지라') || lowerInput.includes('jira')) && (lowerInput.includes('등록') || lowerInput.includes('sync') || lowerInput.includes('동기화'));
-      
+
       const wantsBulkFailedRetry = lowerInput.includes('실패') && wantsRetry;
       const wantsHealingPostRetry = wantsHealing && wantsRetry && sequentialIntent;
 
@@ -410,7 +410,7 @@ const MainConsole: React.FC<MainConsoleProps> = ({
         });
       } else {
         const aiSuggestedReport = (lowerResp.includes('report') || lowerResp.includes('리포트') || lowerResp.includes('요약')) && !alreadyHasReport;
-      
+
         if (aiSuggestedReport || (wantsAnalysis && !alreadyHasReport)) {
           // Only trigger AI-suggested report if NOT a functional mission (unless user explicitly asked for summary/report)
           if (!isFunctionalMission || wantsAnalysis) {
@@ -467,7 +467,7 @@ const MainConsole: React.FC<MainConsoleProps> = ({
             if (currentStep.agent === 'testing') {
               if (currentStep.id === 'step_retry_after_healing' || currentStep.id === 'step_bulk_retry_failures') {
                 let targetIds: string[] = [];
-                
+
                 if (currentStep.id === 'step_retry_after_healing') {
                   targetIds = [...currentMissionHealedIds];
                 } else {
@@ -485,23 +485,23 @@ const MainConsole: React.FC<MainConsoleProps> = ({
                 }
 
                 if (targetIds.length === 0) {
-                  setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { 
-                    ...s, 
-                    logs: [...(s.logs || []), `No applicable assets discovered for re-run. Proceeding...`] 
+                  setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                    ...s,
+                    logs: [...(s.logs || []), `No applicable assets discovered for re-run. Proceeding...`]
                   } : s));
                 } else {
-                  setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { 
-                    ...s, 
-                    logs: [...(s.logs || []), `Launching verification batch for ${targetIds.length} assets...`] 
+                  setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                    ...s,
+                    logs: [...(s.logs || []), `Launching verification batch for ${targetIds.length} assets...`]
                   } : s));
 
                   for (let k = 0; k < targetIds.length; k++) {
                     if (isAborted) break;
                     const hId = targetIds[k];
-                    
-                    setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { 
-                      ...s, 
-                      logs: [...(s.logs || []), `[Batch ${k+1}/${targetIds.length}] Re-dispatched (ID: ${hId})`] 
+
+                    setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                      ...s,
+                      logs: [...(s.logs || []), `[Batch ${k + 1}/${targetIds.length}] Re-dispatched (ID: ${hId})`]
                     } : s));
 
                     try {
@@ -518,17 +518,17 @@ const MainConsole: React.FC<MainConsoleProps> = ({
                         if (statusRes.status !== 'running') {
                           itemDone = true;
                           const resultMsg = statusRes.status === 'success' ? 'PASSED' : 'FAILED';
-                          setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { 
-                            ...s, 
-                            logs: [...(s.logs || []), `[Batch ${k+1}] Complete: ${resultMsg}`] 
+                          setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                            ...s,
+                            logs: [...(s.logs || []), `[Batch ${k + 1}] Complete: ${resultMsg}`]
                           } : s));
                         }
                         itemRetries++;
                       }
                     } catch (retryErr: any) {
-                      setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? { 
-                        ...s, 
-                        logs: [...(s.logs || []), `[Batch ${k+1}] Dispatch error: ${retryErr.message || 'Network unreachable'}`] 
+                      setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
+                        ...s,
+                        logs: [...(s.logs || []), `[Batch ${k + 1}] Dispatch error: ${retryErr.message || 'Network unreachable'}`]
                       } : s));
                     }
                   }
@@ -601,7 +601,7 @@ const MainConsole: React.FC<MainConsoleProps> = ({
 
               if (currentStep.id === 'step_jira_sync') {
                 const historyRes = await testApi.getHistory(activeProject.id);
-                
+
                 const latestHistoryMap = new Map<string, any>();
                 historyRes.forEach((h: any) => {
                   if (h.script_id && !latestHistoryMap.has(h.script_id)) {
@@ -653,7 +653,7 @@ const MainConsole: React.FC<MainConsoleProps> = ({
                   setMissionSteps(prev => prev.map((s, i) => i === stepIdx ? {
                     ...s,
                     logs: [
-                      ...(s.logs || []), 
+                      ...(s.logs || []),
                       `--- JIRA SYNC SUMMARY ---`,
                       `Total Defects Processed: ${pendingJira.length}`,
                       `Successfully Registered: ${jiraSuccess}`,
@@ -916,7 +916,7 @@ const MainConsole: React.FC<MainConsoleProps> = ({
           </div>
 
           <div className="flex-1" />
-          
+
           <div className="flex items-center gap-8 pr-12">
             {/* Top-Right Active Agent indicator - Now on the left of circles */}
             <div className={`transition-all duration-500 flex items-center gap-3 px-4 py-2 rounded-2xl border ${activeAgent ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4 pointer-events-none'} 
@@ -987,7 +987,7 @@ const MainConsole: React.FC<MainConsoleProps> = ({
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                      placeholder="e.g. '결제 시스템 자율 테스트 수행해줘'"
+                      placeholder="e.g. '글로벌 여행 테스트 진행 후 일간 분석 보고서 작성해줘'"
                       className={`flex-1 bg-transparent py-5 text-lg font-bold outline-none placeholder:text-gray-500/30 ${textClass} transition-colors`}
                     />
                     {isProcessing ? (

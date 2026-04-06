@@ -69,14 +69,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
       }
    };
 
+   // Combined Summary & History Load Effect
    React.useEffect(() => {
       loadSummary();
-   }, [activeProject]);
-
-   // Refresh summary when history changes
-   React.useEffect(() => {
-      loadSummary();
-   }, [history]);
+   }, [activeProject, history]);
 
    const loadAllActiveDefects = async () => {
       if (!activeProject?.id) return;
@@ -95,7 +91,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ history, activeProject, onRef
       if (activeTab === 'defects') {
          loadAllActiveDefects();
       }
-   }, [activeTab, activeProject, history]); // Refetch if history changes (e.g. after retry)
+   }, [activeTab, activeProject]); // Removed 'history' to prevent double-load on initial view/refresh chain
 
    const stats = useMemo(() => {
       if (summaryStats) return summaryStats;

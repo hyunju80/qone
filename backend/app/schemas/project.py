@@ -21,8 +21,7 @@ class ProjectBase(BaseModel):
     categories: List[CategoryNode] = [{"id": "default_common", "name": "Common"}]
 
     @field_validator('categories', mode='before')
-    def set_categories(cls, v):
-        print(f"DEBUG_CATEGORIES: Incoming value of categories is type={type(v)}, value={v}", flush=True)
+    def set_categories(cls, v):        
         if not v:
             return [{"id": "default_common", "name": "Common"}]
             
@@ -30,8 +29,7 @@ class ProjectBase(BaseModel):
         if isinstance(v, str):
             try:
                 v = json.loads(v)
-            except Exception as e:
-                print(f"DEBUG_CATEGORIES: JSON decode error {e}", flush=True)
+            except Exception as e:            
                 pass
 
         if not isinstance(v, list):
@@ -48,7 +46,7 @@ class ProjectBase(BaseModel):
                 parsed.append(cat.model_dump())
             else:
                  parsed.append({"id": "default_common", "name": "Common"})
-        print(f"DEBUG_CATEGORIES: Returning {parsed}", flush=True)
+        #print(f"DEBUG_CATEGORIES: Returning {parsed}", flush=True)
         return parsed
 
 # Create
