@@ -65,6 +65,7 @@ const AutoVerification: React.FC<AutoVerificationProps> = ({
             if (found) {
                 setSelectedScenarioId(propScenarioId);
                 setExpandedScenarioId(propScenarioId);
+                setListSearch(found.title); // 필터링을 위해 제목을 검색어에 입력
                 // Important: Clear the ID in App state after consuming it 
                 // so it doesn't keep switching back if the user changes scenarios manually
                 if (onClearScenarioId) {

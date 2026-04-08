@@ -37,17 +37,17 @@ Agent Control Center(Main Console)는 Q-ONE의 모든 테스팅 역량이 집결
 
 Knowledge Repo는 테스트 시나리오 생성을 위한 **동적 도메인 지식(RAG)**과 **브라우징 기반 네비게이션 맵**을 통합 관리하는 중앙 지식 허브입니다. 파편화된 문서와 웹 실제 구조를 데이터화하여 AI 에이전트가 더 정밀하게 시나리오를 설계할 수 있도록 "지능의 원천" 역할을 수행합니다.
 
-### 2.1. Document Inventory (지능형 RAG 엔진)
-*   **멀티 포맷 지원**: PDF, Excel, PPTX, Word 등 다양한 비즈니스 산출물을 분석하여 테스트 지식으로 변환합니다.
-*   **지능형 메타데이터 추출**: 단순 텍스트 파싱을 넘어 문서의 타이틀, 분과(Category), 페이지별 단위를 자동으로 식별하여 `KnowledgeItem`으로 정규화합니다.
-*   **Area-Based Extraction (영역 분석)**: PDF 내의 특정 테이블이나 레이아웃(예: 비고/설명 컬럼)을 좌표 기반으로 정확하게 추출하고 시각적 컨텍스트(이미지)를 함께 저장합니다.
-*   **Dynamic Custom Mapping**: 사용자가 문서의 각 컬럼을 시스템 필드(기능명, 설명, 경로 등)에 자유롭게 매핑할 수 있는 유연한 파이프라인을 제공합니다.
+### 2.1. Document Repository (지식 문서 엔진)
+*   **지원 포맷**: PDF, Excel(XLSX, XLS) 명세서를 분석하여 테스트 지식으로 변환합니다. (PPTX, Word 등은 순차적 확장 예정)
+*   **지능형 구조 분석 및 정규화**: 문서 내의 화면명, 구분, 경로 키워드를 식별하여 `KnowledgeItem` 단위로 지식을 구조화하고 계층형 리포지토리에 등록합니다.
+*   **Column-Based Precision Extraction (컬럼 기반 정밀 추출)**: PDF 내의 'Description(비고)' 등 주요 텍스트 영역을 좌표 기반으로 감지하여 추출함으로써, 표 구조 내의 복잡한 텍스트도 컨텍스트 손실 없이 포집합니다.
+*   **Flexible Metadata Mapping**: 사용자가 문서의 컬럼 명칭과 시스템 필드(기능명, 설명 등)를 자유롭게 연결할 수 있는 커스텀 매핑 룰을 제공합니다.
 
-### 2.2. Navigation Map (Action Flow Visualizer)
-*   **Autonomous URL Crawling**: 타겟 URL을 기반으로 AI 크롤러가 사이트 구조를 자율적으로 탐색하며 인터랙티브 요소(버튼, 링크 등)를 맵핑합니다.
+### 2.2. Action Flow Map (UI 탐색 및 시각화)
+*   **Structural URL Crawling**: 타겟 URL을 기반으로 **UI 탐색 엔진(Action Flow Crawler)**이 사이트 구조를 분석하며 인터랙티브 요소(버튼, 링크 등)를 기계적으로 맵핑합니다. (Non-AI 기반의 결정론적 탐색)
 *   **Hierarchical Tree Mapping**: 화면 간의 관계를 루트(Root)부터 하위 노드까지 트리 구조로 시각화하여 전체 서비스의 Action Flow를 한눈에 파악하게 합니다.
 *   **Incremental Expansion (증분 확장)**: 이미 생성된 맵에서 특정 노드를 선택하여 +1 Depth씩 추가로 확장하고 기존 맵에 병합(Merge)하는 연속적인 맵 고도화 프로세스를 지원합니다.
-*   **Popup & Overlay Handling**: 실제 서비스 로딩 시 발생하는 공지 사항이나 레이어 팝업을 지능적으로 제거/우회하여 중단 없는 맵 생성을 수행합니다.
+*   **Actionable Assets**: 생성된 맵 노드는 `AI Generator`의 핵심 컨텍스트로 활용되어, 실제 UI 구조와 100% 일치하는 테스트 시나리오 설계의 기반이 됩니다.
 
 ---
 
@@ -66,10 +66,10 @@ AI Generator는 사용자의 요구사항이나 앱/웹 구조를 분석하여 *
     2.  **지능형 컨텍스트 병합**: 선택된 여러 지식 항목(KnowledgeItems)의 내용을 실시간으로 요약 및 병합하여 LLM의 분석 정밀도를 높입니다.
 
 ### 3.2. 액션 플로우 맵 기반 (Action Flow Map / Browsing)
-*   **목적**: 실제 서비스의 탐색 구조(Navigation Flow)가 반영된 맵 데이터를 기반으로, 화면 간의 이동 및 인터랙션 중심의 시나리오 생성.
+*   **목적**: UI 탐색 엔진이 추출한 실제 서비스의 구조(Navigation Flow)를 기반으로, 화면 간의 이동 및 인터랙션 중심의 시나리오 생성.
 *   **핵심 기능**:
-    1.  **Saved Map 활용**: 이미 구축된 네비게이션 맵의 모든 노드와 인터랙티브 요소를 컨텍스트로 사용하여, 실제 구현된 환경과 100% 일치하는 테스트 케이스를 설계합니다.
-    2.  **Selector 정밀도**: 맵에 기록된 실제 CSS/XPath Selector를 시나리오 내의 로케이터 정보로 직접 활용하여 실행 가능성을 극대화합니다.
+    1.  **Map-to-Scenario Reasoning**: 이미 구축된 네비게이션 맵의 모든 노드와 인터랙티브 요소를 LLM이 분석하여, 실제 구현된 환경과 일치하는 실전 테스트 케이스를 설계합니다.
+    2.  **Selector Integrity**: 맵에 기록된 실제 CSS/XPath Selector를 시나리오 내의 로케이터 정보로 직접 주입하여 AI 에이전트의 실행 정확도를 극대화합니다.
 
 ### 3.3. 직접 업로드 기반 (Upload / On-demand)
 *   **목적**: 저장소에 등록되지 않은 최신 이미지(스크린샷, 와이어프레임)나 텍스트 문서를 즉시 업로드하여 특정 요건에 대한 시나리오를 신속하게 생성.
@@ -421,8 +421,8 @@ Q-ONE은 기업 단위의 계층 구조와 세분화된 권한 체계를 통해 
 
 | 구분 | 주요 기능 | 구현 상태 | 비고 |
 | :--- | :--- | :---: | :--- |
-| **Knowledge Repo** | Document Inventory (RAG) | ✅ | 다중 포맷 파싱 및 메타데이터 추출 완료 |
-| | Navigation Map | ✅ | 자율 크롤링 및 계층 트리 시각화 완료 |
+| **Knowledge Repo** | Document Repository (RAG) | ✅ | 다중 포맷 파싱 및 AI 기반 데이터 추출 완료 |
+| | Action Flow Map | ✅ | 구조 분석 기반 자율 탐색 및 트리 시각화 완료 |
 | **AI Generator** | Multi-Source Scenario Gen | ✅ | Map/Knowledge/Upload 복합 생성 지원 |
 | **Execution Status** | Intelligence Dashboard | ✅ | Re-chart 기반 시각화 완료 |
 | | Execution History | ✅ | 상세 로그 및 필터링 지원 |

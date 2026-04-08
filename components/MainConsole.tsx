@@ -6,7 +6,7 @@ import {
   ShieldCheck, Bell, ChevronRight, MessageSquare, ClipboardCheck,
   TrendingUp, PieChart, Info, ArrowUpRight, Check, X, Filter, Settings as SettingsIcon
 } from 'lucide-react';
-import { ViewMode, Message, Project, TestScript, TestHistory, TestSchedule } from '../types';
+import { ViewMode, Message, Project, TestScript, TestHistory, TestSchedule, Scenario } from '../types';
 import { testApi } from '../api/test';
 import { deviceFarmApi } from '../api/deviceFarm';
 import { useTheme } from '../src/context/ThemeContext';
@@ -14,6 +14,7 @@ import ReactMarkdown from 'react-markdown';
 import { createPortal } from 'react-dom';
 import JiraSyncModal from './JiraSyncModal';
 import HealingAnalysisModal from './HealingAnalysisModal';
+import ScenarioDecisionModal from './ScenarioDecisionModal';
 
 interface MainConsoleProps {
   activeProject: Project;
@@ -72,6 +73,8 @@ const MainConsole: React.FC<MainConsoleProps> = ({
   const [pendingVerificationCount, setPendingVerificationCount] = useState(0);
   const [selectedJiraItem, setSelectedJiraItem] = useState<TestHistory | null>(null);
   const [selectedHealingItem, setSelectedHealingItem] = useState<TestHistory | null>(null);
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const [selectedScenarioItem, setSelectedScenarioItem] = useState<Scenario | null>(null);
   const [isFetchingDetail, setIsFetchingDetail] = useState(false);
   const [missionSteps, setMissionSteps] = useState<MissionStep[]>([]);
   const [isAborted, setIsAborted] = useState(false);
@@ -129,16 +132,18 @@ const MainConsole: React.FC<MainConsoleProps> = ({
 
     const fetchApprovals = async () => {
       try {
-        const [scenarios, pendingHeals, historyRes] = await Promise.all([
+        const [scenariosData, pendingHeals, historyRes] = await Promise.all([
           testApi.getScenarios(activeProject.id),
           testApi.getPendingHealing(activeProject.id),
           testApi.getHistory(activeProject.id)
         ]);
 
+        setScenarios(scenariosData);
+
         const mapped: ApprovalItem[] = [];
 
         // 1. Pending Scenarios
-        scenarios.filter((s: any) => !s.is_approved).forEach((s: any) => {
+        scenariosData.filter((s: any) => !s.is_approved).forEach((s: any) => {
           mapped.push({
             id: s.id || '',
             type: 'GENERATOR',
@@ -200,7 +205,7 @@ const MainConsole: React.FC<MainConsoleProps> = ({
         setIsInitialSyncComplete(true);
 
         // 4. Calculate Scenario Verification Count (Autonomous Testing Repository)
-        const pVerification = scenarios.filter((s: any) => (s.is_approved || s.isApproved) && (!s.golden_script_id && !s.goldenScriptId)).length;
+        const pVerification = scenariosData.filter((s: any) => (s.is_approved || s.isApproved) && (!s.golden_script_id && !s.goldenScriptId)).length;
         setPendingVerificationCount(pVerification);
 
         setApprovals(mapped);
@@ -1034,7 +1039,13 @@ const MainConsole: React.FC<MainConsoleProps> = ({
                         const handleAction = async (e: React.MouseEvent) => {
                           e.stopPropagation();
                           if (app.type === 'GENERATOR') {
-                            setDrawerItem(app);
+                            const scenario = scenarios.find(s => s.id === app.id);
+                            if (scenario) {
+                              setSelectedScenarioItem(scenario);
+                            } else {
+                              // Fallback if not found in pre-fetched list
+                              setDrawerItem(app);
+                            }
                           } else {
                             setIsFetchingDetail(true);
                             try {
@@ -1432,37 +1443,9 @@ const MainConsole: React.FC<MainConsoleProps> = ({
                     {isFetchingDetail ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
                     Review Detailed {drawerItem.type === 'JIRA' ? 'Defect' : 'Analysis'}
                   </button>
-                ) : (
-                  <div className="bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 rounded-2xl p-6">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Sparkles className="w-4 h-4 text-amber-500" />
-                      <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">AI Suggestion</span>
-                    </div>
-                    <p className="text-xs text-amber-800 dark:text-amber-400 font-medium leading-relaxed">
-                      This scenario has been generated based on your requirements. Review the steps and approve to register it as a gold standard test asset.
-                    </p>
-                  </div>
-                )}
+                ) : null}
               </div>
             </div>
-            {drawerItem.type === 'GENERATOR' && (
-              <div className="pt-12 flex gap-4">
-                <button onClick={async () => {
-                  if (!drawerItem) return;
-                  try {
-                    const scenariosApi = await import('../api/scenarios').then(m => m.scenariosApi);
-                    await scenariosApi.update(drawerItem.id, { is_approved: true });
-                    onAlert('Success', 'Scenario has been approved and registered as an asset.', 'success');
-                    setApprovals(prev => prev.filter(a => a.id !== drawerItem.id));
-                    setDrawerItem(null);
-                    fetchData();
-                  } catch (e) {
-                    onAlert('Error', 'Failed to process the requested action.', 'error');
-                  }
-                }} className="flex-1 py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[24px] font-black uppercase text-xs transition-all shadow-xl shadow-indigo-600/30">Approve & Execute</button>
-                <button onClick={() => setDrawerItem(null)} className="px-10 py-5 bg-white/5 text-gray-400 rounded-[24px] font-black uppercase text-xs">Dismiss</button>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -1488,6 +1471,24 @@ const MainConsole: React.FC<MainConsoleProps> = ({
             onAlert('Mission Hand-off', 'Self-healing process started. Check progress in Defect Management.', 'success');
             setApprovals(prev => prev.filter(a => a.id !== selectedHealingItem.id));
             fetchData();
+          }}
+        />
+      )}
+
+      {selectedScenarioItem && (
+        <ScenarioDecisionModal
+          scenario={selectedScenarioItem}
+          isDark={isDark}
+          onClose={() => setSelectedScenarioItem(null)}
+          onApprove={async (id) => {
+            try {
+              // Now we just navigate without changing approval status until it's saved as an asset in AutoVerification
+              setSelectedScenarioItem(null); // Close modal
+              onViewChange(ViewMode.AI_GENERATOR, 'verification', id);
+            } catch (e) {
+              onAlert('Error', 'Failed to navigate to verification screen.', 'error');
+              throw e;
+            }
           }}
         />
       )}
